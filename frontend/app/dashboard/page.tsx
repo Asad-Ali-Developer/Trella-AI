@@ -6,40 +6,42 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
-import { tokenStore } from "@/lib/storage";
-import type { User, Workspace } from "@/lib/types";
+import { clearSession, setAuthenticatedUser, setSessionLoading } from "@/lib/authSlice";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { workspaceStore } from "@/lib/storage";
+import type { Workspace } from "@/lib/types";
 import { authService } from "@/services/AuthService";
 import { workspaceService } from "@/services/WorkspaceService";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.auth.user);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logoutError, setLogoutError] = useState("");
 
   const load = useCallback(async () => {
-    if (!tokenStore.getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
+    dispatch(setSessionLoading());
     try {
       const [me, list] = await Promise.all([authService.me(), workspaceService.list()]);
-      setUser(me);
+      dispatch(setAuthenticatedUser(me));
       setWorkspaces(list);
-      const stored = tokenStore.getWorkspaceId();
+      const stored = workspaceStore.getWorkspaceId();
       const next = list.find((item) => item.id === stored) ?? list[0] ?? null;
       if (next) {
-        tokenStore.setWorkspaceId(next.id);
+        workspaceStore.setWorkspaceId(next.id);
         setSelectedId(next.id);
       }
     } catch {
-      tokenStore.clear();
+      dispatch(clearSession());
+      workspaceStore.clear();
       router.replace("/login");
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [dispatch, router]);
 
   useEffect(() => {
     void load();
@@ -48,8 +50,14 @@ export default function DashboardPage() {
   const selected = workspaces.find((workspace) => workspace.id === selectedId) ?? null;
 
   function logout() {
-    authService.logout();
-    router.replace("/login");
+    setLogoutError("");
+    void authService
+      .logout()
+      .then(() => {
+        dispatch(clearSession());
+        router.replace("/login");
+      })
+      .catch(() => setLogoutError("Could not sign out. Check your connection and try again."));
   }
 
   if (loading) {
@@ -81,6 +89,7 @@ export default function DashboardPage() {
           <p className="text-sm text-muted-foreground">Overview</p>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         </div>
+        {logoutError ? <p role="alert" className="text-sm text-red-600">{logoutError}</p> : null}
         {selected ? (
           <section className="rounded-xl border border-border bg-white p-6">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Current workspace</p>
@@ -104,7 +113,7 @@ export default function DashboardPage() {
                 const name = window.prompt("Workspace name");
                 if (!name?.trim()) return;
                 void workspaceService.create(name.trim()).then((workspace) => {
-                  tokenStore.setWorkspaceId(workspace.id);
+                  workspaceStore.setWorkspaceId(workspace.id);
                   setWorkspaces((current) => [workspace, ...current]);
                   setSelectedId(workspace.id);
                 });

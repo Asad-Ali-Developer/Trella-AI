@@ -48,7 +48,6 @@ class UserResponse(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    """Combined user profile and authentication tokens."""
+    """Authenticated user profile; tokens are sent only as HttpOnly cookies."""
 
     user: UserResponse
-    tokens: TokenResponse

@@ -67,6 +67,23 @@ services:
       redis:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: client-insights-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_APP_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   redis_data:

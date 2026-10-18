@@ -1,5 +1,5 @@
-import { tokenStore } from "@/lib/storage";
-import type { AuthResponse, TokenResponse, User } from "@/lib/types";
+import { workspaceStore } from "@/lib/storage";
+import type { AuthResponse, User } from "@/lib/types";
 import http from "@/services/http";
 
 class AuthService {
@@ -9,7 +9,6 @@ class AuthService {
     name: string;
   }): Promise<AuthResponse> {
     const { data } = await http.post<AuthResponse>("/auth/signup", payload);
-    tokenStore.setTokens(data.tokens.access_token, data.tokens.refresh_token);
     return data;
   }
 
@@ -18,7 +17,6 @@ class AuthService {
     password: string;
   }): Promise<AuthResponse> {
     const { data } = await http.post<AuthResponse>("/auth/login", payload);
-    tokenStore.setTokens(data.tokens.access_token, data.tokens.refresh_token);
     return data;
   }
 
@@ -27,16 +25,9 @@ class AuthService {
     return data;
   }
 
-  async refresh(refreshToken: string): Promise<TokenResponse> {
-    const { data } = await http.post<TokenResponse>("/auth/refresh", {
-      refresh_token: refreshToken,
-    });
-    tokenStore.setTokens(data.access_token, data.refresh_token);
-    return data;
-  }
-
-  logout(): void {
-    tokenStore.clear();
+  async logout(): Promise<void> {
+    await http.post("/auth/logout");
+    workspaceStore.clear();
   }
 }
 

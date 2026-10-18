@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { AxiosError } from "axios";
 
+import { useAppDispatch } from "@/lib/hooks";
+import { setAuthenticatedUser } from "@/lib/authSlice";
 import { Button } from "@/components/atoms/Button";
 import { FormField } from "@/components/molecules/FormField";
 import { AuthTemplate } from "@/components/templates/AuthTemplate";
@@ -12,6 +14,7 @@ import { authService } from "@/services/AuthService";
 
 export default function LoginPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,7 +25,8 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await authService.login({ email, password });
+      const { user } = await authService.login({ email, password });
+      dispatch(setAuthenticatedUser(user));
       router.replace("/dashboard");
     } catch (err) {
       const axiosError = err as AxiosError<{ detail?: string }>;

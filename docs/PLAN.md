@@ -14,6 +14,7 @@ Flow: Trello boards → synced cards and comments → context graph (client → 
 - Providers are swappable. Trello, Gemini, OpenAI, Slack and email all sit behind interfaces.
 - Secure by default. Encrypted tokens, workspace isolation, audit trail from day one.
 - Card text is untrusted input. Defend against prompt injection.
+- Responsive by default. Every frontend screen must work well on mobile, tablet, and desktop without clipped content or horizontal overflow.
 
 ## 3. Tech stack
 | Layer | Choice |
@@ -25,7 +26,7 @@ Flow: Trello boards → synced cards and comments → context graph (client → 
 | Cache, broker, rate limits | Redis |
 | Background jobs | Celery workers + DB-driven scheduler (Phase 6) |
 | HTTP client | httpx (async) + tenacity (retries) |
-| Auth | Auth.js or Clerk on the frontend with JWT verification in FastAPI, or FastAPI-Users to self-host |
+| Auth | FastAPI-issued access and refresh JWTs in HttpOnly cookies; Redux Toolkit keeps user/session state in memory, and tokens are never stored in localStorage |
 | Encryption | cryptography (Fernet or AES-GCM), key from env/KMS |
 | LLM layer | Google Gemini API (`google-genai` SDK) exclusively for now behind `LLMProvider` interface |
 | Slack | slack-sdk / Bolt for Python |
@@ -118,7 +119,7 @@ Rules:
 **Tasks**
 - [ ] SQLAlchemy base, session handling, Alembic set up.
 - [ ] Models and migrations: users, workspaces, memberships, audit_logs.
-- [ ] Auth: signup, login, password reset flow (with secure token), JWT verification dependency, current_user and current_workspace dependencies.
+- [ ] Auth: signup, login, password reset flow (with secure token), JWT verification dependency, current_user and current_workspace dependencies; use HttpOnly access/refresh cookies, CSRF validation for cookie-authenticated writes, and Redux Toolkit for user/session state only.
 - [ ] Transactional email dispatch via Celery: welcome email on signup, password reset email with expiring link (using HTML/Jinja2 templates).
 - [ ] Workspace-scoped repository base class.
 - [ ] Encryption utility (AES-GCM or Fernet) with unit tests and a key rotation plan.
@@ -166,7 +167,7 @@ Rules:
 - [ ] Client profile page: needs, recurring requests, stakeholders, timeline.
 - [ ] Run history.
 - [ ] Thumbs up/down on each insight (feeds your quality evaluation).
-*Done when*: a non-technical tester can run and understand a report without help.
+*Done when*: a non-technical tester can run and understand a report without help, and every screen is verified at mobile, tablet, and desktop viewport sizes.
 
 ### Phase 6: Scheduling and delivery (Weeks 9-11)
 **Tasks**
@@ -227,6 +228,7 @@ Rules:
 
 ## 10. Security checklist
 - [ ] Tokens encrypted at rest, never logged, decrypted only inside service/worker code.
+- [ ] Access and refresh JWTs use HttpOnly cookies and are never exposed to frontend JavaScript or stored in localStorage; validate CSRF tokens and request origins for cookie-authenticated writes.
 - [ ] workspace_id enforced everywhere, with tests proving user A cannot read workspace B.
 - [ ] Webhook signature verification.
 - [ ] API rate limiting, strict CORS, secrets only in env/KMS.
@@ -239,6 +241,7 @@ Rules:
 - **Integration**: Trello client with respx fixtures, DB with testcontainers, Celery in eager mode.
 - **Evaluation set**: 3 to 5 anonymized real boards with hand-written expected insights; re-run whenever a prompt or model changes.
 - **E2E**: Playwright for signup → connect → run → report.
+- **Responsive UI**: Use Playwright to check every frontend screen at mobile (375px), tablet (768px), and desktop (1280px) widths; verify primary interactions and no horizontal overflow.
 
 ## 12. Deployment and operations
 - Separate processes: api, worker (Celery), scheduler (beat). Scale workers independently.

@@ -1,11 +1,12 @@
 import uuid
 from collections.abc import Callable
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security.auth import AuthSecurityError, decode_token
+from app.core.security.csrf import validate_csrf_request
 from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.auth.repository import UserRepository
@@ -19,10 +20,17 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 
 async def get_current_user(
+    request: Request,
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Extract, decode, and validate the Bearer token to return active User."""
+    """Validate a Bearer or HttpOnly-cookie token and return the active User."""
+    cookie_token = request.cookies.get("access_token")
+    if not token and cookie_token:
+        token = cookie_token
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            validate_csrf_request(request)
+
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

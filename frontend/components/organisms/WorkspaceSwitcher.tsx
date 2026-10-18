@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import type { Workspace } from "@/lib/types";
-import { tokenStore } from "@/lib/storage";
+import { workspaceStore } from "@/lib/storage";
 import { workspaceService } from "@/services/WorkspaceService";
 
 interface WorkspaceSwitcherProps {
@@ -47,7 +47,7 @@ export function WorkspaceSwitcher({
     setError("");
     try {
       const workspace = await workspaceService.create(name.trim());
-      tokenStore.setWorkspaceId(workspace.id);
+      workspaceStore.setWorkspaceId(workspace.id);
       onCreated(workspace);
       setName("");
       setOpen(false);
@@ -77,7 +77,7 @@ export function WorkspaceSwitcher({
               key={workspace.id}
               type="button"
               onClick={() => {
-                tokenStore.setWorkspaceId(workspace.id);
+                workspaceStore.setWorkspaceId(workspace.id);
                 onSelect(workspace);
                 setOpen(false);
               }}

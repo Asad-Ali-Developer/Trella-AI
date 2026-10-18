@@ -19,10 +19,13 @@ async def test_signup_success(async_client: AsyncClient) -> None:
     assert data["user"]["email"] == unique_email
     assert data["user"]["name"] == "Alex Developer"
     assert data["user"]["is_active"] is True
-    assert "tokens" in data
-    assert "access_token" in data["tokens"]
-    assert "refresh_token" in data["tokens"]
-    assert data["tokens"]["token_type"] == "bearer"
+    assert "tokens" not in data
+    assert "access_token" not in data
+    assert "refresh_token" not in data
+    set_cookie_headers = response.headers.get_list("set-cookie")
+    assert any("access_token=" in value and "httponly" in value.lower() for value in set_cookie_headers)
+    assert any("refresh_token=" in value and "httponly" in value.lower() for value in set_cookie_headers)
+    assert response.cookies.get("csrf_token")
 
 
 @pytest.mark.asyncio
@@ -75,7 +78,9 @@ async def test_login_flow(async_client: AsyncClient) -> None:
     assert res_login.status_code == 200
     data = res_login.json()
     assert data["user"]["email"] == unique_email
-    assert "access_token" in data["tokens"]
+    assert "tokens" not in data
+    assert res_login.cookies.get("access_token")
+    assert res_login.cookies.get("refresh_token")
 
     # Invalid password
     res_wrong_pw = await async_client.post(
@@ -99,47 +104,52 @@ async def test_token_refresh(async_client: AsyncClient) -> None:
         "/api/v1/auth/signup",
         json={"email": unique_email, "name": "Refresher", "password": "Password123!"},
     )
-    refresh_token = res_signup.json()["tokens"]["refresh_token"]
-
     # Successful refresh
+    csrf_token = async_client.cookies.get("csrf_token")
     res_refresh = await async_client.post(
         "/api/v1/auth/refresh",
-        json={"refresh_token": refresh_token},
+        headers={
+            "Origin": "http://localhost:3000",
+            "X-CSRF-Token": csrf_token,
+        },
     )
-    assert res_refresh.status_code == 200
-    tokens = res_refresh.json()
-    assert "access_token" in tokens
-    assert "refresh_token" in tokens
+    assert res_refresh.status_code == 204
+    assert res_refresh.content == b""
+    assert res_refresh.cookies.get("access_token")
+    assert res_refresh.cookies.get("refresh_token")
 
     # Invalid refresh token
+    async_client.cookies.set("refresh_token", "invalid_jwt_token_123")
     res_bad = await async_client.post(
         "/api/v1/auth/refresh",
-        json={"refresh_token": "invalid_jwt_token_123"},
+        headers={
+            "Origin": "http://localhost:3000",
+            "X-CSRF-Token": async_client.cookies.get("csrf_token"),
+        },
     )
     assert res_bad.status_code == 401
+
+    # Cookie-authenticated writes reject missing CSRF proof.
+    res_no_csrf = await async_client.post("/api/v1/auth/logout")
+    assert res_no_csrf.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_get_me_endpoint(async_client: AsyncClient) -> None:
     unique_email = f"me_{uuid.uuid4().hex[:8]}@example.com"
+    res_unauth = await async_client.get("/api/v1/auth/me")
+    assert res_unauth.status_code == 401
+
     res_signup = await async_client.post(
         "/api/v1/auth/signup",
         json={"email": unique_email, "name": "Current User", "password": "Password123!"},
     )
-    access_token = res_signup.json()["tokens"]["access_token"]
 
     # Authenticated request
-    res_me = await async_client.get(
-        "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
+    res_me = await async_client.get("/api/v1/auth/me")
     assert res_me.status_code == 200
     assert res_me.json()["email"] == unique_email
     assert res_me.json()["name"] == "Current User"
-
-    # Unauthenticated request
-    res_unauth = await async_client.get("/api/v1/auth/me")
-    assert res_unauth.status_code == 401
 
     # Tampered token
     res_bad_token = await async_client.get(
@@ -147,3 +157,27 @@ async def test_get_me_endpoint(async_client: AsyncClient) -> None:
         headers={"Authorization": "Bearer fake.tampered.token"},
     )
     assert res_bad_token.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_clears_session_cookies(async_client: AsyncClient) -> None:
+    await async_client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": f"logout_{uuid.uuid4().hex[:8]}@example.com",
+            "name": "Logout User",
+            "password": "Password123!",
+        },
+    )
+    csrf_token = async_client.cookies.get("csrf_token")
+    response = await async_client.post(
+        "/api/v1/auth/logout",
+        headers={
+            "Origin": "http://localhost:3000",
+            "X-CSRF-Token": csrf_token,
+        },
+    )
+    assert response.status_code == 204
+    set_cookie_headers = response.headers.get_list("set-cookie")
+    assert any("access_token=" in value and "max-age=0" in value.lower() for value in set_cookie_headers)
+    assert any("refresh_token=" in value and "max-age=0" in value.lower() for value in set_cookie_headers)

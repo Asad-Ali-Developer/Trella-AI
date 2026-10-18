@@ -1,25 +1,32 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 import { config } from "@/config";
-import { tokenStore } from "@/lib/storage";
-import type { TokenResponse } from "@/lib/types";
+import { workspaceStore } from "@/lib/storage";
 
 const http = axios.create({
   baseURL: config.apiBaseUrl,
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
 
-let refreshPromise: Promise<string> | null = null;
+let refreshPromise: Promise<void> | null = null;
+
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const cookie = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith(`${name}=`));
+  return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : null;
+}
 
 http.interceptors.request.use((request: InternalAxiosRequestConfig) => {
-  const token = tokenStore.getAccessToken();
-  if (token) {
-    request.headers.Authorization = `Bearer ${token}`;
+  const method = request.method?.toUpperCase();
+  if (method && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const csrfToken = readCookie("csrf_token");
+    if (csrfToken) request.headers["X-CSRF-Token"] = csrfToken;
   }
-  const workspaceId = tokenStore.getWorkspaceId();
-  if (workspaceId) {
-    request.headers["X-Workspace-Id"] = workspaceId;
-  }
+  const workspaceId = workspaceStore.getWorkspaceId();
+  if (workspaceId) request.headers["X-Workspace-Id"] = workspaceId;
   return request;
 });
 
@@ -29,16 +36,19 @@ http.interceptors.response.use(
     const original = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
-    if (error.response?.status !== 401 || original._retry) {
-      return Promise.reject(error);
-    }
-
-    const refreshToken = tokenStore.getRefreshToken();
-    if (!refreshToken) {
-      tokenStore.clear();
-      if (typeof window !== "undefined") {
-        window.location.href = "/login";
-      }
+    const url = original?.url ?? "";
+    const isAuthEndpoint = [
+      "/auth/login",
+      "/auth/signup",
+      "/auth/refresh",
+      "/auth/logout",
+    ].some((path) => url.endsWith(path));
+    if (
+      error.response?.status !== 401 ||
+      !original ||
+      original._retry ||
+      isAuthEndpoint
+    ) {
       return Promise.reject(error);
     }
 
@@ -46,17 +56,18 @@ http.interceptors.response.use(
 
     if (!refreshPromise) {
       refreshPromise = axios
-        .post<TokenResponse>(`${config.apiBaseUrl}/auth/refresh`, {
-          refresh_token: refreshToken,
+        .post(`${config.apiBaseUrl}/auth/refresh`, undefined, {
+          withCredentials: true,
+          headers: { "X-CSRF-Token": readCookie("csrf_token") ?? "" },
         })
-        .then(({ data }) => {
-          tokenStore.setTokens(data.access_token, data.refresh_token);
-          return data.access_token;
-        })
+        .then(() => undefined)
         .catch((refreshError: unknown) => {
-          tokenStore.clear();
           if (typeof window !== "undefined") {
-            window.location.href = "/login";
+            window.dispatchEvent(new Event("auth:session-expired"));
+          }
+          workspaceStore.clear();
+          if (typeof window !== "undefined") {
+            window.location.assign("/login");
           }
           throw refreshError;
         })
@@ -65,8 +76,7 @@ http.interceptors.response.use(
         });
     }
 
-    const newToken = await refreshPromise;
-    original.headers.Authorization = `Bearer ${newToken}`;
+    await refreshPromise;
     return http(original);
   },
 );

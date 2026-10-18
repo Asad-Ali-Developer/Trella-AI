@@ -33,25 +33,25 @@ app.include_router(internal_router)
 async def _create_test_user(
     async_client: AsyncClient,
     email_prefix: str = "user",
-) -> tuple[str, str]:
-    """Helper to register a user and return (email, access_token)."""
+) -> str:
+    """Register a user and retain the issued auth cookies in the test client."""
     email = f"{email_prefix}_{uuid.uuid4().hex[:8]}@example.com"
     res = await async_client.post(
         "/api/v1/auth/signup",
         json={"email": email, "name": "Workspace Tester", "password": "Password123!"},
     )
     assert res.status_code == 201
-    token = res.json()["tokens"]["access_token"]
-    return email, token
+    async_client.headers["Origin"] = "http://localhost:3000"
+    async_client.headers["X-CSRF-Token"] = async_client.cookies.get("csrf_token", "")
+    return email
 
 
 @pytest.mark.asyncio
 async def test_create_workspace_success(async_client: AsyncClient) -> None:
-    _, token = await _create_test_user(async_client, "creator")
+    await _create_test_user(async_client, "creator")
     slug = f"alpha-growth-{uuid.uuid4().hex[:6]}"
     response = await async_client.post(
         "/api/v1/workspaces",
-        headers={"Authorization": f"Bearer {token}"},
         json={"name": "Alpha Growth Agency", "slug": slug},
     )
     assert response.status_code == 201
@@ -73,21 +73,18 @@ async def test_create_workspace_unauthenticated(async_client: AsyncClient) -> No
 
 @pytest.mark.asyncio
 async def test_list_user_workspaces(async_client: AsyncClient) -> None:
-    _, token = await _create_test_user(async_client, "lister")
+    await _create_test_user(async_client, "lister")
     await async_client.post(
         "/api/v1/workspaces",
-        headers={"Authorization": f"Bearer {token}"},
         json={"name": "Workspace One"},
     )
     await async_client.post(
         "/api/v1/workspaces",
-        headers={"Authorization": f"Bearer {token}"},
         json={"name": "Workspace Two"},
     )
 
     response = await async_client.get(
         "/api/v1/workspaces",
-        headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
     workspaces = response.json()
@@ -99,17 +96,15 @@ async def test_list_user_workspaces(async_client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_get_workspace_details_success(async_client: AsyncClient) -> None:
-    _, token = await _create_test_user(async_client, "details")
+    await _create_test_user(async_client, "details")
     create_res = await async_client.post(
         "/api/v1/workspaces",
-        headers={"Authorization": f"Bearer {token}"},
         json={"name": "Details Agency"},
     )
     ws_id = create_res.json()["id"]
 
     response = await async_client.get(
         f"/api/v1/workspaces/{ws_id}",
-        headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
     assert response.json()["id"] == ws_id
@@ -118,18 +113,16 @@ async def test_get_workspace_details_success(async_client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_workspace_isolation_access_denied(async_client: AsyncClient) -> None:
-    _, token_a = await _create_test_user(async_client, "user_a")
+    await _create_test_user(async_client, "user_a")
     create_res = await async_client.post(
         "/api/v1/workspaces",
-        headers={"Authorization": f"Bearer {token_a}"},
         json={"name": "User A Private Workspace"},
     )
     ws_a_id = create_res.json()["id"]
 
-    _, token_b = await _create_test_user(async_client, "user_b")
+    await _create_test_user(async_client, "user_b")
     response_b = await async_client.get(
         f"/api/v1/workspaces/{ws_a_id}",
-        headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response_b.status_code == 403
     assert "do not have access" in response_b.json()["detail"]
@@ -137,10 +130,9 @@ async def test_workspace_isolation_access_denied(async_client: AsyncClient) -> N
 
 @pytest.mark.asyncio
 async def test_workspace_dependencies_and_role_enforcement(async_client: AsyncClient) -> None:
-    _, token = await _create_test_user(async_client, "role_tester")
+    await _create_test_user(async_client, "role_tester")
     create_res = await async_client.post(
         "/api/v1/workspaces",
-        headers={"Authorization": f"Bearer {token}"},
         json={"name": "Security Agency"},
     )
     ws_id = create_res.json()["id"]
@@ -148,7 +140,7 @@ async def test_workspace_dependencies_and_role_enforcement(async_client: AsyncCl
     # Valid X-Workspace-Id header
     res_protected = await async_client.get(
         "/internal-test-context/protected",
-        headers={"Authorization": f"Bearer {token}", "X-Workspace-Id": ws_id},
+        headers={"X-Workspace-Id": ws_id},
     )
     assert res_protected.status_code == 200
     assert res_protected.json()["workspace_name"] == "Security Agency"
@@ -157,7 +149,7 @@ async def test_workspace_dependencies_and_role_enforcement(async_client: AsyncCl
     # Valid owner-only endpoint
     res_owner = await async_client.get(
         "/internal-test-context/owner-only",
-        headers={"Authorization": f"Bearer {token}", "X-Workspace-Id": ws_id},
+        headers={"X-Workspace-Id": ws_id},
     )
     assert res_owner.status_code == 200
     assert res_owner.json()["status"] == "owner_verified"
@@ -165,7 +157,6 @@ async def test_workspace_dependencies_and_role_enforcement(async_client: AsyncCl
     # Missing X-Workspace-Id header -> 422 Unprocessable Entity
     res_missing_header = await async_client.get(
         "/internal-test-context/protected",
-        headers={"Authorization": f"Bearer {token}"},
     )
     assert res_missing_header.status_code == 422
 
@@ -173,6 +164,6 @@ async def test_workspace_dependencies_and_role_enforcement(async_client: AsyncCl
     fake_ws_id = str(uuid.uuid4())
     res_forbidden = await async_client.get(
         "/internal-test-context/protected",
-        headers={"Authorization": f"Bearer {token}", "X-Workspace-Id": fake_ws_id},
+        headers={"X-Workspace-Id": fake_ws_id},
     )
     assert res_forbidden.status_code == 403

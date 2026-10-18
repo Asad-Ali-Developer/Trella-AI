@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,6 +41,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = Field(default="HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=1440)
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7)
+    AUTH_COOKIE_SECURE: bool | None = Field(default=None)
+    AUTH_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = Field(default="lax")
 
     # Observability
     SENTRY_DSN: str = Field(default="")
@@ -53,6 +56,13 @@ class Settings(BaseSettings):
         if not self.ENCRYPTION_FALLBACK_KEYS.strip():
             return []
         return [key.strip() for key in self.ENCRYPTION_FALLBACK_KEYS.split(",") if key.strip()]
+
+    @property
+    def auth_cookie_secure(self) -> bool:
+        """Use secure cookies by default outside local development."""
+        if self.AUTH_COOKIE_SECURE is not None:
+            return self.AUTH_COOKIE_SECURE
+        return self.APP_ENV == "production" or self.AUTH_COOKIE_SAMESITE == "none"
 
 
 @lru_cache

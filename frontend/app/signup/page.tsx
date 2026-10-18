@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { AxiosError } from "axios";
 
+import { setAuthenticatedUser } from "@/lib/authSlice";
+import { useAppDispatch } from "@/lib/hooks";
 import { Button } from "@/components/atoms/Button";
 import { FormField } from "@/components/molecules/FormField";
 import { AuthTemplate } from "@/components/templates/AuthTemplate";
@@ -12,6 +14,7 @@ import { authService } from "@/services/AuthService";
 
 export default function SignupPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +26,8 @@ export default function SignupPage() {
     setError("");
     setLoading(true);
     try {
-      await authService.signup({ name, email, password });
+      const { user } = await authService.signup({ name, email, password });
+      dispatch(setAuthenticatedUser(user));
       router.replace("/dashboard");
     } catch (err) {
       const axiosError = err as AxiosError<{ detail?: string }>;
