@@ -1,0 +1,61 @@
+# Development Rules & Guidelines
+
+- **Python & Typing**: Python 3.12, async everywhere, full type hints, strict mypy compliance.
+- **Module Architecture**: Follow the standard layout per module:
+  - `router.py` → `service.py` → `repository.py`
+  - `schemas.py` (Pydantic v2)
+  - `models.py` (SQLAlchemy 2.0 async)
+- **Multi-Tenancy & Workspace Isolation**: Every DB query must be strictly scoped by `workspace_id`.
+- **Security & Privacy**:
+  - Never log tokens, secrets, or card content.
+  - Encryption at rest for credentials (AES-GCM or Fernet).
+  - All card text is untrusted input; defend against prompt injection.
+- **Testing & Quality**:
+  - **Mandatory Endpoint Coverage**: Every backend API endpoint MUST have dedicated automated tests written at the time of creation (covering success status codes, response payloads, input validation errors, unauthorized access, and workspace isolation).
+  - Every feature must ship with automated tests (`pytest`, `pytest-asyncio`, `httpx.AsyncClient`).
+  - Unit tests for domain logic; integration tests with database and third-party client fixtures (`respx`).
+- **Frontend Architecture & Conventions**:
+  - **Framework & Routing**: Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui.
+  - **Directory Structure**: Root `apps/web/app/` directory for routing. **Do NOT use a `src/` directory**.
+  - **Component Structure (Atomic Design)**: All components must strictly follow atomic design principles:
+    - `components/atoms/`: Very small, primitive elements (e.g., buttons, inputs, badges, avatars, icons, tooltips).
+    - `components/molecules/`: Groups of atoms functioning together (e.g., form fields with label/error, search bars, stat chips, card headers).
+    - `components/organisms/`: Complex UI sections composed of molecules and atoms (e.g., sidebar, navigation bar, boards grid, skill run console, report viewer).
+    - `components/templates/`: Page-level layouts assembled from atoms, molecules, and organisms that structure full pages.
+  - **Design Aesthetics & Palette**:
+    - **Ultra-Clean & Aesthetic**: Minimalist, modern B2B SaaS aesthetic (Linear / Vercel style).
+    - **Restrained Color Palette**: Strictly avoid a bunch of arbitrary, loud colors. Use a refined, neutral-dominant palette (zinc / slate grayscale) paired with a single elegant accent color (e.g., subtle indigo/violet or monochrome high-contrast).
+    - **Visual Hierarchy**: Rely on clean typography, generous whitespace, subtle hairline borders (`border-border`), and smooth micro-interactions instead of heavy background colors or visual noise.
+  - **Icons**: `lucide-react` along with custom SVG/component icons when needed.
+  - **Environment Configuration**:
+    - Centralized `config/index.ts` holding backend environment URLs (development, staging, and production) and environment-specific flags.
+  - **API Service Layer**:
+    - Centralized, class-based services for domain entities (e.g., `AuthService`, `WorkspaceService`, `TrelloService`, `SkillService`).
+    - Standardized HTTP client using **Axios** with request & response interceptors configured with base URL resolved from `config/index.ts`.
+    - Automatic JWT access token attachment and silent refresh token rotation (handling 401s, request queuing during refresh, and session revocation on terminal expiry).
+- **Email & Communications**:
+  - All outgoing emails (welcome/verification, password reset, scheduled reports, promotional updates) MUST be dispatched asynchronously via Celery background tasks (never blocking the HTTP request thread).
+  - Transactional emails (password reset, account verification) must use secure, time-expiring tokens.
+  - Reports and promotional emails must include proper headers (`List-Unsubscribe`) and honor workspace notification preferences.
+- **Scalability & Performance Guidelines**:
+  - **Queue Segregation**: Celery workers must run with dedicated queues:
+    - `critical`: High-priority tasks (auth emails, password resets, webhook acks).
+    - `sync`: Trello paginated board/card ingestion.
+    - `ai`: Map-reduce summarization, skill runs, vector embeddings.
+    - `delivery`: Slack Block Kit & email digest dispatches.
+  - **Connector Rate Limiting & Locking**:
+    - Centralized Redis Token Bucket rate limiting per external token and API key.
+    - Distributed task deduplication via Redis locks (`SET NX EX`) to avoid parallel duplicate syncs or webhook bursts.
+  - **Database & Vectors**:
+    - Connection pooling via PgBouncer in transaction mode.
+    - Use `HNSW` (Hierarchical Navigable Small World) index for `pgvector` embeddings.
+    - Composite indexes on `(workspace_id, external_id)` and partial indexes on active records (`WHERE closed = false`).
+  - **LLM Engine (Gemini Exclusively for Now)**:
+    - Use the **Google Gemini API** exclusively for now (via the official `google-genai` SDK) wrapped behind our clean `LLMProvider` interface for future swappability.
+    - Leverage fast, cost-efficient Gemini models (e.g., `gemini-2.0-flash`) for card extraction, content-hash summarization, and insight synthesis.
+  - **Frontend Virtualization & Query Cache**:
+    - Use `@tanstack/react-virtual` for high-volume card and insight lists to prevent DOM bloating.
+    - Use TanStack Query with optimistic UI updates and stale-while-revalidate caching.
+- **Scope Discipline**:
+  - Do not touch modules outside the current task/phase.
+  - Follow [PLAN.md](file:///C:/Users/Async/.gemini/antigravity-ide/scratch/client-insights/docs/PLAN.md); ask before deviating.
