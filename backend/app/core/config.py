@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     # LLM Settings
     GEMINI_API_KEY: str = Field(default="")
 
+    # Trello
+    TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")
+    TRELLO_OAUTH_CLIENT_ID: str = Field(default="Scv2u0AtORopp603eOLnAHAkSfDg25K9")
+    TRELLO_OAUTH_CLIENT_SECRET: str = Field(default="ATOAYKGUwgZSw0Yn9NuVKJHSEDj4EkV676xPfYsIjxkdZY0tQ3WuxJgfwxE6UcTotgwvAD8DC467")
+    TRELLO_OAUTH_CALLBACK_URL: str = Field(
+        default="http://localhost:3000/dashboard/trello/callback"
+    )
+    TRELLO_OAUTH_SCOPES: str = Field(
+        default="read:board:trello read:organization:trello read:member:trello offline_access"
+    )
+
     @property
     def encryption_fallback_keys(self) -> list[str]:
         """Parse previous encryption keys used for MultiFernet rotation."""

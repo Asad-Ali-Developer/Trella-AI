@@ -22,26 +22,26 @@ A SaaS where a user signs up, connects Trello (input connector), attaches a **sk
 
 ## 3. Tech stack
 
-| Layer | Choice |
-|---|---|
-| Frontend | Next.js (App Router), TypeScript, Tailwind, shadcn/ui, Redux Toolkit for client/application state, TanStack Query for server state and caching; light and dark themes with system preference active by default |
-| API | FastAPI, Pydantic v2, Uvicorn/Gunicorn |
-| ORM and migrations | SQLAlchemy 2.0 (async) + Alembic |
-| Database | PostgreSQL 16 + pgvector |
-| Cache, broker, rate limits | Redis |
-| Background jobs | Celery workers + DB-driven scheduler (Phase 6) |
-| HTTP client | httpx (async) + tenacity (retries) |
-| Auth | FastAPI-issued access and refresh JWTs in HttpOnly cookies; Redux Toolkit keeps user/session state in memory, and tokens are never stored in localStorage |
-| Encryption | `cryptography` (Fernet or AES-GCM), key from env/KMS |
-| LLM layer | Own `LLMProvider` interface wrapping `google-genai` and `openai`, or LiteLLM |
-| Slack | `slack-sdk` / Bolt for Python |
-| Email | Resend, Postmark or SES; Jinja2 or MJML templates |
-| Observability | Sentry, structlog, Langfuse (LLM cost and traces) |
-| Testing | pytest, pytest-asyncio, respx, factory-boy, testcontainers, Playwright |
-| Tooling | uv or Poetry, Ruff, mypy, pre-commit |
-| CI/CD | GitHub Actions |
-| Infra (MVP) | Docker Compose locally; Vercel (web); Railway/Render/Fly (API + worker); Neon/Supabase (Postgres); Upstash Redis |
-| Payments | Paddle or Lemon Squeezy (verify current availability for Pakistan; Stripe is not directly available) |
+| Layer                      | Choice                                                                                                                                                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend                   | Next.js (App Router), TypeScript, Tailwind, shadcn/ui, Redux Toolkit for client/application state, TanStack Query for server state and caching; light and dark themes with system preference active by default |
+| API                        | FastAPI, Pydantic v2, Uvicorn/Gunicorn                                                                                                                                                                         |
+| ORM and migrations         | SQLAlchemy 2.0 (async) + Alembic                                                                                                                                                                               |
+| Database                   | PostgreSQL 16 + pgvector                                                                                                                                                                                       |
+| Cache, broker, rate limits | Redis                                                                                                                                                                                                          |
+| Background jobs            | Celery workers + DB-driven scheduler (Phase 6)                                                                                                                                                                 |
+| HTTP client                | httpx (async) + tenacity (retries)                                                                                                                                                                             |
+| Auth                       | FastAPI-issued access and refresh JWTs in HttpOnly cookies; Redux Toolkit keeps user/session state in memory, and tokens are never stored in localStorage                                                      |
+| Encryption                 | `cryptography` (Fernet or AES-GCM), key from env/KMS                                                                                                                                                         |
+| LLM layer                  | Own `LLMProvider` interface wrapping `google-genai` and `openai`, or LiteLLM                                                                                                                             |
+| Slack                      | `slack-sdk` / Bolt for Python                                                                                                                                                                                |
+| Email                      | Resend, Postmark or SES; Jinja2 or MJML templates                                                                                                                                                              |
+| Observability              | Sentry, structlog, Langfuse (LLM cost and traces)                                                                                                                                                              |
+| Testing                    | pytest, pytest-asyncio, respx, factory-boy, testcontainers, Playwright                                                                                                                                         |
+| Tooling                    | uv or Poetry, Ruff, mypy, pre-commit                                                                                                                                                                           |
+| CI/CD                      | GitHub Actions                                                                                                                                                                                                 |
+| Infra (MVP)                | Docker Compose locally; Vercel (web); Railway/Render/Fly (API + worker); Neon/Supabase (Postgres); Upstash Redis                                                                                               |
+| Payments                   | Paddle or Lemon Squeezy (verify current availability for Pakistan; Stripe is not directly available)                                                                                                           |
 
 ## 4. Repository structure
 
@@ -78,26 +78,27 @@ Each module follows the same layers: `router.py` → `service.py` → `repositor
 
 ## 5. Data model
 
-| Table | Key fields |
-|---|---|
-| `users` | id, email, name, created_at |
-| `workspaces`, `memberships` | workspace_id, user_id, role (owner/admin/member) |
-| `connections` | workspace_id, type (trello/slack/email), encrypted_token, scopes, status, external_account_id |
-| `sources` | workspace_id, connection_id, trello_board_id, name, sync_status, last_synced_at, excluded |
-| `clients` | workspace_id, name, mapping_rule (board/label/list), external_ref |
-| `cards` | source_id, client_id, external_id, list_name, title, description, labels, checklists, due, closed, url, content_hash, last_activity_at |
-| `comments` | card_id, external_id, author_id, text, created_at, content_hash |
-| `members` | workspace_id, external_id, name, role_tag (client/internal/unknown) |
-| `card_summaries` | card_id, summary, model, prompt_version, content_hash, tokens |
-| `embeddings` | owner_type, owner_id, vector, content_hash |
-| `skills` | workspace_id (null = built-in), name, version, prompt_template, scope_json, output_schema_json, model_config |
-| `runs` | skill_id, workspace_id, status, trigger (manual/schedule), input_range, tokens_in, tokens_out, cost, output_json, error |
-| `insights` | run_id, type, text, confidence, source_refs, feedback (up/down) |
-| `schedules` | skill_id, cron, timezone, channel, recipients, next_run_at, last_run_at, active |
-| `deliveries` | run_id, channel, status, attempts, error |
-| `audit_logs`, `usage_counters`, `subscriptions` | security, limits, billing |
+| Table                                                 | Key fields                                                                                                                             |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                                             | id, email, name, created_at                                                                                                            |
+| `workspaces`, `memberships`                       | workspace_id, user_id, role (owner/admin/member)                                                                                       |
+| `connections`                                       | workspace_id, type (trello/slack/email), encrypted_token, scopes, status, external_account_id                                          |
+| `sources`                                           | workspace_id, connection_id, trello_board_id, name, sync_status, last_synced_at, excluded                                              |
+| `clients`                                           | workspace_id, name, mapping_rule (board/label/list), external_ref                                                                      |
+| `cards`                                             | source_id, client_id, external_id, list_name, title, description, labels, checklists, due, closed, url, content_hash, last_activity_at |
+| `comments`                                          | card_id, external_id, author_id, text, created_at, content_hash                                                                        |
+| `members`                                           | workspace_id, external_id, name, role_tag (client/internal/unknown)                                                                    |
+| `card_summaries`                                    | card_id, summary, model, prompt_version, content_hash, tokens                                                                          |
+| `embeddings`                                        | owner_type, owner_id, vector, content_hash                                                                                             |
+| `skills`                                            | workspace_id (null = built-in), name, version, prompt_template, scope_json, output_schema_json, model_config                           |
+| `runs`                                              | skill_id, workspace_id, status, trigger (manual/schedule), input_range, tokens_in, tokens_out, cost, output_json, error                |
+| `insights`                                          | run_id, type, text, confidence, source_refs, feedback (up/down)                                                                        |
+| `schedules`                                         | skill_id, cron, timezone, channel, recipients, next_run_at, last_run_at, active                                                        |
+| `deliveries`                                        | run_id, channel, status, attempts, error                                                                                               |
+| `audit_logs`, `usage_counters`, `subscriptions` | security, limits, billing                                                                                                              |
 
 Rules:
+
 - Index `(workspace_id, external_id)` on every synced table.
 - Enforce `workspace_id` in every repository query (or use Postgres Row-Level Security).
 - Vector dimension depends on the embedding model; decide before the first migration.
@@ -117,6 +118,7 @@ Rules:
 ### Phase 0: Validation and setup (Week 1)
 
 Tasks
+
 - [ ] Interview 5 to 10 agencies or software houses: how do they track client requests today, and what report would they pay for?
 - [ ] Choose the first delivery channel (Slack or email) and write a one-page spec.
 - [ ] Create the repo, `docker-compose.yml` (Postgres with pgvector, Redis), `.env.example`, pre-commit hooks, Ruff, mypy.
@@ -127,6 +129,7 @@ Tasks
 ### Phase 1: Foundation (Weeks 2-3)
 
 Tasks
+
 - [ ] SQLAlchemy base, session handling, Alembic set up.
 - [ ] Models and migrations: users, workspaces, memberships, audit_logs.
 - [ ] Auth: signup, login, JWT verification dependency, `current_user` and `current_workspace` dependencies; use HttpOnly access/refresh cookies, CSRF validation for cookie-authenticated writes, and Redux Toolkit for user/session state only.
@@ -141,20 +144,24 @@ Tasks
 ### Phase 2: Trello connector (Weeks 3-5)
 
 Tasks
-- [ ] Trello authorization flow (API key plus user token, read scope), token stored encrypted.
-- [ ] `TrelloClient` in httpx with retry and backoff.
+
+- [X] Trello OAuth 2.0 confidential authorization-code flow with PKCE; use one configured callback URL per deployment, bind one-time state to the initiating user/workspace, and encrypt access/refresh tokens.
+- [X] `TrelloClient` in httpx with retry and backoff.
 - [ ] Redis-based rate limiter (Trello limits per key and per token; verify current limits in the docs).
-- [ ] Board picker UI with an exclude-board option.
+- [X] Board picker UI with an exclude-board option.
 - [ ] Models: sources, clients, cards, comments, members.
 - [ ] Celery sync tasks with pagination and idempotent upserts; sync status visible in the UI.
 - [ ] Webhook endpoint (public HTTPS, verify the HMAC signature header) for incremental updates; use Cloudflare Tunnel or ngrok in dev.
 - [ ] Client-mapping UI: board = client, label = client, or list = client.
+
+The Trella app uses one confidential OAuth Client ID and secret across users. Configure one fixed callback URL per deployment; each authorization uses one-time state and stores a separate encrypted token pair for the connecting user in that workspace.
 
 **Done when:** a 500-card board syncs fully, and editing a card in Trello updates your DB within a minute.
 
 ### Phase 3: Context builder (Weeks 5-6)
 
 Tasks
+
 - [ ] Graph assembly: client → board → list → card → comments → people.
 - [ ] Member classification (client vs internal) with manual override.
 - [ ] Token counting and chunking.
@@ -166,6 +173,7 @@ Tasks
 ### Phase 4: LLM layer and skill engine (Weeks 6-8)
 
 Tasks
+
 - [ ] `LLMProvider` interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
 - [ ] Skill definition format (see section 8) with validation and versioning.
 - [ ] Built-in skill 1: **Client Needs Analyzer**. Skill 2 later: **Scope Change Detector**.
@@ -179,6 +187,7 @@ Tasks
 ### Phase 5: Reports UI (Weeks 8-9)
 
 Tasks
+
 - [ ] Run-now button, run status (polling or SSE).
 - [ ] Report view with clickable Trello source links.
 - [ ] Client profile page: needs, recurring requests, stakeholders, timeline.
@@ -190,6 +199,7 @@ Tasks
 ### Phase 6: Scheduling and delivery (Weeks 9-11)
 
 Tasks
+
 - [ ] Slack OAuth app, channel or DM picker, Block Kit digest with a "View full report" link.
 - [ ] Email through Resend or Postmark; SPF, DKIM, DMARC configured; unsubscribe handling.
 - [ ] Scheduler: schedules in Postgres (cron, timezone, `next_run_at`); one Celery beat task every minute finds due schedules and enqueues runs; use `croniter` with the user's timezone.
@@ -202,6 +212,7 @@ Tasks
 ### Phase 7: Hardening and billing (Weeks 11-12)
 
 Tasks
+
 - [ ] Plan limits (boards, scheduled skills, runs per month) with usage counters.
 - [ ] Billing via Paddle or Lemon Squeezy (verify current options first).
 - [ ] Workspace isolation tests, API rate limiting, audit logs, secrets review.
@@ -214,6 +225,7 @@ Tasks
 ### Phase 8: Private beta and launch (Weeks 13-14)
 
 Tasks
+
 - [ ] Onboard 5 to 10 agencies free of charge and watch them use it.
 - [ ] Track report usefulness, digest open rates, cost per workspace.
 - [ ] Fix the top issues, open a waitlist, launch publicly.
@@ -291,6 +303,7 @@ Create a `RULES.md` (or `CLAUDE.md`) in the repo root:
 ```
 
 Workflow
+
 1. One phase at a time, in small tasks. Example prompt: *"Implement Phase 2, tasks 1 to 3 only. Follow docs/PLAN.md. Write tests. Don't touch other modules."*
 2. After each task: run tests, read the diff, commit.
 3. Ask for data models and interfaces (`LLMProvider`, `TrelloClient`, `DeliveryChannel`) first. Review them, then request implementations.
