@@ -55,6 +55,11 @@ services:
       - SECRET_KEY=${SECRET_KEY:-temporary_dev_secret_key_minimum_32_chars_long}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGhpc19pc19hXzMyX2J5dGVfZXhhbXBsZV9rZXlfMTI=}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - TRELLO_API_BASE_URL=${TRELLO_API_BASE_URL:-https://api.trello.com/1}
+      - TRELLO_OAUTH_CLIENT_ID=${TRELLO_OAUTH_CLIENT_ID:-}
+      - TRELLO_OAUTH_CLIENT_SECRET=${TRELLO_OAUTH_CLIENT_SECRET:-}
+      - TRELLO_OAUTH_CALLBACK_URL=${TRELLO_OAUTH_CALLBACK_URL:-http://localhost:3000/dashboard/trello/callback}
+      - TRELLO_OAUTH_SCOPES=${TRELLO_OAUTH_SCOPES:-read:board:trello read:organization:trello read:member:trello offline_access}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ENCRYPTION_FALLBACK_KEYS=${ENCRYPTION_FALLBACK_KEYS:-}
     ports:

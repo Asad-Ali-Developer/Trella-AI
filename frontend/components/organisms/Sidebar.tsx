@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LogOut } from "lucide-react";
+import { Cable, LayoutDashboard, LogOut } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/atoms/Badge";
@@ -26,7 +26,7 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-border bg-white">
+    <aside className="flex w-full flex-col border-b border-border bg-white md:h-full md:w-64 md:border-b-0 md:border-r">
       <div className="flex items-center gap-2 border-b border-border px-4 py-4">
         <div className="h-6 w-6 rounded bg-zinc-900" />
         <span className="text-sm font-semibold tracking-tight">Client Insights</span>
@@ -38,13 +38,20 @@ export function Sidebar({
           onSelect={onSelectWorkspace}
           onCreated={onWorkspaceCreated}
         />
-        <nav>
+        <nav className="flex flex-wrap gap-1">
           <Link
             href="/dashboard"
             className="flex items-center gap-2 rounded-md bg-muted px-2.5 py-2 text-sm font-medium text-foreground"
           >
             <LayoutDashboard className="h-4 w-4" />
             Dashboard
+          </Link>
+          <Link
+            href="/dashboard/trello"
+            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Cable className="h-4 w-4" />
+            Trello
           </Link>
         </nav>
       </div>

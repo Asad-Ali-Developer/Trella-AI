@@ -130,14 +130,16 @@ Rules:
 
 ### Phase 2: Trello connector (Weeks 3-5)
 **Tasks**
-- [ ] Trello authorization flow (API key plus user token, read scope), token stored encrypted.
-- [ ] TrelloClient in httpx with retry and backoff.
+- [x] Trello OAuth 2.0 confidential authorization-code flow with PKCE; use one configured callback URL per deployment, bind one-time state to the initiating user/workspace, and encrypt access/refresh tokens.
+- [x] TrelloClient in httpx with retry and backoff.
 - [ ] Redis-based rate limiter (Trello limits per key and per token; verify current limits in the docs).
-- [ ] Board picker UI with an exclude-board option.
+- [x] Board picker UI with an exclude-board option.
 - [ ] Models: sources, clients, cards, comments, members.
 - [ ] Celery sync tasks with pagination and idempotent upserts; sync status visible in the UI.
 - [ ] Webhook endpoint (public HTTPS, verify the HMAC signature header) for incremental updates; use Cloudflare Tunnel or ngrok in dev.
 - [ ] Client-mapping UI: board = client, label = client, or list = client.
+
+The Trella app uses one confidential OAuth Client ID and secret across users. Configure one fixed callback URL per deployment; each authorization uses one-time state and stores a separate encrypted token pair for the connecting user in that workspace.
 *Done when*: a 500-card board syncs fully, and editing a card in Trello updates your DB within a minute.
 
 ### Phase 3: Context builder (Weeks 5-6)
