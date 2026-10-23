@@ -23,7 +23,8 @@ from app.modules.trello.schemas import (
 )
 from app.modules.workspaces.repository import WorkspaceRepository
 
-AUTH_TYPE_API_KEY = "eb7b400699b7f3bee188ab2a058a11e7"  # NEW
+AUTH_TYPE_API_KEY = "eb7b400699b7f3bee188ab2a058a11e7"
+
 
 class TrelloConnectionService:
     """Workspace-scoped Trello connection and board selection workflows."""
@@ -83,7 +84,7 @@ class TrelloConnectionService:
         try:
             async with TrelloOAuthClient(
                 settings.TRELLO_OAUTH_CLIENT_ID,
-                "b971bf970ee54893a682d32f37836e51ec0eab16d8fad6e4409eb486d36777f3",
+                settings.TRELLO_OAUTH_CLIENT_SECRET,
             ) as client:
                 tokens = await client.exchange_code(
                     code=code,
@@ -289,7 +290,7 @@ class TrelloConnectionService:
     async def _open_client(self, connection: WorkspaceConnection) -> TrelloClient:
         """Build a TrelloClient matching how this connection was authorized."""
         credentials = self._read_credentials(connection)
-        if credentials.get("auth_type") == AUTH_TYPE_API_KEY:
+        if isinstance(credentials.get("token"), str):
             token = credentials.get("token")
             if not isinstance(token, str) or not token or not settings.TRELLO_API_KEY:
                 raise HTTPException(

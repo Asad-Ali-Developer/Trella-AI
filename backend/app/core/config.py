@@ -52,8 +52,12 @@ class Settings(BaseSettings):
 
     # Trello
     TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")
-    TRELLO_OAUTH_CLIENT_ID: str = Field(default="Scv2u0AtORopp603eOLnAHAkSfDg25K9")
-    TRELLO_OAUTH_CLIENT_SECRET: str = Field(default="ATOAYKGUwgZSw0Yn9NuVKJHSEDj4EkV676xPfYsIjxkdZY0tQ3WuxJgfwxE6UcTotgwvAD8DC467")
+    TRELLO_API_KEY: str = Field(default="")
+    TRELLO_TOKEN_RETURN_URL: str = Field(default="http://localhost:3000/dashboard/trello/callback")
+    TRELLO_TOKEN_SCOPE: str = Field(default="read")
+    TRELLO_TOKEN_EXPIRATION: Literal["1hour", "1day", "30days", "never"] = Field(default="never")
+    TRELLO_OAUTH_CLIENT_ID: str = Field(default="")
+    TRELLO_OAUTH_CLIENT_SECRET: str = Field(default="")
     TRELLO_OAUTH_CALLBACK_URL: str = Field(
         default="http://localhost:3000/dashboard/trello/callback"
     )

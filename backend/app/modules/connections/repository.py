@@ -47,14 +47,13 @@ class ConnectionRepository:
                 workspace_id=workspace_id,
                 provider=provider,
                 user_id=user_id,
-                constraint="uq_connections_workspace_provider_user",
                 encrypted_token=encrypted_token,
                 status="active",
                 external_account_id=external_account_id,
                 external_username=external_username,
             )
             .on_conflict_do_update(
-                constraint="uq_connections_workspace_provider",
+                constraint="uq_connections_workspace_provider_user",
                 set_={
                     "encrypted_token": encrypted_token,
                     "status": "active",
