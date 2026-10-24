@@ -22,12 +22,14 @@ import {
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
 import type {
+  GithubConnectionStatus,
   TrelloBoard,
   TrelloClientMapping,
   TrelloConnectionStatus,
   Workspace,
 } from "@/lib/types";
 import { authService } from "@/services/AuthService";
+import { githubService } from "@/services/GithubService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -64,27 +66,36 @@ export default function DashboardPage() {
     setStatsLoading(true);
     setStatsError("");
     try {
-      const connection: TrelloConnectionStatus = await trelloService.status(
-        workspace.id,
-      );
-      if (!connection.connected) {
+      const [trello, github] = await Promise.all([
+        trelloService.status(workspace.id).catch(() => ({ connected: false, username: null })),
+        githubService.status(workspace.id).catch(() => ({ connected: false, username: null })),
+      ]);
+      const connectedAppsCount = (trello.connected ? 1 : 0) + (github.connected ? 1 : 0);
+      if (connectedAppsCount === 0) {
         setStats(emptyStats);
         return;
       }
-      const [boards, mappings]: [TrelloBoard[], TrelloClientMapping[]] =
-        await Promise.all([
-          trelloService.listBoards(workspace.id),
-          trelloService.listClientMappings(workspace.id),
-        ]);
-      const includedBoards = boards.filter((board) => !board.excluded);
-      setStats({
-        connectedApps: 1,
-        includedBoards: includedBoards.length,
-        mappedClients: new Set(mappings.map((mapping) => mapping.client_name))
-          .size,
-        completedBoards: includedBoards.filter(
+      let includedBoardsCount = 0;
+      let mappedClientsCount = 0;
+      let completedBoardsCount = 0;
+      if (trello.connected) {
+        const [boards, mappings]: [TrelloBoard[], TrelloClientMapping[]] =
+          await Promise.all([
+            trelloService.listBoards(workspace.id).catch(() => []),
+            trelloService.listClientMappings(workspace.id).catch(() => []),
+          ]);
+        const includedBoards = boards.filter((board) => !board.excluded);
+        includedBoardsCount = includedBoards.length;
+        mappedClientsCount = new Set(mappings.map((mapping) => mapping.client_name)).size;
+        completedBoardsCount = includedBoards.filter(
           (board) => board.sync_status === "completed",
-        ).length,
+        ).length;
+      }
+      setStats({
+        connectedApps: connectedAppsCount,
+        includedBoards: includedBoardsCount,
+        mappedClients: mappedClientsCount,
+        completedBoards: completedBoardsCount,
       });
     } catch {
       setStats(emptyStats);
@@ -304,8 +315,8 @@ export default function DashboardPage() {
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-900/75">
                     DeepClient brings project activity and client context
-                    together in each workspace. Trello is available now; GitHub,
-                    Jira, and Slack are coming soon.
+                    together in each workspace. Trello and GitHub are available now;
+                    Jira and Slack are coming soon.
                   </p>
                 </div>
               </div>

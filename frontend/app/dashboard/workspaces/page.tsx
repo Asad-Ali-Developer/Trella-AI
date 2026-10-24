@@ -13,10 +13,16 @@ import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
-import type { TrelloConnectionStatus, Workspace } from "@/lib/types";
+import type { GithubConnectionStatus, TrelloConnectionStatus, Workspace } from "@/lib/types";
 import { authService } from "@/services/AuthService";
+import { githubService } from "@/services/GithubService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
+
+interface WorkspaceAppsStatus {
+  trello: TrelloConnectionStatus | null;
+  github: GithubConnectionStatus | null;
+}
 
 export default function WorkspacesPage() {
   const router = useRouter();
@@ -24,7 +30,7 @@ export default function WorkspacesPage() {
   const user = useAppSelector((state) => state.auth.user);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
-  const [trelloByWorkspace, setTrelloByWorkspace] = useState<Record<string, TrelloConnectionStatus | null>>({});
+  const [appsByWorkspace, setAppsByWorkspace] = useState<Record<string, WorkspaceAppsStatus>>({});
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [workspaceToEdit, setWorkspaceToEdit] = useState<Workspace | null>(null);
@@ -33,15 +39,15 @@ export default function WorkspacesPage() {
   const refreshWorkspaceStatuses = useCallback(async (items: Workspace[]) => {
     const statuses = await Promise.all(
       items.map(async (workspace) => {
-        try {
-          return [workspace.id, await trelloService.status(workspace.id)] as const;
-        } catch {
-          return [workspace.id, null] as const;
-        }
+        const [trello, github] = await Promise.all([
+          trelloService.status(workspace.id).catch(() => null),
+          githubService.status(workspace.id).catch(() => null),
+        ]);
+        return [workspace.id, { trello, github }] as const;
       }),
     );
-    setTrelloByWorkspace(Object.fromEntries(statuses));
-    if (statuses.some(([, status]) => status === null)) {
+    setAppsByWorkspace(Object.fromEntries(statuses));
+    if (statuses.some(([, status]) => status.trello === null || status.github === null)) {
       setError("Some app statuses could not be loaded. Refresh the page to try again.");
     }
   }, []);
@@ -89,9 +95,12 @@ export default function WorkspacesPage() {
     workspaceStore.setWorkspaceId(workspace.id);
     setWorkspaces((current) => [workspace, ...current]);
     setSelectedWorkspace(workspace);
-    setTrelloByWorkspace((current) => ({
+    setAppsByWorkspace((current) => ({
       ...current,
-      [workspace.id]: { connected: false, username: null },
+      [workspace.id]: {
+        trello: { connected: false, username: null },
+        github: { connected: false, username: null },
+      },
     }));
     setDrawerOpen(false);
     router.push(`/dashboard/workspaces/${workspace.id}`);
@@ -151,7 +160,10 @@ export default function WorkspacesPage() {
         ) : workspaces.length ? (
           <section aria-label="Your workspaces" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {workspaces.map((workspace) => {
-              const connected = trelloByWorkspace[workspace.id]?.connected;
+              const appStatus = appsByWorkspace[workspace.id];
+              const trelloConnected = Boolean(appStatus?.trello?.connected);
+              const githubConnected = Boolean(appStatus?.github?.connected);
+              const connectedCount = (trelloConnected ? 1 : 0) + (githubConnected ? 1 : 0);
               const active = selectedWorkspace?.id === workspace.id;
               return (
                 <article
@@ -164,9 +176,9 @@ export default function WorkspacesPage() {
                     <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
                       <BriefcaseBusiness className="h-5 w-5" />
                     </span>
-                    {connected ? (
+                    {connectedCount > 0 ? (
                       <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                        1 app connected
+                        {connectedCount === 1 ? "1 app connected" : `${connectedCount} apps connected`}
                       </span>
                     ) : (
                       <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600">
@@ -195,10 +207,19 @@ export default function WorkspacesPage() {
                   </p>
                   <div className="mt-auto flex items-center justify-between border-t border-zinc-100 pt-4">
                     <div className="flex items-center gap-2">
-                      {connected ? (
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50" title="Trello connected">
-                          <IntegrationLogo app="trello" className="h-4 w-4" />
-                        </span>
+                      {connectedCount > 0 ? (
+                        <>
+                          {trelloConnected ? (
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50" title="Trello connected">
+                              <IntegrationLogo app="trello" className="h-4 w-4" />
+                            </span>
+                          ) : null}
+                          {githubConnected ? (
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100" title="GitHub connected">
+                              <IntegrationLogo app="github" className="h-4 w-4" />
+                            </span>
+                          ) : null}
+                        </>
                       ) : (
                         <span className="text-xs text-zinc-400">Connect apps to build context</span>
                       )}

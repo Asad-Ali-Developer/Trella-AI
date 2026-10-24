@@ -24,8 +24,15 @@ import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
-import type { TrelloBoard, TrelloClientMapping, TrelloConnectionStatus, Workspace } from "@/lib/types";
+import type {
+  GithubConnectionStatus,
+  TrelloBoard,
+  TrelloClientMapping,
+  TrelloConnectionStatus,
+  Workspace,
+} from "@/lib/types";
 import { authService } from "@/services/AuthService";
+import { githubService } from "@/services/GithubService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -45,7 +52,7 @@ const apps: Array<{
     id: "github",
     name: "GitHub",
     description: "Relate repositories and commits to client delivery.",
-    available: false,
+    available: true,
   },
   {
     id: "jira",
@@ -70,32 +77,35 @@ export default function WorkspaceDetailsPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [trelloStatus, setTrelloStatus] = useState<TrelloConnectionStatus | null>(null);
+  const [githubStatus, setGithubStatus] = useState<GithubConnectionStatus | null>(null);
   const [boards, setBoards] = useState<TrelloBoard[]>([]);
   const [mappings, setMappings] = useState<TrelloClientMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
-  const [disconnectOpen, setDisconnectOpen] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<"trello" | "github" | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [currentUser, workspaceList, details, status] = await Promise.all([
+      const [currentUser, workspaceList, details, trello, github] = await Promise.all([
         authService.me(),
         workspaceService.list(),
         workspaceService.get(workspaceId),
-        trelloService.status(workspaceId),
+        trelloService.status(workspaceId).catch(() => ({ connected: false, username: null })),
+        githubService.status(workspaceId).catch(() => ({ connected: false, username: null })),
       ]);
       dispatch(setAuthenticatedUser(currentUser));
       setWorkspaces(workspaceList);
       setWorkspace(details);
-      setTrelloStatus(status);
+      setTrelloStatus(trello);
+      setGithubStatus(github);
       workspaceStore.setWorkspaceId(workspaceId);
-      if (status.connected) {
+      if (trello.connected) {
         const [boardList, clientMappings] = await Promise.all([
-          trelloService.listBoards(workspaceId),
-          trelloService.listClientMappings(workspaceId),
+          trelloService.listBoards(workspaceId).catch(() => []),
+          trelloService.listClientMappings(workspaceId).catch(() => []),
         ]);
         setBoards(boardList);
         setMappings(clientMappings);
@@ -125,30 +135,49 @@ export default function WorkspaceDetailsPage() {
     }
   }
 
-  function openTrelloSettings() {
+  function openIntegrationSettings(appId: IntegrationId) {
     workspaceStore.setWorkspaceId(workspaceId);
-    router.push("/dashboard/trello");
+    if (appId === "trello") {
+      router.push("/dashboard/trello");
+    } else if (appId === "github") {
+      router.push("/dashboard/github");
+    } else {
+      router.push("/dashboard/apps");
+    }
   }
 
   function handleWorkspaceSaved(updated: Workspace) {
     setWorkspace(updated);
-    setWorkspaces((current) => current.map((item) => item.id === updated.id ? updated : item));
+    setWorkspaces((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     setEditOpen(false);
   }
 
-  async function disconnectTrello() {
+  async function disconnectApp() {
+    if (!disconnectTarget) return;
     setDisconnecting(true);
     setError("");
     setNotice("");
     try {
-      const status = await trelloService.disconnect(workspaceId);
-      setTrelloStatus(status);
-      setBoards([]);
-      setMappings([]);
-      setDisconnectOpen(false);
-      setNotice("Trello was disconnected. Its synced boards, cards, and client mappings were removed from this workspace.");
+      if (disconnectTarget === "trello") {
+        const status = await trelloService.disconnect(workspaceId);
+        setTrelloStatus(status);
+        setBoards([]);
+        setMappings([]);
+        setNotice(
+          "Trello was disconnected. Its synced boards, cards, and client mappings were removed from this workspace.",
+        );
+      } else if (disconnectTarget === "github") {
+        const status = await githubService.disconnect(workspaceId);
+        setGithubStatus(status);
+        setNotice(
+          "GitHub was disconnected. Its selected repositories and synced commits were removed from this workspace.",
+        );
+      }
+      setDisconnectTarget(null);
     } catch {
-      setError("Could not disconnect Trello. No local connection data was removed. Please retry.");
+      setError(
+        `Could not disconnect ${disconnectTarget === "trello" ? "Trello" : "GitHub"}. No local connection data was removed. Please retry.`,
+      );
     } finally {
       setDisconnecting(false);
     }
@@ -156,6 +185,7 @@ export default function WorkspaceDetailsPage() {
 
   const includedBoards = boards.filter((board) => !board.excluded);
   const connectedClients = new Set(mappings.map((mapping) => mapping.client_name)).size;
+  const connectedAppsCount = (trelloStatus?.connected ? 1 : 0) + (githubStatus?.connected ? 1 : 0);
   const canEditWorkspace = workspace?.role === "owner" || workspace?.role === "admin";
 
   return (
@@ -221,7 +251,10 @@ export default function WorkspaceDetailsPage() {
                   type="button"
                   variant="secondary"
                   className="gap-2 rounded-lg border-zinc-200"
-                  onClick={openTrelloSettings}
+                  onClick={() => {
+                    workspaceStore.setWorkspaceId(workspaceId);
+                    router.push("/dashboard/apps");
+                  }}
                 >
                   <Layers3 className="h-4 w-4" />
                   Manage integrations
@@ -238,7 +271,7 @@ export default function WorkspaceDetailsPage() {
             <section aria-label="Workspace overview" className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-2xl border border-zinc-200 bg-white p-5">
                 <p className="text-sm text-zinc-500">Connected apps</p>
-                <p className="mt-2 text-2xl font-semibold text-zinc-950">{trelloStatus?.connected ? 1 : 0}</p>
+                <p className="mt-2 text-2xl font-semibold text-zinc-950">{connectedAppsCount}</p>
                 <p className="mt-1 text-xs text-zinc-500">of 4 integrations available or planned</p>
               </div>
               <div className="rounded-2xl border border-zinc-200 bg-white p-5">
@@ -264,7 +297,13 @@ export default function WorkspaceDetailsPage() {
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {apps.map((app) => {
-                  const connected = app.id === "trello" && trelloStatus?.connected;
+                  const isTrello = app.id === "trello";
+                  const isGithub = app.id === "github";
+                  const connected = isTrello
+                    ? Boolean(trelloStatus?.connected)
+                    : isGithub
+                      ? Boolean(githubStatus?.connected)
+                      : false;
                   return (
                     <article key={app.id} className="flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-5">
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-zinc-50">
@@ -295,7 +334,7 @@ export default function WorkspaceDetailsPage() {
                         <div className="flex shrink-0 flex-col items-end gap-2">
                           <button
                             type="button"
-                            onClick={openTrelloSettings}
+                            onClick={() => openIntegrationSettings(app.id)}
                             className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 hover:text-indigo-900"
                           >
                             {connected ? "Settings" : "Connect"}
@@ -304,7 +343,7 @@ export default function WorkspaceDetailsPage() {
                           {connected ? (
                             <button
                               type="button"
-                              onClick={() => setDisconnectOpen(true)}
+                              onClick={() => setDisconnectTarget(isTrello ? "trello" : "github")}
                               className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-800"
                             >
                               <Unplug className="h-3.5 w-3.5" />
@@ -327,7 +366,7 @@ export default function WorkspaceDetailsPage() {
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-900">Build context one source at a time</h2>
                   <p className="mt-1 text-sm leading-6 text-zinc-500">
-                    Trello is ready now. GitHub and Jira will add development activity, while Slack will deliver reports when those integrations become available.
+                    Trello and GitHub are ready now. Jira will add engineering projects and issue activity, while Slack will deliver reports when those integrations become available.
                   </p>
                 </div>
               </div>
@@ -345,11 +384,11 @@ export default function WorkspaceDetailsPage() {
         />
       ) : null}
 
-      {disconnectOpen ? (
+      {disconnectTarget ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-[2px]"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !disconnecting) setDisconnectOpen(false);
+            if (event.target === event.currentTarget && !disconnecting) setDisconnectTarget(null);
           }}
         >
           <section
@@ -362,17 +401,19 @@ export default function WorkspaceDetailsPage() {
               <AlertTriangle className="h-5 w-5" />
             </div>
             <h2 id="disconnect-title" className="mt-4 text-lg font-semibold text-zinc-950">
-              Disconnect Trello?
+              Disconnect {disconnectTarget === "trello" ? "Trello" : "GitHub"}?
             </h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              This removes Trello and its synced boards, cards, comments, and client mappings from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected.
+              {disconnectTarget === "trello"
+                ? "This removes Trello and its synced boards, cards, comments, and client mappings from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."
+                : "This removes GitHub and its selected repositories and synced commits from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."}
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="secondary"
                 className="gap-2 rounded-lg"
-                onClick={() => setDisconnectOpen(false)}
+                onClick={() => setDisconnectTarget(null)}
                 disabled={disconnecting}
               >
                 <X className="h-4 w-4" />
@@ -381,7 +422,7 @@ export default function WorkspaceDetailsPage() {
               <Button
                 type="button"
                 className="gap-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700"
-                onClick={() => void disconnectTrello()}
+                onClick={() => void disconnectApp()}
                 disabled={disconnecting}
               >
                 <Unplug className="h-4 w-4" />
