@@ -20,6 +20,14 @@ class AuthService {
     return data;
   }
 
+  async requestPasswordReset(email: string): Promise<void> {
+    await http.post("/auth/password-reset/request", { email });
+  }
+
+  async resetPassword(token: string, password: string): Promise<void> {
+    await http.post("/auth/password-reset/confirm", { token, password });
+  }
+
   async me(): Promise<User> {
     const { data } = await http.get<User>("/auth/me");
     return data;

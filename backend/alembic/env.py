@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.modules.auth.models  # noqa: F401
 import app.modules.connections.models  # noqa: F401
+import app.modules.github.models  # noqa: F401
 import app.modules.trello.models  # noqa: F401
 import app.modules.workspaces.models  # noqa: F401
 from alembic import context

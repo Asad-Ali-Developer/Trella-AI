@@ -12,7 +12,7 @@ export function AuthTemplate({ title, subtitle, children }: AuthTemplateProps) {
       <div className="w-full max-w-sm rounded-xl border border-border bg-white p-6 shadow-sm">
         <div className="mb-6 space-y-1">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Client Insights
+            DeepClient
           </p>
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
           <p className="text-sm text-muted-foreground">{subtitle}</p>

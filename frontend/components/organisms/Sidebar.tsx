@@ -1,9 +1,10 @@
 "use client";
 
-import { Cable, LayoutDashboard, LogOut } from "lucide-react";
+import { Blocks, BrainCircuit, BriefcaseBusiness, LayoutDashboard, LogOut } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-import { Badge } from "@/components/atoms/Badge";
 import { Button } from "@/components/atoms/Button";
 import { WorkspaceSwitcher } from "@/components/organisms/WorkspaceSwitcher";
 import type { User, Workspace } from "@/lib/types";
@@ -13,7 +14,6 @@ interface SidebarProps {
   workspaces: Workspace[];
   selectedId: string | null;
   onSelectWorkspace: (workspace: Workspace) => void;
-  onWorkspaceCreated: (workspace: Workspace) => void;
   onLogout: () => void;
 }
 
@@ -22,46 +22,101 @@ export function Sidebar({
   workspaces,
   selectedId,
   onSelectWorkspace,
-  onWorkspaceCreated,
   onLogout,
 }: SidebarProps) {
+  const pathname = usePathname();
+
+  function navClass(active: boolean) {
+    return active
+      ? "flex items-center gap-3 rounded-lg bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700"
+      : "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground";
+  }
+
   return (
-    <aside className="flex w-full flex-col border-b border-border bg-white md:h-full md:w-64 md:border-b-0 md:border-r">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-4">
-        <div className="h-6 w-6 rounded bg-zinc-900" />
-        <span className="text-sm font-semibold tracking-tight">Client Insights</span>
+    <aside className="flex w-full shrink-0 flex-col border-b border-zinc-200 bg-white md:h-screen md:w-64 md:border-b-0 md:border-r">
+      <div className="border-b border-zinc-100 px-5 py-2.5">
+        <div className="relative h-[40px] w-full overflow-hidden" aria-label="DeepClient">
+          <Image
+            src="/DeepClient.png"
+            alt="DeepClient"
+            width={512}
+            height={293}
+            priority
+            className="absolute -top-[21px] left-0 h-auto w-[148px] max-w-none"
+          />
+        </div>
       </div>
-      <div className="space-y-4 p-3">
+      <div className="space-y-6 p-4">
         <WorkspaceSwitcher
           workspaces={workspaces}
           selectedId={selectedId}
           onSelect={onSelectWorkspace}
-          onCreated={onWorkspaceCreated}
         />
-        <nav className="flex flex-wrap gap-1">
+        <nav aria-label="Main navigation" className="space-y-1">
+          <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+            Workspace
+          </p>
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 rounded-md bg-muted px-2.5 py-2 text-sm font-medium text-foreground"
+            aria-current={pathname === "/dashboard" ? "page" : undefined}
+            className={navClass(pathname === "/dashboard")}
           >
-            <LayoutDashboard className="h-4 w-4" />
+            <LayoutDashboard className="h-[18px] w-[18px]" />
             Dashboard
           </Link>
           <Link
-            href="/dashboard/trello"
-            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            href="/dashboard/context"
+            aria-current={pathname.startsWith("/dashboard/context") ? "page" : undefined}
+            className={navClass(pathname.startsWith("/dashboard/context"))}
           >
-            <Cable className="h-4 w-4" />
-            Trello
+            <BrainCircuit className="h-[18px] w-[18px]" />
+            Workspace context
+          </Link>
+          <Link
+            href="/dashboard/workspaces"
+            aria-current={
+              pathname.startsWith("/dashboard/workspaces") ? "page" : undefined
+            }
+            className={navClass(pathname.startsWith("/dashboard/workspaces"))}
+          >
+            <BriefcaseBusiness className="h-[18px] w-[18px]" />
+            Workspaces
+          </Link>
+          <Link
+            href="/dashboard/apps"
+            aria-current={
+              pathname.startsWith("/dashboard/apps") ||
+              pathname.startsWith("/dashboard/trello") ||
+              pathname.startsWith("/dashboard/github")
+                ? "page"
+                : undefined
+            }
+            className={navClass(
+              pathname.startsWith("/dashboard/apps") ||
+              pathname.startsWith("/dashboard/trello") ||
+              pathname.startsWith("/dashboard/github"),
+            )}
+          >
+            <Blocks className="h-[18px] w-[18px]" />
+            Connected Apps
           </Link>
         </nav>
       </div>
-      <div className="mt-auto space-y-2 border-t border-border p-3">
-        <div className="px-1">
-          <p className="truncate text-sm font-medium">{user?.name ?? "…"}</p>
-          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+      <div className="mt-auto space-y-3 border-t border-zinc-100 p-4">
+        <div className="flex items-center gap-3 rounded-xl bg-zinc-50 p-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
+            {user?.name?.trim().charAt(0).toUpperCase() || "U"}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-zinc-900">{user?.name ?? "…"}</p>
+            <p className="truncate text-xs text-zinc-500">{user?.email}</p>
+          </div>
         </div>
-        <Badge>Phase 1 shell</Badge>
-        <Button variant="ghost" className="w-full justify-start gap-2" onClick={onLogout}>
+        <Button
+          variant="ghost"
+          className="h-10 w-full justify-start gap-2.5 px-3 text-zinc-500 hover:text-zinc-900"
+          onClick={onLogout}
+        >
           <LogOut className="h-4 w-4" />
           Sign out
         </Button>

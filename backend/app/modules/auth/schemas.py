@@ -25,6 +25,15 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    password: str = Field(min_length=8, description="Password must be at least 8 characters")
+
+
 class TokenResponse(BaseModel):
     """Standard Bearer token response."""
 

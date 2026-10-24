@@ -1,11 +1,11 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.connections.models import WorkspaceConnection
+from app.modules.connections.models import ProviderAccount, WorkspaceConnection
 from app.modules.trello.models import TrelloOAuthState, TrelloSource
 
 
@@ -41,38 +41,168 @@ class ConnectionRepository:
         external_account_id: str,
         external_username: str,
     ) -> WorkspaceConnection:
-        statement = (
-            insert(WorkspaceConnection)
+        account_statement = (
+            insert(ProviderAccount)
             .values(
-                workspace_id=workspace_id,
-                provider=provider,
                 user_id=user_id,
+                provider=provider,
                 encrypted_token=encrypted_token,
                 status="active",
                 external_account_id=external_account_id,
                 external_username=external_username,
             )
             .on_conflict_do_update(
-                constraint="uq_connections_workspace_provider_user",
+                constraint="uq_provider_accounts_user_provider_external",
                 set_={
                     "encrypted_token": encrypted_token,
                     "status": "active",
-                    "external_account_id": external_account_id,
                     "external_username": external_username,
                 },
             )
-            .returning(WorkspaceConnection)
+            .returning(ProviderAccount)
         )
-        result = await self.db.execute(statement)
-        return result.scalar_one()
+        account = (await self.db.execute(account_statement)).scalar_one()
+        return await self._link_provider_account(
+            workspace_id=workspace_id,
+            provider=provider,
+            user_id=user_id,
+            account=account,
+        )
+
+    async def link_existing_provider_account(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        provider: str,
+        user_id: uuid.UUID,
+        account_id: uuid.UUID,
+    ) -> WorkspaceConnection | None:
+        result = await self.db.execute(
+            select(ProviderAccount).where(
+                ProviderAccount.id == account_id,
+                ProviderAccount.provider == provider,
+                ProviderAccount.user_id == user_id,
+                ProviderAccount.status == "active",
+            )
+        )
+        account = result.scalar_one_or_none()
+        if account is None:
+            return None
+        return await self._link_provider_account(
+            workspace_id=workspace_id,
+            provider=provider,
+            user_id=user_id,
+            account=account,
+        )
+
+    async def list_provider_accounts(
+        self,
+        provider: str,
+        user_id: uuid.UUID,
+    ) -> list[ProviderAccount]:
+        result = await self.db.execute(
+            select(ProviderAccount)
+            .where(
+                ProviderAccount.provider == provider,
+                ProviderAccount.user_id == user_id,
+                ProviderAccount.status == "active",
+            )
+            .order_by(ProviderAccount.external_username)
+        )
+        return list(result.scalars().all())
+
+    async def get_provider_account_by_id(
+        self,
+        account_id: uuid.UUID,
+        provider: str,
+        user_id: uuid.UUID,
+    ) -> ProviderAccount | None:
+        return await self.db.scalar(
+            select(ProviderAccount).where(
+                ProviderAccount.id == account_id,
+                ProviderAccount.provider == provider,
+                ProviderAccount.user_id == user_id,
+                ProviderAccount.status == "active",
+            )
+        )
+
+    async def get_provider_account(
+        self,
+        connection: WorkspaceConnection,
+    ) -> ProviderAccount | None:
+        return await self.db.get(ProviderAccount, connection.provider_account_id)
+
+    async def _link_provider_account(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        provider: str,
+        user_id: uuid.UUID,
+        account: ProviderAccount,
+    ) -> WorkspaceConnection:
+        result = await self.db.execute(
+            select(WorkspaceConnection)
+            .where(
+                WorkspaceConnection.workspace_id == workspace_id,
+                WorkspaceConnection.provider == provider,
+                WorkspaceConnection.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            if existing.provider_account_id == account.id:
+                existing.status = "active"
+                await self.db.flush()
+                return existing
+            await self.db.delete(existing)
+            await self.db.flush()
+
+        connection = WorkspaceConnection(
+            workspace_id=workspace_id,
+            provider=provider,
+            user_id=user_id,
+            provider_account_id=account.id,
+            status="active",
+        )
+        self.db.add(connection)
+        await self.db.flush()
+        return connection
 
     async def update_encrypted_token(
         self,
-        connection: WorkspaceConnection,
+        account: ProviderAccount,
         encrypted_token: str,
     ) -> None:
-        connection.encrypted_token = encrypted_token
+        account.encrypted_token = encrypted_token
         await self.db.flush()
+
+    async def delete_provider_connection(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        provider: str,
+        user_id: uuid.UUID,
+    ) -> bool:
+        connection = await self.get_provider_connection(
+            workspace_id,
+            provider,
+            user_id,
+        )
+        if connection is None:
+            return False
+        account_id = connection.provider_account_id
+        await self.db.delete(connection)
+        await self.db.flush()
+        account_is_linked = await self.db.scalar(
+            select(exists().where(WorkspaceConnection.provider_account_id == account_id))
+        )
+        if not account_is_linked:
+            account = await self.db.get(ProviderAccount, account_id)
+            if account is not None:
+                await self.db.delete(account)
+                await self.db.flush()
+        return True
 
     async def create_oauth_state(
         self,

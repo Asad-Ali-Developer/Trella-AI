@@ -7,6 +7,18 @@ A SaaS where a user signs up, connects Trello (input connector), attaches a skil
 
 Flow: Trello boards → synced cards and comments → context graph (client → board → list → card → comments → people) → LLM skill run → cited insights → dashboard / Slack / email.
 
+### Product vision: one workspace, one client context
+
+DeepClient is the shared client-work hub for each workspace—not just a collection of integrations. A workspace connects the tools its team uses, brings their activity into a shared client context, and turns that context into useful, traceable reports.
+
+- **Bring work in:** Trello boards and GitHub repositories provide complementary context. Trello shows planned and active client work; GitHub adds related repositories, commits, and development activity. Jira is a future input connector.
+- **Connect the dots:** associate sources with clients and relate relevant work across tools, so a team can understand how project activity and delivery connect.
+- **Turn context into insight:** skills analyze the connected, workspace-scoped information and produce reports with links back to their sources.
+- **Share outcomes:** users review reports in DeepClient and can deliver them through Slack; email is another planned delivery channel.
+- **Keep each workspace distinct:** authorized provider accounts can be reused, while each workspace's app links, source selections, client mappings, and reports remain separate.
+
+**North star:** a team can open a client in its workspace and understand what was requested, what work is happening across connected tools, and what needs attention—then share that understanding with the right people.
+
 ## 2. Guiding principles
 - Build vertically. One skill working end to end before anything else.
 - Every insight cites its source (card/comment IDs and Trello links).
@@ -79,7 +91,8 @@ Each module follows the same layers: router.py → service.py → repository.py,
 | --- | --- |
 | users | id, email, name, created_at |
 | workspaces, memberships | workspace_id, user_id, role (owner/admin/member) |
-| connections | workspace_id, type (trello/slack/email), encrypted_token, scopes, status, external_account_id |
+| provider_accounts | user_id, provider, encrypted_token, status, external_account_id, external_username |
+| connections | workspace_id, user_id, provider, provider_account_id, status |
 | sources | workspace_id, connection_id, trello_board_id, name, sync_status, last_synced_at, excluded |
 | clients | workspace_id, name, mapping_rule (board/label/list), external_ref |
 | cards | source_id, client_id, external_id, list_name, title, description, labels, checklists, due, closed, url, content_hash, last_activity_at |
@@ -117,39 +130,43 @@ Rules:
 
 ### Phase 1: Foundation (Weeks 2-3)
 **Tasks**
-- [ ] SQLAlchemy base, session handling, Alembic set up.
-- [ ] Models and migrations: users, workspaces, memberships, audit_logs.
-- [ ] Auth: signup, login, password reset flow (with secure token), JWT verification dependency, current_user and current_workspace dependencies; use HttpOnly access/refresh cookies, CSRF validation for cookie-authenticated writes, and Redux Toolkit for user/session state only.
-- [ ] Transactional email dispatch via Celery: welcome email on signup, password reset email with expiring link (using HTML/Jinja2 templates).
-- [ ] Workspace-scoped repository base class.
-- [ ] Encryption utility (AES-GCM or Fernet) with unit tests and a key rotation plan.
-- [ ] structlog and Sentry, with secrets never logged.
-- [ ] Next.js shell: auth pages (signup, login, forgot password, reset password), dashboard layout, workspace switcher.
-- [ ] CI: lint, mypy, tests.
-*Done when*: a user can sign up, receive a welcome email, reset password, create a workspace, and CI is green.
+- [x] SQLAlchemy base, session handling, Alembic set up.
+- [x] Models and migrations: users, workspaces, memberships, audit_logs.
+- [x] Auth: signup, login, password reset flow with hashed one-time expiring tokens, JWT verification dependency, current_user and current_workspace dependencies; use HttpOnly access/refresh cookies, CSRF validation for cookie-authenticated writes, and Redux Toolkit for user/session state only.
+- [x] Transactional email dispatch via Celery: welcome email on signup, password reset email with expiring link and HTML templates.
+- [x] Workspace-scoped repository base class.
+- [x] Encryption utility (Fernet) with unit tests and an operational key rotation procedure.
+- [x] structlog and Sentry, with secrets filtered from logs.
+- [x] Next.js shell: auth pages (signup, login, forgot password, reset password), dashboard layout, workspace switcher.
+- [x] CI: lint, mypy, migrations, tests, frontend lint, and type checking.
+*Done when*: a user can sign up, receive a welcome email, reset their password, create a workspace, and CI checks pass.
 
 ### Phase 2: Trello connector (Weeks 3-5)
 **Tasks**
-- [x] Trello OAuth 2.0 confidential authorization-code flow with PKCE; use one configured callback URL per deployment, bind one-time state to the initiating user/workspace, and encrypt access/refresh tokens.
+- [x] Trello authorization with encrypted, reusable user-owned account credentials and workspace-scoped links; bind one-time state to the initiating user/workspace (native Trello Auth is the active UI flow; optional OAuth 2.0 PKCE is retained).
 - [x] TrelloClient in httpx with retry and backoff.
-- [ ] Redis-based rate limiter (Trello limits per key and per token; verify current limits in the docs).
+- [x] Redis-based rate limiter (300 requests per key/10 seconds, 100 per token/10 seconds, and 100 member-route requests/900 seconds).
 - [x] Board picker UI with an exclude-board option.
-- [ ] Models: sources, clients, cards, comments, members.
-- [ ] Celery sync tasks with pagination and idempotent upserts; sync status visible in the UI.
-- [ ] Webhook endpoint (public HTTPS, verify the HMAC signature header) for incremental updates; use Cloudflare Tunnel or ngrok in dev.
-- [ ] Client-mapping UI: board = client, label = client, or list = client.
+- [x] Models: sources, clients, cards, comments, members.
+- [x] Celery sync tasks with pagination and idempotent upserts; sync status visible in the UI.
+- [x] Webhook endpoint with HMAC signature verification for incremental board refreshes.
+- [x] Client-mapping UI: board = client, label = client, or list = client.
+- [x] GitHub OAuth with reusable encrypted accounts, workspace repository selection, client association, and background commit sync.
 
-The Trella app uses one confidential OAuth Client ID and secret across users. Configure one fixed callback URL per deployment; each authorization uses one-time state and stores a separate encrypted token pair for the connecting user in that workspace.
+Trello authorization is stored once per user and account, and can be reused across workspaces. Workspace links, selected boards, and synced data remain workspace-scoped; a user may also connect a different account to another workspace.
+For live webhooks, configure `TRELLO_WEBHOOK_CALLBACK_URL` as the exact public HTTPS callback and `TRELLO_WEBHOOK_SECRET` as the Trello App Secret; without those external deployment settings, manual sync remains available but automatic updates are disabled.
+For GitHub, configure an OAuth App callback at `http://localhost:3000/dashboard/github/callback` and set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `GITHUB_CALLBACK_URL`. Selected repositories sync recent commit metadata through the worker; commits are included in context only for their workspace and optional client association.
 *Done when*: a 500-card board syncs fully, and editing a card in Trello updates your DB within a minute.
 
 ### Phase 3: Context builder (Weeks 5-6)
 **Tasks**
-- [ ] Graph assembly: client → board → list → card → comments → people.
-- [ ] Member classification (client vs internal) with manual override.
-- [ ] Token counting and chunking.
-- [ ] Per-card summarization cached by content_hash.
-- [ ] Embeddings into pgvector and similarity search for related cards.
-*Done when*: "full context for Client X" returns an ordered, token-budgeted structure.
+- [x] Workspace-scoped context endpoint and ordered graph assembly from included Trello boards and GitHub repositories → clients → cards → comments → people → commits.
+- [x] Include every active account linked to the selected workspace; a single account is sufficient, without mixing other workspaces' accounts or sources.
+- [x] Token-budgeted context chunks with estimated token counts pending selection of the LLM tokenizer.
+- [x] Workspace-scoped member classification (client, internal, or unknown) with owner/admin manual override.
+- [x] Per-card Gemini summaries cached by card content hash, model, and prompt version; card and comment edits invalidate the cache.
+- [x] Workspace-scoped Gemini embeddings in pgvector with related-card search limited to active, included sources.
+*Done when*: the selected workspace and optional client return an ordered, token-budgeted snapshot, with manual people labels, cached card summaries, and similarity search. Trello and GitHub are supported sources; set `GEMINI_API_KEY` to enable summaries and semantic search.
 
 ### Phase 4: LLM layer and skill engine (Weeks 6-8)
 **Tasks**

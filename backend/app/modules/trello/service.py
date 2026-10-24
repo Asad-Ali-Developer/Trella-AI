@@ -8,18 +8,27 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security.encryption import encryption
-from app.modules.connections.models import WorkspaceConnection
+from app.modules.connections.models import ProviderAccount, WorkspaceConnection
 from app.modules.connections.repository import ConnectionRepository
 from app.modules.trello.client import TrelloAPIError, TrelloClient
+from app.modules.trello.models import (
+    TrelloClientMapping,
+    TrelloClientRecord,
+    TrelloMember,
+    TrelloOAuthState,
+)
 from app.modules.trello.oauth import TrelloOAuthClient, TrelloOAuthError, TrelloOAuthTokens
+from app.modules.trello.rate_limiter import trello_rate_limiter
 from app.modules.trello.schemas import (
     TrelloBoardResponse,
     TrelloBoardSelectionRequest,
     TrelloConnectionStatus,
+    TrelloProviderAccountResponse,
 )
 from app.modules.workspaces.repository import WorkspaceRepository
 
@@ -94,6 +103,7 @@ class TrelloConnectionService:
             async with TrelloClient(
                 token=tokens.access_token,
                 base_url=settings.TRELLO_API_BASE_URL,
+                rate_limiter=trello_rate_limiter,
             ) as trello:
                 member = await trello.get_member()
         except TrelloOAuthError as exc:
@@ -144,6 +154,7 @@ class TrelloConnectionService:
                 token=token,
                 api_key=settings.TRELLO_API_KEY,
                 base_url=settings.TRELLO_API_BASE_URL,
+                rate_limiter=trello_rate_limiter,
             ) as trello:
                 member = await trello.get_member()
         except TrelloAPIError as exc:
@@ -162,24 +173,135 @@ class TrelloConnectionService:
         )
         if not connection:
             return TrelloConnectionStatus(connected=False)
-        return TrelloConnectionStatus(connected=True, username=connection.external_username)
+        account = await self.connections.get_provider_account(connection)
+        if account is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The linked Trello account is unavailable. Reconnect it to continue.",
+            )
+        return TrelloConnectionStatus(
+            connected=True,
+            username=account.external_username,
+            account_id=account.id,
+        )
+
+    async def list_accounts(self) -> list[TrelloProviderAccountResponse]:
+        accounts = await self.connections.list_provider_accounts(self.provider, self.user_id)
+        return [
+            TrelloProviderAccountResponse(id=account.id, username=account.external_username)
+            for account in accounts
+        ]
+
+    async def link_account(self, account_id: UUID) -> TrelloConnectionStatus:
+        membership = await self.workspaces.get_membership(self.workspace_id, self.user_id)
+        if membership is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are no longer a member of this workspace.",
+            )
+        existing = await self.connections.get_provider_connection(
+            self.workspace_id,
+            self.provider,
+            self.user_id,
+        )
+        account = await self.connections.get_provider_account_by_id(
+            account_id,
+            self.provider,
+            self.user_id,
+        )
+        if account is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="That Trello account is not available to your user.",
+            )
+        if existing is not None and existing.provider_account_id != account.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Disconnect the current Trello account before switching accounts.",
+            )
+        connection = await self.connections.link_existing_provider_account(
+            workspace_id=self.workspace_id,
+            provider=self.provider,
+            user_id=self.user_id,
+            account_id=account_id,
+        )
+        if connection is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="That Trello account is not available to your user.",
+            )
+        await self.workspaces.create_audit_log(
+            workspace_id=self.workspace_id,
+            user_id=self.user_id,
+            action="connection.linked",
+            entity_type="connection",
+            entity_id=str(connection.id),
+            metadata_json={"provider": self.provider, "account_id": account.external_account_id},
+        )
+        return TrelloConnectionStatus(
+            connected=True,
+            username=account.external_username,
+            account_id=account.id,
+        )
+
+    async def disconnect(self) -> TrelloConnectionStatus:
+        connection = await self.connections.get_provider_connection(
+            self.workspace_id,
+            self.provider,
+            self.user_id,
+        )
+        if connection is None:
+            return TrelloConnectionStatus(connected=False)
+
+        await self.workspaces.create_audit_log(
+            workspace_id=self.workspace_id,
+            user_id=self.user_id,
+            action="connection.deleted",
+            entity_type="connection",
+            entity_id=str(connection.id),
+            metadata_json={"provider": self.provider},
+        )
+        await self.connections.delete_provider_connection(
+            workspace_id=self.workspace_id,
+            provider=self.provider,
+            user_id=self.user_id,
+        )
+        await self.db.execute(
+            delete(TrelloOAuthState).where(
+                TrelloOAuthState.workspace_id == self.workspace_id,
+                TrelloOAuthState.user_id == self.user_id,
+            )
+        )
+        await self._clear_workspace_trello_data_if_unlinked()
+        return TrelloConnectionStatus(connected=False)
 
     async def list_boards(self) -> list[TrelloBoardResponse]:
         connection = await self._get_connection()
+        account = await self._get_account(connection)
         try:
-            async with await self._open_client(connection) as client:  # CHANGED
+            async with await self._open_client(account) as client:
                 boards = await client.list_boards()
         except TrelloAPIError as exc:
             raise self._to_http_exception(exc) from exc
 
         sources = await self.connections.list_sources(self.workspace_id, connection.id)
         saved_exclusions = {source.trello_board_id: source.excluded for source in sources}
+        saved_sources = {source.trello_board_id: source for source in sources}
         return [
             TrelloBoardResponse(
                 id=str(board["id"]),
                 name=str(board.get("name", "")),
                 url=str(board.get("url", "")),
                 excluded=saved_exclusions.get(str(board["id"]), True),
+                sync_status=saved_sources[str(board["id"])].sync_status
+                if str(board["id"]) in saved_sources
+                else "not_started",
+                last_synced_at=saved_sources[str(board["id"])].last_synced_at
+                if str(board["id"]) in saved_sources
+                else None,
+                sync_error=saved_sources[str(board["id"])].sync_error
+                if str(board["id"]) in saved_sources
+                else None,
             )
             for board in boards
             if isinstance(board.get("id"), str)
@@ -190,8 +312,9 @@ class TrelloConnectionService:
         request: TrelloBoardSelectionRequest,
     ) -> int:
         connection = await self._get_connection()
+        account = await self._get_account(connection)
         try:
-            async with await self._open_client(connection) as client:  # CHANGED
+            async with await self._open_client(account) as client:
                 remote_boards = await client.list_boards()
         except TrelloAPIError as exc:
             raise self._to_http_exception(exc) from exc
@@ -270,7 +393,20 @@ class TrelloConnectionService:
                 detail="Trello returned incomplete account information.",
             )
 
-        await self.connections.upsert_provider_connection(
+        existing = await self.connections.get_provider_connection(
+            self.workspace_id,
+            self.provider,
+            self.user_id,
+        )
+        existing_account = (
+            await self.connections.get_provider_account(existing) if existing is not None else None
+        )
+        if existing_account is not None and existing_account.external_account_id != account_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Disconnect the current Trello account before switching accounts.",
+            )
+        connection = await self.connections.upsert_provider_connection(
             workspace_id=self.workspace_id,
             provider=self.provider,
             user_id=self.user_id,
@@ -285,11 +421,16 @@ class TrelloConnectionService:
             entity_type="connection",
             metadata_json={"provider": self.provider, "account_id": account_id},
         )
-        return TrelloConnectionStatus(connected=True, username=username)
+        account = await self.connections.get_provider_account(connection)
+        return TrelloConnectionStatus(
+            connected=True,
+            username=username,
+            account_id=account.id if account else None,
+        )
 
-    async def _open_client(self, connection: WorkspaceConnection) -> TrelloClient:
+    async def _open_client(self, account: ProviderAccount) -> TrelloClient:
         """Build a TrelloClient matching how this connection was authorized."""
-        credentials = self._read_credentials(connection)
+        credentials = self._read_credentials(account)
         if isinstance(credentials.get("token"), str):
             token = credentials.get("token")
             if not isinstance(token, str) or not token or not settings.TRELLO_API_KEY:
@@ -301,16 +442,18 @@ class TrelloConnectionService:
                 token=token,
                 api_key=settings.TRELLO_API_KEY,
                 base_url=settings.TRELLO_API_BASE_URL,
+                rate_limiter=trello_rate_limiter,
             )
         return TrelloClient(
-            token=await self._get_access_token(connection),
+            token=await self._get_access_token(account),
             base_url=settings.TRELLO_API_BASE_URL,
+            rate_limiter=trello_rate_limiter,
         )
 
     @staticmethod
-    def _read_credentials(connection: WorkspaceConnection) -> dict[str, Any]:
+    def _read_credentials(account: ProviderAccount) -> dict[str, Any]:
         try:
-            data = json.loads(encryption.decrypt(connection.encrypted_token))
+            data = json.loads(encryption.decrypt(account.encrypted_token))
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -356,6 +499,40 @@ class TrelloConnectionService:
             )
         return connection
 
+    async def _get_account(self, connection: WorkspaceConnection) -> ProviderAccount:
+        account = await self.connections.get_provider_account(connection)
+        if account is None or account.status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The linked Trello account is unavailable. Reconnect it to continue.",
+            )
+        return account
+
+    async def _clear_workspace_trello_data_if_unlinked(self) -> None:
+        await self.db.execute(
+            delete(TrelloClientRecord).where(
+                TrelloClientRecord.workspace_id == self.workspace_id,
+                ~exists(
+                    select(TrelloClientMapping.id).where(
+                        TrelloClientMapping.client_id == TrelloClientRecord.id
+                    )
+                ),
+            )
+        )
+        other_trello_connections = await self.db.scalar(
+            select(
+                exists().where(
+                    WorkspaceConnection.workspace_id == self.workspace_id,
+                    WorkspaceConnection.provider == self.provider,
+                    WorkspaceConnection.status == "active",
+                )
+            )
+        )
+        if not other_trello_connections:
+            await self.db.execute(
+                delete(TrelloMember).where(TrelloMember.workspace_id == self.workspace_id)
+            )
+
     @staticmethod
     def _require_oauth_config() -> None:
         if not settings.TRELLO_OAUTH_CLIENT_ID or not settings.TRELLO_OAUTH_CLIENT_SECRET:
@@ -370,9 +547,21 @@ class TrelloConnectionService:
                 detail="Trello OAuth callback URL must use HTTPS (except localhost).",
             )
 
-    async def _get_access_token(self, connection: WorkspaceConnection) -> str:
+    async def _get_access_token(self, account: ProviderAccount) -> str:
+        locked_account = await self.db.scalar(
+            select(ProviderAccount)
+            .where(ProviderAccount.id == account.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if locked_account is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The linked Trello account is unavailable. Reconnect it to continue.",
+            )
+        account = locked_account
         try:
-            token_data = json.loads(encryption.decrypt(connection.encrypted_token))
+            token_data = json.loads(encryption.decrypt(account.encrypted_token))
             token_bundle = TrelloOAuthTokens.model_validate(token_data)
             expires_at = int(token_data["expires_at"])
         except (ValueError, KeyError, TypeError) as exc:
@@ -399,7 +588,7 @@ class TrelloConnectionService:
             ) from exc
 
         await self.connections.update_encrypted_token(
-            connection,
+            account,
             self._encrypt_tokens(refreshed),
         )
         return refreshed.access_token

@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.core.sentry import init_sentry
 from app.modules.auth.router import router as auth_router
+from app.modules.context.router import router as context_router
+from app.modules.github.router import router as github_router
 from app.modules.trello.router import router as trello_router
 from app.modules.workspaces.router import router as workspaces_router
 
@@ -69,6 +71,8 @@ def create_application() -> FastAPI:
 
     # Mount API routers
     application.include_router(auth_router, prefix=settings.API_V1_PREFIX)
+    application.include_router(context_router, prefix=settings.API_V1_PREFIX)
+    application.include_router(github_router, prefix=settings.API_V1_PREFIX)
     application.include_router(trello_router, prefix=settings.API_V1_PREFIX)
     application.include_router(workspaces_router, prefix=settings.API_V1_PREFIX)
 

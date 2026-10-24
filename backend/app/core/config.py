@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
+    # Transactional email
+    FRONTEND_BASE_URL: str = Field(default="http://localhost:3000")
+    SMTP_HOST: str = Field(default="")
+    SMTP_PORT: int = Field(default=1025)
+    SMTP_USERNAME: str = Field(default="")
+    SMTP_PASSWORD: str = Field(default="")
+    SMTP_FROM_EMAIL: str = Field(default="no-reply@client-insights.local")
+    SMTP_STARTTLS: bool = Field(default=False)
+    SMTP_USE_SSL: bool = Field(default=False)
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = Field(default=30, gt=0)
+
     # Security & Encryption
     SECRET_KEY: str = Field(default="dev_secret_key_needs_replacement_in_production_min_32_chars")
     ENCRYPTION_KEY: str = Field(default="dGhpc19pcM1jMnJ2dGVfZXhhbXBsZV9rZXlfMTI=")
@@ -49,6 +60,8 @@ class Settings(BaseSettings):
 
     # LLM Settings
     GEMINI_API_KEY: str = Field(default="")
+    GEMINI_CONTEXT_MODEL: str = Field(default="gemini-2.5-flash")
+    GEMINI_EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
 
     # Trello
     TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")
@@ -64,6 +77,14 @@ class Settings(BaseSettings):
     TRELLO_OAUTH_SCOPES: str = Field(
         default="read:board:trello read:organization:trello read:member:trello offline_access"
     )
+    TRELLO_WEBHOOK_CALLBACK_URL: str = Field(default="")
+    TRELLO_WEBHOOK_SECRET: str = Field(default="")
+
+    # GitHub OAuth App
+    GITHUB_CLIENT_ID: str = Field(default="")
+    GITHUB_CLIENT_SECRET: str = Field(default="")
+    GITHUB_CALLBACK_URL: str = Field(default="http://localhost:3000/dashboard/github/callback")
+    GITHUB_API_BASE_URL: str = Field(default="https://api.github.com")
 
     @property
     def encryption_fallback_keys(self) -> list[str]:

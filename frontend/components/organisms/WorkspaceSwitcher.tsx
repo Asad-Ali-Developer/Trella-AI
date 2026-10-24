@@ -1,31 +1,19 @@
 "use client";
 
-import { ChevronsUpDown, Plus } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { ChevronsUpDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/atoms/Button";
-import { Input } from "@/components/atoms/Input";
 import type { Workspace } from "@/lib/types";
 import { workspaceStore } from "@/lib/storage";
-import { workspaceService } from "@/services/WorkspaceService";
 
 interface WorkspaceSwitcherProps {
   workspaces: Workspace[];
   selectedId: string | null;
   onSelect: (workspace: Workspace) => void;
-  onCreated: (workspace: Workspace) => void;
 }
 
-export function WorkspaceSwitcher({
-  workspaces,
-  selectedId,
-  onSelect,
-  onCreated,
-}: WorkspaceSwitcherProps) {
+export function WorkspaceSwitcher({ workspaces, selectedId, onSelect }: WorkspaceSwitcherProps) {
   const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
 
   const selected = workspaces.find((workspace) => workspace.id === selectedId) ?? workspaces[0];
@@ -39,24 +27,6 @@ export function WorkspaceSwitcher({
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
-
-  async function handleCreate(event: FormEvent) {
-    event.preventDefault();
-    if (!name.trim()) return;
-    setCreating(true);
-    setError("");
-    try {
-      const workspace = await workspaceService.create(name.trim());
-      workspaceStore.setWorkspaceId(workspace.id);
-      onCreated(workspace);
-      setName("");
-      setOpen(false);
-    } catch {
-      setError("Could not create workspace.");
-    } finally {
-      setCreating(false);
-    }
-  }
 
   return (
     <div ref={rootRef} className="relative">
@@ -87,18 +57,6 @@ export function WorkspaceSwitcher({
               <span className="text-[11px] uppercase text-muted-foreground">{workspace.role}</span>
             </button>
           ))}
-          <form onSubmit={handleCreate} className="mt-1 space-y-1.5 border-t border-border p-1.5">
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="New workspace"
-            />
-            {error ? <p className="text-xs text-red-600">{error}</p> : null}
-            <Button type="submit" variant="secondary" className="w-full gap-1.5" disabled={creating}>
-              <Plus className="h-3.5 w-3.5" />
-              Create
-            </Button>
-          </form>
         </div>
       ) : null}
     </div>

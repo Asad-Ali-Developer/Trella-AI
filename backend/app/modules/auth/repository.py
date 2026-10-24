@@ -1,10 +1,11 @@
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.auth.models import User
+from app.modules.auth.models import PasswordResetToken, User
 
 
 class UserRepository:
@@ -44,3 +45,43 @@ class UserRepository:
             setattr(user, key, value)
         await self.db.flush()
         return user
+
+    async def create_password_reset_token(
+        self,
+        *,
+        user_id: uuid.UUID,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> None:
+        await self.db.execute(
+            delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id)
+        )
+        self.db.add(
+            PasswordResetToken(
+                user_id=user_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+            )
+        )
+        await self.db.flush()
+
+    async def consume_password_reset_token(
+        self,
+        *,
+        token_hash: str,
+        now: datetime,
+    ) -> PasswordResetToken | None:
+        result = await self.db.execute(
+            select(PasswordResetToken)
+            .where(
+                PasswordResetToken.token_hash == token_hash,
+                PasswordResetToken.expires_at > now,
+            )
+            .with_for_update()
+        )
+        token = result.scalar_one_or_none()
+        if token is None:
+            return None
+        await self.db.delete(token)
+        await self.db.flush()
+        return token

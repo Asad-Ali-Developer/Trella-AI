@@ -9,6 +9,7 @@ from app.modules.workspaces.models import MembershipRole
 from app.modules.workspaces.repository import WorkspaceRepository
 from app.modules.workspaces.schemas import (
     WorkspaceCreateRequest,
+    WorkspaceUpdateRequest,
     WorkspaceWithRoleResponse,
 )
 
@@ -39,6 +40,8 @@ class WorkspaceService:
             name=request.name,
             slug=slug,
             owner_id=current_user.id,
+            description=request.description,
+            client_name=request.client_name,
         )
 
         # Creator is automatically assigned the OWNER role
@@ -61,6 +64,8 @@ class WorkspaceService:
         return WorkspaceWithRoleResponse(
             id=workspace.id,
             name=workspace.name,
+            description=workspace.description,
+            client_name=workspace.client_name,
             slug=workspace.slug,
             owner_id=workspace.owner_id,
             role=membership.role,
@@ -77,6 +82,8 @@ class WorkspaceService:
             WorkspaceWithRoleResponse(
                 id=ws.id,
                 name=ws.name,
+                description=ws.description,
+                client_name=ws.client_name,
                 slug=ws.slug,
                 owner_id=ws.owner_id,
                 role=role,
@@ -108,6 +115,59 @@ class WorkspaceService:
         return WorkspaceWithRoleResponse(
             id=workspace.id,
             name=workspace.name,
+            description=workspace.description,
+            client_name=workspace.client_name,
+            slug=workspace.slug,
+            owner_id=workspace.owner_id,
+            role=membership.role,
+            created_at=workspace.created_at,
+        )
+
+    async def update_workspace(
+        self,
+        workspace_id: uuid.UUID,
+        request: WorkspaceUpdateRequest,
+        current_user: User,
+    ) -> WorkspaceWithRoleResponse:
+        membership = await self.repo.get_membership(workspace_id, current_user.id)
+        if not membership:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this workspace.",
+            )
+        if membership.role not in {MembershipRole.OWNER, MembershipRole.ADMIN}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only workspace owners and admins can edit workspace details.",
+            )
+        workspace = await self.repo.get_by_id(workspace_id)
+        if not workspace:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Workspace not found.",
+            )
+        workspace = await self.repo.update_workspace(
+            workspace,
+            name=request.name,
+            description=request.description,
+            client_name=request.client_name,
+        )
+        await self.repo.create_audit_log(
+            workspace_id=workspace.id,
+            user_id=current_user.id,
+            action="workspace.updated",
+            entity_type="workspace",
+            entity_id=str(workspace.id),
+            metadata_json={
+                "name": workspace.name,
+                "client_name": workspace.client_name,
+            },
+        )
+        return WorkspaceWithRoleResponse(
+            id=workspace.id,
+            name=workspace.name,
+            description=workspace.description,
+            client_name=workspace.client_name,
             slug=workspace.slug,
             owner_id=workspace.owner_id,
             role=membership.role,

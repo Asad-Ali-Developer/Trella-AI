@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -10,6 +10,8 @@ from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.auth.schemas import (
     AuthResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     RefreshTokenRequest,
     TokenResponse,
     UserLoginRequest,
@@ -17,6 +19,7 @@ from app.modules.auth.schemas import (
     UserSignupRequest,
 )
 from app.modules.auth.service import AuthService
+from app.workers.tasks import send_password_reset_email, send_welcome_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 ACCESS_COOKIE_NAME = "access_token"
@@ -75,13 +78,40 @@ def _clear_auth_cookies(response: Response) -> None:
 async def signup(
     payload: UserSignupRequest,
     response: Response,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     """Create an account and establish a cookie-based session."""
     service = AuthService(db)
     user, tokens = await service.signup(payload)
+    if settings.SMTP_HOST:
+        background_tasks.add_task(send_welcome_email.delay, user.email, user.name)
     _set_auth_cookies(response, tokens)
     return AuthResponse(user=UserResponse.model_validate(user))
+
+
+@router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Request a reset link without revealing whether the account exists."""
+    if settings.SMTP_HOST:
+        reset = await AuthService(db).request_password_reset(str(payload.email))
+        if reset:
+            email, token = reset
+            reset_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password?token={token}"
+            background_tasks.add_task(send_password_reset_email.delay, email, reset_url)
+    return {"message": "If that email belongs to an account, a reset link will be sent."}
+
+
+@router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def confirm_password_reset(
+    payload: PasswordResetConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await AuthService(db).reset_password(payload)
 
 
 @router.post(
@@ -121,9 +151,7 @@ async def refresh_token(
             detail="Refresh token cookie is missing.",
         )
     service = AuthService(db)
-    tokens = await service.refresh_tokens(
-        RefreshTokenRequest(refresh_token=refresh_token_value)
-    )
+    tokens = await service.refresh_tokens(RefreshTokenRequest(refresh_token=refresh_token_value))
     _set_auth_cookies(response, tokens)
 
 
