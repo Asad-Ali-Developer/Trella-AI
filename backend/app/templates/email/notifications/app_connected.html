@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} Connected — DeepClient{% endblock %}
+
+{% block preheader %}Your {{ app_name }} account is now connected to your DeepClient workspace.{% endblock %}
+
+{% block content %}
+<!-- Connected Badge -->
+<div style="margin-bottom: 16px;">
+  <span style="display: inline-block; background-color: #ECFDF5; color: #047857; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+    &check; App Connected
+  </span>
+</div>
+
+<!-- Headline -->
+<h1 class="hero-title" style="margin: 0 0 14px 0; font-size: 24px; font-weight: 700; color: #0F172A; letter-spacing: -0.5px; line-height: 32px;">
+  {{ app_name }} is now connected
+</h1>
+
+<p style="margin: 0 0 20px 0; font-size: 15px; line-height: 24px; color: #475569;">
+  Hi {{ name }}, your <strong>{{ app_name }}</strong> account has been successfully connected to your DeepClient workspace.
+</p>
+
+<!-- Connection Details Card -->
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 24px;">
+  <tr>
+    <td style="padding: 20px;">
+      <p style="margin: 0 0 14px 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B;">
+        Connection Details
+      </p>
+
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td style="padding: 6px 0; font-size: 14px; color: #64748B; width: 140px;">Application:</td>
+          <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0F172A;">{{ app_name }}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-size: 14px; color: #64748B;">Account Handle:</td>
+          <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0F172A;">{{ account_username }}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-size: 14px; color: #64748B;">Target Workspace:</td>
+          <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0F172A;">{{ workspace_name }}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-size: 14px; color: #64748B;">Status:</td>
+          <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #059669;">&bull; Active & Synchronized</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<!-- What's next section -->
+<p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #0F172A;">
+  What you can do next:
+</p>
+<ul style="margin: 0 0 24px 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 22px;">
+  <li style="margin-bottom: 6px;">Select active project sources to include in this workspace.</li>
+  <li style="margin-bottom: 6px;">Map client entities to track requests and activity by client.</li>
+  <li style="margin-bottom: 6px;">Build your workspace context graph for automated insight synthesis.</li>
+</ul>
+
+<!-- Primary CTA Button -->
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+  <tr>
+    <td align="center" style="border-radius: 10px; background-color: #4F46E5;">
+      <a href="{{ dashboard_url }}" class="btn" target="_blank" style="display: inline-block; padding: 14px 28px; font-size: 15px; font-weight: 600; color: #FFFFFF; text-decoration: none; border-radius: 10px; background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%); box-shadow: 0 4px 10px rgba(79, 70, 229, 0.35);">
+        Manage in Workspace &rarr;
+      </a>
+    </td>
+  </tr>
+</table>
+
+<!-- Security Alert Box -->
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; margin-bottom: 10px;">
+  <tr>
+    <td style="padding: 12px 16px;">
+      <p style="margin: 0; font-size: 12px; color: #92400E; line-height: 18px;">
+        <strong>Security Notice:</strong> If you did not connect {{ app_name }} or do not recognize this action, please disconnect it from your workspace settings immediately or contact support.
+      </p>
+    </td>
+  </tr>
+</table>
+{% endblock %}

@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
-    # Transactional email
+    # Transactional email (SMTP & Mailgun)
     FRONTEND_BASE_URL: str = Field(default="http://localhost:3000")
     SMTP_HOST: str = Field(default="")
     SMTP_PORT: int = Field(default=1025)
@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     SMTP_STARTTLS: bool = Field(default=False)
     SMTP_USE_SSL: bool = Field(default=False)
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = Field(default=30, gt=0)
+
+    # Mailgun Settings
+    MAILGUN_API_KEY: str = Field(default="")
+    MAILGUN_DOMAIN: str = Field(default="")
+    MAILGUN_API_BASE_URL: str = Field(default="https://api.mailgun.net/v3")
+    MAILGUN_FROM_EMAIL: str = Field(default="")
 
     # Security & Encryption
     SECRET_KEY: str = Field(default="dev_secret_key_needs_replacement_in_production_min_32_chars")
