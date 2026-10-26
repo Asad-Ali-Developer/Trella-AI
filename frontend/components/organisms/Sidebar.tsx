@@ -1,6 +1,6 @@
 "use client";
 
-import { Blocks, BrainCircuit, BriefcaseBusiness, LayoutDashboard, LogOut } from "lucide-react";
+import { Blocks, BrainCircuit, BriefcaseBusiness, FileText, LayoutDashboard, LogOut, Sparkles, Users } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -48,10 +48,10 @@ export function Sidebar({
       </div>
       <div className="space-y-6 p-4">
         <WorkspaceSwitcher
-          workspaces={workspaces}
-          selectedId={selectedId}
-          onSelect={onSelectWorkspace}
-        />
+            workspaces={workspaces}
+            selectedId={selectedId}
+            onSelect={onSelectWorkspace}
+          />
         <nav aria-label="Main navigation" className="space-y-1">
           <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
             Workspace
@@ -63,6 +63,30 @@ export function Sidebar({
           >
             <LayoutDashboard className="h-[18px] w-[18px]" />
             Dashboard
+          </Link>
+          <Link
+            href="/dashboard/clients"
+            aria-current={pathname.startsWith("/dashboard/clients") ? "page" : undefined}
+            className={navClass(pathname.startsWith("/dashboard/clients"))}
+          >
+            <Users className="h-[18px] w-[18px]" />
+            Client Profiles
+          </Link>
+          <Link
+            href="/dashboard/reports"
+            aria-current={pathname.startsWith("/dashboard/reports") ? "page" : undefined}
+            className={navClass(pathname.startsWith("/dashboard/reports"))}
+          >
+            <FileText className="h-[18px] w-[18px]" />
+            Reports & Runs
+          </Link>
+          <Link
+            href="/dashboard/skills"
+            aria-current={pathname.startsWith("/dashboard/skills") ? "page" : undefined}
+            className={navClass(pathname.startsWith("/dashboard/skills"))}
+          >
+            <Sparkles className="h-[18px] w-[18px]" />
+            AI Skills Lab
           </Link>
           <Link
             href="/dashboard/context"

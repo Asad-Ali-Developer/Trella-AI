@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application settings and environment variable validation."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     # LLM Settings
     GEMINI_API_KEY: str = Field(default="")
-    GEMINI_CONTEXT_MODEL: str = Field(default="gemini-2.5-flash")
+    GEMINI_CONTEXT_MODEL: str = Field(default="gemini-3.5-flash")
     GEMINI_EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
 
     # Trello
@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_SECRET: str = Field(default="")
     GITHUB_CALLBACK_URL: str = Field(default="http://localhost:3000/dashboard/github/callback")
     GITHUB_API_BASE_URL: str = Field(default="https://api.github.com")
+
+    # Jira (Atlassian OAuth 2.0 3LO)
+    JIRA_CLIENT_ID: str = Field(default="")
+    JIRA_CLIENT_SECRET: str = Field(default="")
+    JIRA_CALLBACK_URL: str = Field(default="http://localhost:3000/dashboard/jira/callback")
+    JIRA_SCOPES: str = Field(default="read:jira-work read:jira-user offline_access")
+    JIRA_API_BASE_URL: str = Field(default="https://api.atlassian.com")
+    JIRA_AUTH_URL: str = Field(default="https://auth.atlassian.com")
 
     @property
     def encryption_fallback_keys(self) -> list[str]:

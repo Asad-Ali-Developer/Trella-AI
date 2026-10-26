@@ -25,6 +25,7 @@ from app.modules.github.schemas import (
 )
 from app.modules.trello.models import TrelloClientRecord
 from app.modules.workspaces.repository import WorkspaceRepository
+from app.workers.tasks import notify_app_connected
 
 
 class GithubConnectionService:
@@ -128,6 +129,14 @@ class GithubConnectionService:
             metadata_json={"provider": self.provider, "account_id": str(user["id"])},
         )
         await self.db.commit()
+        await notify_app_connected(
+            db=self.db,
+            user_id=self.user_id,
+            workspace_id=self.workspace_id,
+            app_name="GitHub",
+            account_username=username,
+            app_color="#181717",
+        )
         return GithubConnectionStatus(
             connected=True,
             username=username,
@@ -205,6 +214,14 @@ class GithubConnectionService:
             entity_type="connection",
             entity_id=str(connection.id),
             metadata_json={"provider": self.provider, "account_id": account.external_account_id},
+        )
+        await notify_app_connected(
+            db=self.db,
+            user_id=self.user_id,
+            workspace_id=self.workspace_id,
+            app_name="GitHub",
+            account_username=account.external_username,
+            app_color="#181717",
         )
         return GithubConnectionStatus(
             connected=True,

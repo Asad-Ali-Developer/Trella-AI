@@ -31,6 +31,7 @@ from app.modules.trello.schemas import (
     TrelloProviderAccountResponse,
 )
 from app.modules.workspaces.repository import WorkspaceRepository
+from app.workers.tasks import notify_app_connected
 
 AUTH_TYPE_API_KEY = "eb7b400699b7f3bee188ab2a058a11e7"
 
@@ -238,6 +239,14 @@ class TrelloConnectionService:
             entity_id=str(connection.id),
             metadata_json={"provider": self.provider, "account_id": account.external_account_id},
         )
+        await notify_app_connected(
+            db=self.db,
+            user_id=self.user_id,
+            workspace_id=self.workspace_id,
+            app_name="Trello",
+            account_username=account.external_username,
+            app_color="#0052CC",
+        )
         return TrelloConnectionStatus(
             connected=True,
             username=account.external_username,
@@ -420,6 +429,14 @@ class TrelloConnectionService:
             action="connection.created",
             entity_type="connection",
             metadata_json={"provider": self.provider, "account_id": account_id},
+        )
+        await notify_app_connected(
+            db=self.db,
+            user_id=self.user_id,
+            workspace_id=self.workspace_id,
+            app_name="Trello",
+            account_username=username,
+            app_color="#0052CC",
         )
         account = await self.connections.get_provider_account(connection)
         return TrelloConnectionStatus(

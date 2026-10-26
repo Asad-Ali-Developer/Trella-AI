@@ -101,6 +101,7 @@ class WorkspaceContextService:
                 account_name=account_name,
                 sync_status=source.sync_status,
                 last_synced_at=source.last_synced_at,
+                sync_error=source.sync_error,
             )
             for source, account_name in sources
         ]
@@ -113,6 +114,7 @@ class WorkspaceContextService:
                 account_name=account_name,
                 sync_status=repository.sync_status,
                 last_synced_at=repository.last_synced_at,
+                sync_error=repository.sync_error,
             )
             for repository, account_name in github_sources
         )

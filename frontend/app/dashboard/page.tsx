@@ -4,7 +4,10 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   CheckCircle2,
+  FileText,
   Layers3,
+  Sparkles,
+  Users,
   UsersRound,
   Workflow,
 } from "lucide-react";
@@ -30,6 +33,7 @@ import type {
 } from "@/lib/types";
 import { authService } from "@/services/AuthService";
 import { githubService } from "@/services/GithubService";
+import { jiraService } from "@/services/JiraService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -66,15 +70,20 @@ export default function DashboardPage() {
     setStatsLoading(true);
     setStatsError("");
     try {
-      const [trello, github] = await Promise.all([
+      const [trello, github, jira] = await Promise.all([
         trelloService.status(workspace.id).catch(() => ({ connected: false, username: null })),
         githubService.status(workspace.id).catch(() => ({ connected: false, username: null })),
+        jiraService.status(workspace.id).catch(() => ({ connected: false, username: null })),
       ]);
-      const connectedAppsCount = (trello.connected ? 1 : 0) + (github.connected ? 1 : 0);
+      const connectedAppsCount =
+        (trello.connected ? 1 : 0) +
+        (github.connected ? 1 : 0) +
+        (jira.connected ? 1 : 0);
       if (connectedAppsCount === 0) {
         setStats(emptyStats);
         return;
       }
+
       let includedBoardsCount = 0;
       let mappedClientsCount = 0;
       let completedBoardsCount = 0;
@@ -210,18 +219,32 @@ export default function DashboardPage() {
                 : "Your client workspaces and connected sources at a glance."}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
-              href="/dashboard/workspaces"
+              href="/dashboard/clients"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+            >
+              <Users className="h-4 w-4" />
+              Client Dossiers
+            </Link>
+            <Link
+              href="/dashboard/reports"
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
             >
-              <BriefcaseBusiness className="h-4 w-4" />
-              Workspaces
+              <FileText className="h-4 w-4" />
+              Reports & Runs
+            </Link>
+            <Link
+              href="/dashboard/skills"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+            >
+              <Sparkles className="h-4 w-4" />
+              AI Skills Lab
             </Link>
             {selectedWorkspace ? (
               <Link
                 href="/dashboard/apps"
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
               >
                 Connected apps
                 <ArrowRight className="h-4 w-4" />
@@ -315,9 +338,10 @@ export default function DashboardPage() {
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-900/75">
                     DeepClient brings project activity and client context
-                    together in each workspace. Trello and GitHub are available now;
-                    Jira and Slack are coming soon.
+                    together in each workspace. Trello, GitHub, and Jira are available now;
+                    Slack is coming soon.
                   </p>
+
                 </div>
               </div>
             </section>

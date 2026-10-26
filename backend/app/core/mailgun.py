@@ -57,6 +57,14 @@ class MailgunClient:
             or settings.SMTP_FROM_EMAIL
             or "DeepClient <no-reply@client-insights.local>"
         )
+
+        # In Mailgun sandbox mode, the sender address domain must match the sandbox domain
+        if self.domain.startswith("sandbox") and f"@{self.domain}" not in sender:
+            display_name = "DeepClient"
+            if "<" in sender:
+                display_name = sender.split("<")[0].strip() or "DeepClient"
+            sender = f"{display_name} <postmaster@{self.domain}>"
+
         url = f"{self.base_url}/{self.domain}/messages"
 
         payload = {

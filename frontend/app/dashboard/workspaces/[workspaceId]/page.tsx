@@ -26,6 +26,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
 import type {
   GithubConnectionStatus,
+  JiraConnectionStatus,
   TrelloBoard,
   TrelloClientMapping,
   TrelloConnectionStatus,
@@ -33,6 +34,7 @@ import type {
 } from "@/lib/types";
 import { authService } from "@/services/AuthService";
 import { githubService } from "@/services/GithubService";
+import { jiraService } from "@/services/JiraService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -58,7 +60,7 @@ const apps: Array<{
     id: "jira",
     name: "Jira",
     description: "Bring engineering projects and issues into context.",
-    available: false,
+    available: true,
   },
   {
     id: "slack",
@@ -78,29 +80,33 @@ export default function WorkspaceDetailsPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [trelloStatus, setTrelloStatus] = useState<TrelloConnectionStatus | null>(null);
   const [githubStatus, setGithubStatus] = useState<GithubConnectionStatus | null>(null);
+  const [jiraStatus, setJiraStatus] = useState<JiraConnectionStatus | null>(null);
   const [boards, setBoards] = useState<TrelloBoard[]>([]);
   const [mappings, setMappings] = useState<TrelloClientMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
-  const [disconnectTarget, setDisconnectTarget] = useState<"trello" | "github" | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<"trello" | "github" | "jira" | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+
   const load = useCallback(async () => {
     try {
-      const [currentUser, workspaceList, details, trello, github] = await Promise.all([
+      const [currentUser, workspaceList, details, trello, github, jira] = await Promise.all([
         authService.me(),
         workspaceService.list(),
         workspaceService.get(workspaceId),
         trelloService.status(workspaceId).catch(() => ({ connected: false, username: null })),
         githubService.status(workspaceId).catch(() => ({ connected: false, username: null })),
+        jiraService.status(workspaceId).catch(() => ({ connected: false, username: null })),
       ]);
       dispatch(setAuthenticatedUser(currentUser));
       setWorkspaces(workspaceList);
       setWorkspace(details);
       setTrelloStatus(trello);
       setGithubStatus(github);
+      setJiraStatus(jira);
       workspaceStore.setWorkspaceId(workspaceId);
       if (trello.connected) {
         const [boardList, clientMappings] = await Promise.all([
@@ -141,6 +147,8 @@ export default function WorkspaceDetailsPage() {
       router.push("/dashboard/trello");
     } else if (appId === "github") {
       router.push("/dashboard/github");
+    } else if (appId === "jira") {
+      router.push("/dashboard/jira");
     } else {
       router.push("/dashboard/apps");
     }
@@ -172,11 +180,17 @@ export default function WorkspaceDetailsPage() {
         setNotice(
           "GitHub was disconnected. Its selected repositories and synced commits were removed from this workspace.",
         );
+      } else if (disconnectTarget === "jira") {
+        const status = await jiraService.disconnect(workspaceId);
+        setJiraStatus(status);
+        setNotice(
+          "Jira was disconnected. Its selected projects and synced issues were removed from this workspace.",
+        );
       }
       setDisconnectTarget(null);
     } catch {
       setError(
-        `Could not disconnect ${disconnectTarget === "trello" ? "Trello" : "GitHub"}. No local connection data was removed. Please retry.`,
+        `Could not disconnect ${disconnectTarget === "trello" ? "Trello" : disconnectTarget === "github" ? "GitHub" : "Jira"}. No local connection data was removed. Please retry.`,
       );
     } finally {
       setDisconnecting(false);
@@ -185,7 +199,11 @@ export default function WorkspaceDetailsPage() {
 
   const includedBoards = boards.filter((board) => !board.excluded);
   const connectedClients = new Set(mappings.map((mapping) => mapping.client_name)).size;
-  const connectedAppsCount = (trelloStatus?.connected ? 1 : 0) + (githubStatus?.connected ? 1 : 0);
+  const connectedAppsCount =
+    (trelloStatus?.connected ? 1 : 0) +
+    (githubStatus?.connected ? 1 : 0) +
+    (jiraStatus?.connected ? 1 : 0);
+
   const canEditWorkspace = workspace?.role === "owner" || workspace?.role === "admin";
 
   return (
@@ -299,11 +317,14 @@ export default function WorkspaceDetailsPage() {
                 {apps.map((app) => {
                   const isTrello = app.id === "trello";
                   const isGithub = app.id === "github";
+                  const isJira = app.id === "jira";
                   const connected = isTrello
                     ? Boolean(trelloStatus?.connected)
                     : isGithub
                       ? Boolean(githubStatus?.connected)
-                      : false;
+                      : isJira
+                        ? Boolean(jiraStatus?.connected)
+                        : false;
                   return (
                     <article key={app.id} className="flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-5">
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-zinc-50">
@@ -343,7 +364,7 @@ export default function WorkspaceDetailsPage() {
                           {connected ? (
                             <button
                               type="button"
-                              onClick={() => setDisconnectTarget(isTrello ? "trello" : "github")}
+                              onClick={() => setDisconnectTarget(isTrello ? "trello" : isGithub ? "github" : "jira")}
                               className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-800"
                             >
                               <Unplug className="h-3.5 w-3.5" />
@@ -366,7 +387,7 @@ export default function WorkspaceDetailsPage() {
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-900">Build context one source at a time</h2>
                   <p className="mt-1 text-sm leading-6 text-zinc-500">
-                    Trello and GitHub are ready now. Jira will add engineering projects and issue activity, while Slack will deliver reports when those integrations become available.
+                    Trello, GitHub, and Jira are ready now. Slack will deliver reports when that integration becomes available.
                   </p>
                 </div>
               </div>
@@ -401,15 +422,18 @@ export default function WorkspaceDetailsPage() {
               <AlertTriangle className="h-5 w-5" />
             </div>
             <h2 id="disconnect-title" className="mt-4 text-lg font-semibold text-zinc-950">
-              Disconnect {disconnectTarget === "trello" ? "Trello" : "GitHub"}?
+              Disconnect {disconnectTarget === "trello" ? "Trello" : disconnectTarget === "github" ? "GitHub" : "Jira"}?
             </h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
               {disconnectTarget === "trello"
                 ? "This removes Trello and its synced boards, cards, comments, and client mappings from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."
-                : "This removes GitHub and its selected repositories and synced commits from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."}
+                : disconnectTarget === "github"
+                  ? "This removes GitHub and its selected repositories and synced commits from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."
+                  : "This removes Jira and its selected projects and synced issues from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."}
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
+
                 type="button"
                 variant="secondary"
                 className="gap-2 rounded-lg"

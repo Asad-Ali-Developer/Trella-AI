@@ -8,7 +8,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.core.mailgun import MailgunClient
+from app.core.mailgun import MailgunClient, MailgunError
 
 logger = get_logger("app.core.email")
 
@@ -74,7 +74,7 @@ def send_email(message: EmailMessage) -> None:
     # 1. Prefer Mailgun API if API key and domain are provided
     if settings.MAILGUN_API_KEY and settings.MAILGUN_DOMAIN:
         plain_body = message.get_body(preferencelist=("plain",))
-        plain_text = plain_part_text if (plain_part_text := (plain_body.get_content() if plain_body else "")) else ""
+        plain_text = plain_body.get_content() if plain_body else ""
         html_part = next(
             (part for part in message.walk() if part.get_content_type() == "text/html"),
             None,
@@ -82,14 +82,31 @@ def send_email(message: EmailMessage) -> None:
         html_content = html_part.get_content() if html_part else ""
 
         mailgun = MailgunClient()
-        mailgun.send_message(
-            to=message["To"],
-            subject=message["Subject"],
-            text=plain_text,
-            html=html_content,
-            from_email=message["From"],
-        )
-        return
+        try:
+            mailgun.send_message(
+                to=message["To"],
+                subject=message["Subject"],
+                text=plain_text,
+                html=html_content,
+                from_email=message["From"],
+            )
+            return
+        except MailgunError as exc:
+            logger.warning(
+                "mailgun_delivery_failed",
+                to=message["To"],
+                subject=message["Subject"],
+                error=str(exc),
+            )
+            if settings.SMTP_HOST:
+                logger.info(
+                    "falling_back_to_smtp",
+                    to=message["To"],
+                    smtp_host=settings.SMTP_HOST,
+                )
+                send_smtp_email(message)
+                return
+            raise
 
     # 2. SMTP fallback (e.g. Mailpit locally, or SMTP relay)
     if settings.SMTP_HOST:

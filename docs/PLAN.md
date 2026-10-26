@@ -170,22 +170,22 @@ For GitHub, configure an OAuth App callback at `http://localhost:3000/dashboard/
 
 ### Phase 4: LLM layer and skill engine (Weeks 6-8)
 **Tasks**
-- [ ] LLMProvider interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
-- [ ] Skill definition format (see section 8) with validation and versioning.
-- [ ] Built-in skill 1: Client Needs Analyzer. Skill 2 later: Scope Change Detector.
-- [ ] Structured output enforced with Pydantic.
-- [ ] Citation validator: reject any insight whose source IDs do not exist in the input context.
-- [ ] Cost tracking per run and Langfuse tracing.
-- [ ] Prompt regression set from 3 to 5 anonymized real boards.
+- [x] LLMProvider interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
+- [x] Skill definition format (see section 8) with validation and versioning.
+- [x] Built-in skill 1: Client Needs Analyzer. Skill 2 later: Scope Change Detector.
+- [x] Structured output enforced with Pydantic.
+- [x] Citation validator: reject any insight whose source IDs do not exist in the input context.
+- [x] Cost tracking per run and Langfuse tracing.
+- [x] Prompt regression set from 3 to 5 anonymized real boards.
 *Done when*: a run on a real board produces a schema-valid report where every insight links to real cards, at a known cost.
 
 ### Phase 5: Reports UI (Weeks 8-9)
 **Tasks**
-- [ ] Run-now button, run status (polling or SSE).
-- [ ] Report view with clickable Trello source links.
-- [ ] Client profile page: needs, recurring requests, stakeholders, timeline.
-- [ ] Run history.
-- [ ] Thumbs up/down on each insight (feeds your quality evaluation).
+- [x] Run-now button, run status (polling or SSE).
+- [x] Report view with clickable Trello source links.
+- [x] Client profile page: needs, recurring requests, stakeholders, timeline.
+- [x] Run history.
+- [x] Thumbs up/down on each insight (feeds your quality evaluation).
 *Done when*: a non-technical tester can run and understand a report without help, and every screen is verified at mobile, tablet, and desktop viewport sizes.
 
 ### Phase 6: Scheduling and delivery (Weeks 9-11)

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircle,
   BrainCircuit,
   CheckCircle2,
   Clock3,
@@ -452,10 +453,23 @@ export default function WorkspaceContextPage() {
                     <p className="mt-1 text-xs text-zinc-500">
                       {source.provider} · {source.account_name}
                     </p>
-                    <p className="mt-2 inline-flex items-center gap-1 text-xs text-zinc-500">
-                      <Clock3 className="h-3.5 w-3.5" />
-                      {source.sync_status.replaceAll("_", " ")}
-                    </p>
+                    <div className="mt-2 space-y-1">
+                      <p className={`inline-flex items-center gap-1 text-xs ${
+                        source.sync_status === "failed" ? "font-medium text-rose-600" : "text-zinc-500"
+                      }`}>
+                        {source.sync_status === "failed" ? (
+                          <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
+                        ) : (
+                          <Clock3 className="h-3.5 w-3.5" />
+                        )}
+                        {source.sync_status.replaceAll("_", " ")}
+                      </p>
+                      {source.sync_error ? (
+                        <p className="text-xs font-normal text-rose-600 line-clamp-2">
+                          {source.sync_error}
+                        </p>
+                      ) : null}
+                    </div>
                   </a>
                 ))}
                 {!context.connected_accounts.length && !context.sources.length ? (

@@ -7,7 +7,9 @@ import http from "@/services/http";
 
 class GithubService {
   private workspaceConfig(workspaceId?: string) {
-    return workspaceId ? { headers: { "X-Workspace-Id": workspaceId } } : undefined;
+    return workspaceId
+      ? { headers: { "X-Workspace-Id": workspaceId } }
+      : undefined;
   }
 
   async authorizationUrl(workspaceId: string): Promise<string> {
@@ -23,11 +25,14 @@ class GithubService {
     state: string,
     workspaceId: string,
   ): Promise<GithubConnectionStatus> {
-    const { data } = await http.post<GithubConnectionStatus>("/connections/github/callback", {
-      code,
-      state,
-      workspace_id: workspaceId,
-    });
+    const { data } = await http.post<GithubConnectionStatus>(
+      "/connections/github/callback",
+      {
+        code,
+        state,
+        workspace_id: workspaceId,
+      },
+    );
     return data;
   }
 
@@ -47,7 +52,10 @@ class GithubService {
     return data;
   }
 
-  async linkAccount(accountId: string, workspaceId?: string): Promise<GithubConnectionStatus> {
+  async linkAccount(
+    accountId: string,
+    workspaceId?: string,
+  ): Promise<GithubConnectionStatus> {
     const { data } = await http.post<GithubConnectionStatus>(
       "/connections/github/accounts/link",
       { account_id: accountId },
@@ -81,7 +89,9 @@ class GithubService {
     return data;
   }
 
-  async clients(workspaceId?: string): Promise<Array<{ id: string; name: string }>> {
+  async clients(
+    workspaceId?: string,
+  ): Promise<Array<{ id: string; name: string }>> {
     const { data } = await http.get<Array<{ id: string; name: string }>>(
       "/connections/github/clients",
       this.workspaceConfig(workspaceId),
@@ -90,7 +100,9 @@ class GithubService {
   }
 
   async saveRepositories(
-    repositories: Array<Pick<GithubRepository, "id" | "included" | "client_id">>,
+    repositories: Array<
+      Pick<GithubRepository, "id" | "included" | "client_id">
+    >,
     workspaceId?: string,
   ): Promise<number> {
     const { data } = await http.put<{ saved: number }>(

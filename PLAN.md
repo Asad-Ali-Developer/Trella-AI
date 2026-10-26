@@ -192,13 +192,13 @@ Tasks
 
 Tasks
 
-- [ ] `LLMProvider` interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
-- [ ] Skill definition format (see section 8) with validation and versioning.
-- [ ] Built-in skill 1: **Client Needs Analyzer**. Skill 2 later: **Scope Change Detector**.
-- [ ] Structured output enforced with Pydantic.
-- [ ] Citation validator: reject any insight whose source IDs do not exist in the input context.
-- [ ] Cost tracking per run and Langfuse tracing.
-- [ ] Prompt regression set from 3 to 5 anonymized real boards.
+- [X] `LLMProvider` interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
+- [X] Skill definition format (see section 8) with validation and versioning.
+- [X] Built-in skill 1: **Client Needs Analyzer**. Skill 2 later: **Scope Change Detector**.
+- [X] Structured output enforced with Pydantic.
+- [X] Citation validator: reject any insight whose source IDs do not exist in the input context.
+- [X] Cost tracking per run and Langfuse tracing.
+- [X] Prompt regression set from 3 to 5 anonymized real boards.
 
 **Done when:** a run on a real board produces a schema-valid report where every insight links to real cards, at a known cost.
 
@@ -206,11 +206,11 @@ Tasks
 
 Tasks
 
-- [ ] Run-now button, run status (polling or SSE).
-- [ ] Report view with clickable Trello source links.
-- [ ] Client profile page: needs, recurring requests, stakeholders, timeline.
-- [ ] Run history.
-- [ ] Thumbs up/down on each insight (feeds your quality evaluation).
+- [X] Run-now button, run status (polling or SSE).
+- [X] Report view with clickable Trello source links.
+- [X] Client profile page: needs, recurring requests, stakeholders, timeline.
+- [X] Run history.
+- [X] Thumbs up/down on each insight (feeds your quality evaluation).
 
 **Done when:** a non-technical tester can run and understand a report without help, and every screen is verified at mobile, tablet, and desktop viewport sizes.
 

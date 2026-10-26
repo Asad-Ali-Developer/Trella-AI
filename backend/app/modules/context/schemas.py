@@ -19,6 +19,7 @@ class ContextSource(BaseModel):
     account_name: str
     sync_status: str
     last_synced_at: datetime | None
+    sync_error: str | None = None
 
 
 class ContextClient(BaseModel):

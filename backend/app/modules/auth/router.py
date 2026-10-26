@@ -18,8 +18,13 @@ from app.modules.auth.schemas import (
     UserResponse,
     UserSignupRequest,
 )
+from app.core.email import is_email_configured
 from app.modules.auth.service import AuthService
-from app.workers.tasks import send_password_reset_email, send_welcome_email
+from app.workers.tasks import (
+    dispatch_task,
+    send_password_reset_email,
+    send_welcome_email,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 ACCESS_COOKIE_NAME = "access_token"
@@ -84,8 +89,8 @@ async def signup(
     """Create an account and establish a cookie-based session."""
     service = AuthService(db)
     user, tokens = await service.signup(payload)
-    if settings.SMTP_HOST:
-        background_tasks.add_task(send_welcome_email.delay, user.email, user.name)
+    if is_email_configured():
+        background_tasks.add_task(dispatch_task, send_welcome_email, user.email, user.name)
     _set_auth_cookies(response, tokens)
     return AuthResponse(user=UserResponse.model_validate(user))
 
@@ -97,12 +102,12 @@ async def request_password_reset(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """Request a reset link without revealing whether the account exists."""
-    if settings.SMTP_HOST:
+    if is_email_configured():
         reset = await AuthService(db).request_password_reset(str(payload.email))
         if reset:
             email, token = reset
             reset_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password?token={token}"
-            background_tasks.add_task(send_password_reset_email.delay, email, reset_url)
+            background_tasks.add_task(dispatch_task, send_password_reset_email, email, reset_url)
     return {"message": "If that email belongs to an account, a reset link will be sent."}
 
 

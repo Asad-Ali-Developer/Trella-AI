@@ -13,15 +13,17 @@ import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
-import type { GithubConnectionStatus, TrelloConnectionStatus, Workspace } from "@/lib/types";
+import type { GithubConnectionStatus, JiraConnectionStatus, TrelloConnectionStatus, Workspace } from "@/lib/types";
 import { authService } from "@/services/AuthService";
 import { githubService } from "@/services/GithubService";
+import { jiraService } from "@/services/JiraService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
 
 interface WorkspaceAppsStatus {
   trello: TrelloConnectionStatus | null;
   github: GithubConnectionStatus | null;
+  jira: JiraConnectionStatus | null;
 }
 
 export default function WorkspacesPage() {
@@ -39,18 +41,20 @@ export default function WorkspacesPage() {
   const refreshWorkspaceStatuses = useCallback(async (items: Workspace[]) => {
     const statuses = await Promise.all(
       items.map(async (workspace) => {
-        const [trello, github] = await Promise.all([
+        const [trello, github, jira] = await Promise.all([
           trelloService.status(workspace.id).catch(() => null),
           githubService.status(workspace.id).catch(() => null),
+          jiraService.status(workspace.id).catch(() => null),
         ]);
-        return [workspace.id, { trello, github }] as const;
+        return [workspace.id, { trello, github, jira }] as const;
       }),
     );
     setAppsByWorkspace(Object.fromEntries(statuses));
-    if (statuses.some(([, status]) => status.trello === null || status.github === null)) {
+    if (statuses.some(([, status]) => status.trello === null || status.github === null || status.jira === null)) {
       setError("Some app statuses could not be loaded. Refresh the page to try again.");
     }
   }, []);
+
 
   const load = useCallback(async () => {
     try {
@@ -100,11 +104,13 @@ export default function WorkspacesPage() {
       [workspace.id]: {
         trello: { connected: false, username: null },
         github: { connected: false, username: null },
+        jira: { connected: false, username: null },
       },
     }));
     setDrawerOpen(false);
     router.push(`/dashboard/workspaces/${workspace.id}`);
   }
+
 
   function handleWorkspaceSaved(workspace: Workspace) {
     setWorkspaces((current) => current.map((item) => item.id === workspace.id ? workspace : item));
@@ -163,7 +169,11 @@ export default function WorkspacesPage() {
               const appStatus = appsByWorkspace[workspace.id];
               const trelloConnected = Boolean(appStatus?.trello?.connected);
               const githubConnected = Boolean(appStatus?.github?.connected);
-              const connectedCount = (trelloConnected ? 1 : 0) + (githubConnected ? 1 : 0);
+              const jiraConnected = Boolean(appStatus?.jira?.connected);
+              const connectedCount =
+                (trelloConnected ? 1 : 0) +
+                (githubConnected ? 1 : 0) +
+                (jiraConnected ? 1 : 0);
               const active = selectedWorkspace?.id === workspace.id;
               return (
                 <article
@@ -219,11 +229,17 @@ export default function WorkspacesPage() {
                               <IntegrationLogo app="github" className="h-4 w-4" />
                             </span>
                           ) : null}
+                          {jiraConnected ? (
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50" title="Jira connected">
+                              <IntegrationLogo app="jira" className="h-4 w-4" />
+                            </span>
+                          ) : null}
                         </>
                       ) : (
                         <span className="text-xs text-zinc-400">Connect apps to build context</span>
                       )}
                     </div>
+
                     <Link
                       href={`/dashboard/workspaces/${workspace.id}`}
                       onClick={() => selectWorkspace(workspace)}
