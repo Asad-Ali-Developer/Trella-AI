@@ -365,7 +365,7 @@ class WorkspaceContextService:
             external_id=member.trello_member_id,
             name=member.full_name or member.username,
             username=member.username,
-            role_tag=member.role_tag,
+            role_tag=cast(MemberRoleTag, member.role_tag),
         )
 
     async def summarize_cards(
