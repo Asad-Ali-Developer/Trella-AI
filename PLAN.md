@@ -10,6 +10,18 @@ A SaaS where a user signs up, connects Trello (input connector), attaches a **sk
 
 **Flow:** Trello boards → synced cards and comments → context graph (client → board → list → card → comments → people) → LLM skill run → cited insights → dashboard / Slack / email.
 
+### Product vision: one workspace, one client context
+
+DeepClient is the shared client-work hub for each workspace—not just a collection of integrations. A workspace connects the tools its team uses, brings their activity into a shared client context, and turns that context into useful, traceable reports.
+
+- **Bring work in:** Trello boards and GitHub repositories provide complementary context. Trello shows planned and active client work; GitHub adds related repositories, commits, and development activity. Jira is a future input connector.
+- **Connect the dots:** associate sources with clients and relate relevant work across tools, so a team can understand how project activity and delivery connect.
+- **Turn context into insight:** skills analyze the connected, workspace-scoped information and produce reports with links back to their sources.
+- **Share outcomes:** users review reports in DeepClient and can deliver them through Slack; email is another planned delivery channel.
+- **Keep each workspace distinct:** authorized provider accounts can be reused, while each workspace's app links, source selections, client mappings, and reports remain separate.
+
+**North star:** a team can open a client in its workspace and understand what was requested, what work is happening across connected tools, and what needs attention—then share that understanding with the right people.
+
 ## 2. Guiding principles
 
 1. **Build vertically.** One skill working end to end before anything else.
@@ -82,7 +94,8 @@ Each module follows the same layers: `router.py` → `service.py` → `repositor
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `users`                                             | id, email, name, created_at                                                                                                            |
 | `workspaces`, `memberships`                       | workspace_id, user_id, role (owner/admin/member)                                                                                       |
-| `connections`                                       | workspace_id, type (trello/slack/email), encrypted_token, scopes, status, external_account_id                                          |
+| `provider_accounts`                                | user_id, provider, encrypted_token, status, external_account_id, external_username                                                     |
+| `connections`                                       | workspace_id, user_id, provider, provider_account_id, status                                                                           |
 | `sources`                                           | workspace_id, connection_id, trello_board_id, name, sync_status, last_synced_at, excluded                                              |
 | `clients`                                           | workspace_id, name, mapping_rule (board/label/list), external_ref                                                                      |
 | `cards`                                             | source_id, client_id, external_id, list_name, title, description, labels, checklists, due, closed, url, content_hash, last_activity_at |
@@ -130,31 +143,35 @@ Tasks
 
 Tasks
 
-- [ ] SQLAlchemy base, session handling, Alembic set up.
-- [ ] Models and migrations: users, workspaces, memberships, audit_logs.
-- [ ] Auth: signup, login, JWT verification dependency, `current_user` and `current_workspace` dependencies; use HttpOnly access/refresh cookies, CSRF validation for cookie-authenticated writes, and Redux Toolkit for user/session state only.
-- [ ] Workspace-scoped repository base class.
-- [ ] Encryption utility (AES-GCM or Fernet) with unit tests and a key rotation plan.
-- [ ] structlog and Sentry, with secrets never logged.
-- [ ] Next.js shell: auth pages, dashboard layout, workspace switcher.
-- [ ] CI: lint, mypy, tests.
+- [X] SQLAlchemy base, session handling, Alembic set up.
+- [X] Models and migrations: users, workspaces, memberships, audit_logs.
+- [X] Auth: signup, login, password reset, JWT verification dependency, `current_user` and `current_workspace` dependencies; use HttpOnly access/refresh cookies, CSRF validation for cookie-authenticated writes, and Redux Toolkit for user/session state only.
+- [X] Transactional email dispatch via Celery for welcome and password-reset messages.
+- [X] Workspace-scoped repository base class.
+- [X] Encryption utility (Fernet) with unit tests and an operational key rotation procedure.
+- [X] structlog and Sentry, with secrets filtered from logs.
+- [X] Next.js shell: signup, login, forgot/reset password, dashboard layout, workspace switcher.
+- [X] CI: lint, mypy, migrations, tests, frontend lint, and type checking.
 
-**Done when:** a user can sign up, create a workspace, and CI is green.
+**Done when:** a user can sign up, receive a welcome email, reset their password, create a workspace, and CI checks pass.
 
 ### Phase 2: Trello connector (Weeks 3-5)
 
 Tasks
 
-- [X] Trello OAuth 2.0 confidential authorization-code flow with PKCE; use one configured callback URL per deployment, bind one-time state to the initiating user/workspace, and encrypt access/refresh tokens.
+- [X] Trello authorization with encrypted, reusable user-owned account credentials and workspace-scoped links; bind one-time state to the initiating user/workspace.
 - [X] `TrelloClient` in httpx with retry and backoff.
-- [ ] Redis-based rate limiter (Trello limits per key and per token; verify current limits in the docs).
+- [X] Redis-based rate limiter (300 requests per key/10 seconds, 100 per token/10 seconds, and 100 member-route requests/900 seconds).
 - [X] Board picker UI with an exclude-board option.
-- [ ] Models: sources, clients, cards, comments, members.
-- [ ] Celery sync tasks with pagination and idempotent upserts; sync status visible in the UI.
-- [ ] Webhook endpoint (public HTTPS, verify the HMAC signature header) for incremental updates; use Cloudflare Tunnel or ngrok in dev.
-- [ ] Client-mapping UI: board = client, label = client, or list = client.
+- [X] Models: sources, clients, cards, comments, members, and webhook events.
+- [X] Celery sync tasks with pagination and idempotent upserts; sync status visible in the UI.
+- [X] Webhook endpoint with HMAC signature verification for incremental board refreshes.
+- [X] Client-mapping UI: board = client, label = client, or list = client.
+- [X] GitHub OAuth with reusable encrypted accounts, workspace repository selection, client association, and background commit sync.
 
-The Trella app uses one confidential OAuth Client ID and secret across users. Configure one fixed callback URL per deployment; each authorization uses one-time state and stores a separate encrypted token pair for the connecting user in that workspace.
+The Trella app uses one confidential OAuth Client ID and secret across users. Configure one fixed callback URL per deployment; each authorization uses one-time state and stores an encrypted account credential once per user/provider/account. Workspace links, selected boards, and synced data remain workspace-scoped. A user can reuse an authorized account in another workspace or connect a different account there.
+For live webhooks, configure `TRELLO_WEBHOOK_CALLBACK_URL` as the exact public HTTPS callback and `TRELLO_WEBHOOK_SECRET` as the Trello App Secret; without those external deployment settings, manual sync remains available but automatic updates are disabled.
+For GitHub, configure an OAuth App callback at `http://localhost:3000/dashboard/github/callback` and set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `GITHUB_CALLBACK_URL`. Selected repositories sync recent commit metadata through the worker; commits are included in context only for their workspace and optional client association.
 
 **Done when:** a 500-card board syncs fully, and editing a card in Trello updates your DB within a minute.
 
@@ -162,25 +179,26 @@ The Trella app uses one confidential OAuth Client ID and secret across users. Co
 
 Tasks
 
-- [ ] Graph assembly: client → board → list → card → comments → people.
-- [ ] Member classification (client vs internal) with manual override.
-- [ ] Token counting and chunking.
-- [ ] Per-card summarization cached by `content_hash`.
-- [ ] Embeddings into pgvector and similarity search for related cards.
+- [X] Workspace-scoped context endpoint and ordered graph assembly from included Trello boards and GitHub repositories → clients → cards → comments → people → commits.
+- [X] Include all active accounts linked to the selected workspace; a single connected account is sufficient, and other workspaces' accounts and sources are excluded.
+- [X] Token-budgeted chunking for context items, with estimated token counts until the target model/tokenizer is selected.
+- [X] Workspace-scoped member classification (`client`, `internal`, or `unknown`) with owner/admin manual override.
+- [X] Per-card Gemini summaries cached by card content hash, model, and prompt version; card and comment edits invalidate the cache.
+- [X] Workspace-scoped Gemini embeddings in pgvector with related-card search limited to active, included sources.
 
-**Done when:** "full context for Client X" returns an ordered, token-budgeted structure.
+**Done when:** the selected workspace and optional client return an ordered, token-budgeted snapshot, with manual people labels, cached card summaries, and similarity search. Trello and GitHub are supported sources; set `GEMINI_API_KEY` to enable summaries and semantic search.
 
 ### Phase 4: LLM layer and skill engine (Weeks 6-8)
 
 Tasks
 
-- [ ] `LLMProvider` interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
-- [ ] Skill definition format (see section 8) with validation and versioning.
-- [ ] Built-in skill 1: **Client Needs Analyzer**. Skill 2 later: **Scope Change Detector**.
-- [ ] Structured output enforced with Pydantic.
-- [ ] Citation validator: reject any insight whose source IDs do not exist in the input context.
-- [ ] Cost tracking per run and Langfuse tracing.
-- [ ] Prompt regression set from 3 to 5 anonymized real boards.
+- [X] `LLMProvider` interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
+- [X] Skill definition format (see section 8) with validation and versioning.
+- [X] Built-in skill 1: **Client Needs Analyzer**. Skill 2 later: **Scope Change Detector**.
+- [X] Structured output enforced with Pydantic.
+- [X] Citation validator: reject any insight whose source IDs do not exist in the input context.
+- [X] Cost tracking per run and Langfuse tracing.
+- [X] Prompt regression set from 3 to 5 anonymized real boards.
 
 **Done when:** a run on a real board produces a schema-valid report where every insight links to real cards, at a known cost.
 
@@ -188,11 +206,11 @@ Tasks
 
 Tasks
 
-- [ ] Run-now button, run status (polling or SSE).
-- [ ] Report view with clickable Trello source links.
-- [ ] Client profile page: needs, recurring requests, stakeholders, timeline.
-- [ ] Run history.
-- [ ] Thumbs up/down on each insight (feeds your quality evaluation).
+- [X] Run-now button, run status (polling or SSE).
+- [X] Report view with clickable Trello source links.
+- [X] Client profile page: needs, recurring requests, stakeholders, timeline.
+- [X] Run history.
+- [X] Thumbs up/down on each insight (feeds your quality evaluation).
 
 **Done when:** a non-technical tester can run and understand a report without help, and every screen is verified at mobile, tablet, and desktop viewport sizes.
 

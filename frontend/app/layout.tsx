@@ -7,8 +7,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Client Insights",
-  description: "Trello + AI client insights",
+  title: "Deep Client",
+  description: "DeepClient brings client work and insights together.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

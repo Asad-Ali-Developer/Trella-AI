@@ -1,7 +1,11 @@
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from httpx import AsyncClient
+
+from app.core.config import settings
+from app.modules.auth import router as auth_router
 
 
 @pytest.mark.asyncio
@@ -23,8 +27,12 @@ async def test_signup_success(async_client: AsyncClient) -> None:
     assert "access_token" not in data
     assert "refresh_token" not in data
     set_cookie_headers = response.headers.get_list("set-cookie")
-    assert any("access_token=" in value and "httponly" in value.lower() for value in set_cookie_headers)
-    assert any("refresh_token=" in value and "httponly" in value.lower() for value in set_cookie_headers)
+    assert any(
+        "access_token=" in value and "httponly" in value.lower() for value in set_cookie_headers
+    )
+    assert any(
+        "refresh_token=" in value and "httponly" in value.lower() for value in set_cookie_headers
+    )
     assert response.cookies.get("csrf_token")
 
 
@@ -100,7 +108,7 @@ async def test_login_flow(async_client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_token_refresh(async_client: AsyncClient) -> None:
     unique_email = f"refresh_{uuid.uuid4().hex[:8]}@example.com"
-    res_signup = await async_client.post(
+    await async_client.post(
         "/api/v1/auth/signup",
         json={"email": unique_email, "name": "Refresher", "password": "Password123!"},
     )
@@ -140,7 +148,7 @@ async def test_get_me_endpoint(async_client: AsyncClient) -> None:
     res_unauth = await async_client.get("/api/v1/auth/me")
     assert res_unauth.status_code == 401
 
-    res_signup = await async_client.post(
+    await async_client.post(
         "/api/v1/auth/signup",
         json={"email": unique_email, "name": "Current User", "password": "Password123!"},
     )
@@ -179,5 +187,75 @@ async def test_logout_clears_session_cookies(async_client: AsyncClient) -> None:
     )
     assert response.status_code == 204
     set_cookie_headers = response.headers.get_list("set-cookie")
-    assert any("access_token=" in value and "max-age=0" in value.lower() for value in set_cookie_headers)
-    assert any("refresh_token=" in value and "max-age=0" in value.lower() for value in set_cookie_headers)
+    assert any(
+        "access_token=" in value and "max-age=0" in value.lower() for value in set_cookie_headers
+    )
+    assert any(
+        "refresh_token=" in value and "max-age=0" in value.lower() for value in set_cookie_headers
+    )
+
+
+@pytest.mark.asyncio
+async def test_password_reset_request_is_generic_and_reset_token_is_single_use(
+    async_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "SMTP_HOST", "localhost")
+    monkeypatch.setattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000")
+    welcome_emails: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        auth_router.send_welcome_email,
+        "delay",
+        lambda *args: welcome_emails.append(args),
+    )
+    email_tasks: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        auth_router.send_password_reset_email,
+        "delay",
+        lambda *args: email_tasks.append(args),
+    )
+    email = f"reset_{uuid.uuid4().hex[:8]}@example.com"
+    old_password = "OldPassword123!"
+    await async_client.post(
+        "/api/v1/auth/signup",
+        json={"email": email, "name": "Reset User", "password": old_password},
+    )
+    assert welcome_emails == [(email, "Reset User")]
+
+    known = await async_client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": email},
+    )
+    unknown = await async_client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": "missing@example.com"},
+    )
+    assert known.status_code == unknown.status_code == 202
+    assert known.json() == unknown.json()
+    assert len(email_tasks) == 1
+
+    reset_url = email_tasks[0][1]
+    token = parse_qs(urlparse(reset_url).query)["token"][0]
+    reset = await async_client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": token, "password": "NewPassword123!"},
+    )
+    assert reset.status_code == 204
+
+    reused = await async_client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": token, "password": "AnotherPassword123!"},
+    )
+    assert reused.status_code == 400
+    assert (
+        await async_client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": old_password},
+        )
+    ).status_code == 401
+    assert (
+        await async_client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "NewPassword123!"},
+        )
+    ).status_code == 200

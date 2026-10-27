@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to DeepClient{% endblock %}
+
+{% block preheader %}Welcome to DeepClient, {{ name }}! Your shared client context and AI insights hub is ready.{% endblock %}
+
+{% block content %}
+<!-- Welcome Badge -->
+<div style="margin-bottom: 16px;">
+  <span style="display: inline-block; background-color: #EEF2FF; color: #4338CA; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+    Welcome Aboard
+  </span>
+</div>
+
+<!-- Headline -->
+<h1 class="hero-title" style="margin: 0 0 14px 0; font-size: 24px; font-weight: 700; color: #0F172A; letter-spacing: -0.5px; line-height: 32px;">
+  Welcome to DeepClient, {{ name }}!
+</h1>
+
+<!-- Introduction -->
+<p style="margin: 0 0 20px 0; font-size: 15px; line-height: 24px; color: #475569;">
+  Your account is ready. DeepClient is the shared client-work hub for your team—connecting your project tools into a shared client context and turning that activity into traceable, actionable AI reports.
+</p>
+
+<!-- Feature Highlight Box -->
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 24px;">
+  <tr>
+    <td style="padding: 20px;">
+      <p style="margin: 0 0 12px 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B;">
+        What you can do with DeepClient
+      </p>
+
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td style="padding-bottom: 12px; vertical-align: top; width: 28px;">
+            <span style="font-size: 16px;">🔗</span>
+          </td>
+          <td style="padding-bottom: 12px; vertical-align: top;">
+            <strong style="color: #0F172A; font-size: 14px;">Connect Your Tools</strong>
+            <p style="margin: 2px 0 0 0; font-size: 13px; color: #64748B; line-height: 18px;">
+              Bring planned client work from Trello boards and active development code from GitHub repositories.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-bottom: 12px; vertical-align: top; width: 28px;">
+            <span style="font-size: 16px;">🧠</span>
+          </td>
+          <td style="padding-bottom: 12px; vertical-align: top;">
+            <strong style="color: #0F172A; font-size: 14px;">Unified Client Context</strong>
+            <p style="margin: 2px 0 0 0; font-size: 13px; color: #64748B; line-height: 18px;">
+              Organize boards, cards, commits, comments, and client stakeholders in one dedicated client view.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="vertical-align: top; width: 28px;">
+            <span style="font-size: 16px;">📊</span>
+          </td>
+          <td style="vertical-align: top;">
+            <strong style="color: #0F172A; font-size: 14px;">AI-Powered Client Insights</strong>
+            <p style="margin: 2px 0 0 0; font-size: 13px; color: #64748B; line-height: 18px;">
+              Run smart skills to extract client needs, scope changes, and project risks—with every claim citing exact cards and commits.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<!-- Getting Started Steps -->
+<p style="margin: 0 0 12px 0; font-weight: 600; color: #0F172A; font-size: 15px;">
+  Ready to get started?
+</p>
+<ol style="margin: 0 0 24px 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 22px;">
+  <li style="margin-bottom: 6px;">Sign in and select or create your client workspace.</li>
+  <li style="margin-bottom: 6px;">Visit <strong>Connected Apps</strong> to connect Trello and GitHub.</li>
+  <li style="margin-bottom: 6px;">Explore your workspace context snapshot and semantic similarity search.</li>
+</ol>
+
+<!-- Primary CTA Button -->
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+  <tr>
+    <td align="center" style="border-radius: 10px; background-color: #4F46E5;">
+      <a href="{{ dashboard_url }}" class="btn" target="_blank" style="display: inline-block; padding: 14px 28px; font-size: 15px; font-weight: 600; color: #FFFFFF; text-decoration: none; border-radius: 10px; background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%); box-shadow: 0 4px 10px rgba(79, 70, 229, 0.35);">
+        Open Your Dashboard &rarr;
+      </a>
+    </td>
+  </tr>
+</table>
+
+<p style="margin: 0; font-size: 14px; color: #64748B; line-height: 20px;">
+  Have questions? We’re always here to help your team succeed.
+</p>
+{% endblock %}

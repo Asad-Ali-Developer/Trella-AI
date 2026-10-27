@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.workspaces.schemas import (
     WorkspaceCreateRequest,
+    WorkspaceUpdateRequest,
     WorkspaceWithRoleResponse,
 )
 from app.modules.workspaces.service import WorkspaceService
@@ -60,3 +61,19 @@ async def get_workspace(
     """Get details for a specific workspace if user is a member."""
     service = WorkspaceService(db)
     return await service.get_workspace_details(workspace_id, current_user)
+
+
+@router.patch(
+    "/{workspace_id}",
+    response_model=WorkspaceWithRoleResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update workspace details",
+)
+async def update_workspace(
+    workspace_id: uuid.UUID,
+    payload: WorkspaceUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WorkspaceWithRoleResponse:
+    service = WorkspaceService(db)
+    return await service.update_workspace(workspace_id, payload, current_user)

@@ -1,4 +1,4 @@
-# Frontend - Client Insights
+# DeepClient frontend
 
 Next.js (App Router) + TypeScript + Tailwind CSS. Auth pages, dashboard layout, and workspace switcher for Phase 1.
 

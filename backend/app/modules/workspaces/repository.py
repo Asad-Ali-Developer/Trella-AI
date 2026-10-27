@@ -19,16 +19,39 @@ class WorkspaceRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def update_workspace(
+        self,
+        workspace: Workspace,
+        *,
+        name: str,
+        description: str | None,
+        client_name: str | None,
+    ) -> Workspace:
+        workspace.name = name.strip()
+        workspace.description = description.strip() if description and description.strip() else None
+        workspace.client_name = client_name.strip() if client_name and client_name.strip() else None
+        await self.db.flush()
+        return workspace
+
     async def get_by_slug(self, slug: str) -> Workspace | None:
         """Fetch workspace by unique slug."""
         stmt = select(Workspace).where(Workspace.slug == slug.lower().strip())
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create_workspace(self, name: str, slug: str, owner_id: uuid.UUID) -> Workspace:
+    async def create_workspace(
+        self,
+        name: str,
+        slug: str,
+        owner_id: uuid.UUID,
+        description: str | None = None,
+        client_name: str | None = None,
+    ) -> Workspace:
         """Create and persist a new workspace."""
         workspace = Workspace(
             name=name.strip(),
+            description=description.strip() if description and description.strip() else None,
+            client_name=client_name.strip() if client_name and client_name.strip() else None,
             slug=slug.lower().strip(),
             owner_id=owner_id,
         )

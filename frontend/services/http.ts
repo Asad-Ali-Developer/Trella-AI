@@ -26,7 +26,9 @@ http.interceptors.request.use((request: InternalAxiosRequestConfig) => {
     if (csrfToken) request.headers["X-CSRF-Token"] = csrfToken;
   }
   const workspaceId = workspaceStore.getWorkspaceId();
-  if (workspaceId) request.headers["X-Workspace-Id"] = workspaceId;
+  if (workspaceId && !request.headers["X-Workspace-Id"]) {
+    request.headers["X-Workspace-Id"] = workspaceId;
+  }
   return request;
 });
 

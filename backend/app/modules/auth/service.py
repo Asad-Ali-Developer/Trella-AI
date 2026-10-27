@@ -1,4 +1,7 @@
+import hashlib
+import secrets
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +18,7 @@ from app.core.security.auth import (
 from app.modules.auth.models import User
 from app.modules.auth.repository import UserRepository
 from app.modules.auth.schemas import (
+    PasswordResetConfirmRequest,
     RefreshTokenRequest,
     TokenResponse,
     UserLoginRequest,
@@ -47,6 +51,42 @@ class AuthService:
 
         tokens = self._generate_tokens(user.id)
         return user, tokens
+
+    async def request_password_reset(self, email: str) -> tuple[str, str] | None:
+        """Create a hashed one-time reset token for an existing active account."""
+        user = await self.user_repo.get_by_email(email)
+        if user is None or not user.is_active:
+            return None
+
+        token = secrets.token_urlsafe(32)
+        await self.user_repo.create_password_reset_token(
+            user_id=user.id,
+            token_hash=hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            expires_at=datetime.now(UTC)
+            + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+        )
+        return user.email, token
+
+    async def reset_password(self, request: PasswordResetConfirmRequest) -> None:
+        """Consume a valid reset token and replace the user's password."""
+        token_hash = hashlib.sha256(request.token.encode("utf-8")).hexdigest()
+        reset_token = await self.user_repo.consume_password_reset_token(
+            token_hash=token_hash,
+            now=datetime.now(UTC),
+        )
+        if reset_token is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password reset link is invalid or expired. Request a new one.",
+            )
+
+        user = await self.user_repo.get_by_id(reset_token.user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password reset link is invalid or expired. Request a new one.",
+            )
+        await self.user_repo.update(user, hashed_password=hash_password(request.password))
 
     async def login(self, request: UserLoginRequest) -> tuple[User, TokenResponse]:
         """Authenticate user credentials and generate tokens."""

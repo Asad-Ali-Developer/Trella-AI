@@ -86,6 +86,7 @@ def setup_logging() -> None:
     root_logger = logging.getLogger()
     root_logger.handlers = [handler]
     root_logger.setLevel(logging.INFO if not settings.DEBUG else logging.DEBUG)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

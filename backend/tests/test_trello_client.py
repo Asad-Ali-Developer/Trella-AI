@@ -1,19 +1,59 @@
 import base64
 import hashlib
 import json
+from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import httpx
 import pytest
 import respx
+from sqlalchemy.dialects import postgresql
 
 from app.core.config import settings
 from app.core.security.encryption import encryption
+from app.modules.connections.models import ProviderAccount
 from app.modules.connections.repository import ConnectionRepository
 from app.modules.trello.client import TrelloAPIError, TrelloClient
 from app.modules.trello.oauth import TrelloOAuthClient, TrelloOAuthError
 from app.modules.trello.service import TrelloConnectionService
+from app.modules.trello.webhooks import (
+    trello_webhook_signature,
+    verify_trello_webhook_signature,
+)
+
+
+@pytest.mark.asyncio
+async def test_upsert_connection_compiles_against_unique_model_constraint() -> None:
+    account_result = Mock()
+    account_result.scalar_one.return_value = ProviderAccount(
+        user_id=uuid4(),
+        provider="trello",
+        encrypted_token="encrypted-token",
+        status="active",
+        external_account_id="trello-user-id",
+        external_username="trello-user",
+    )
+    link_result = Mock()
+    link_result.scalar_one_or_none.return_value = None
+    db = Mock()
+    db.execute = AsyncMock(side_effect=[account_result, link_result])
+    db.flush = AsyncMock()
+    repository = ConnectionRepository(db)
+
+    await repository.upsert_provider_connection(
+        workspace_id=uuid4(),
+        provider="trello",
+        user_id=uuid4(),
+        encrypted_token="encrypted-token",
+        external_account_id="trello-user-id",
+        external_username="trello-user",
+    )
+
+    statement = db.execute.await_args_list[0].args[0]
+    sql = str(statement.compile(dialect=postgresql.dialect()))
+    assert "ON CONFLICT ON CONSTRAINT uq_provider_accounts_user_provider_external" in sql
+    assert "constraint" not in statement.compile(dialect=postgresql.dialect()).params
 
 
 @pytest.mark.asyncio
@@ -31,6 +71,7 @@ async def test_get_member_uses_oauth_bearer_token() -> None:
 
     assert member["id"] == "member-1"
     assert route.called
+    assert route.calls.last.request.headers["Authorization"].lower().startswith("bearer ")
     assert route.calls.last.request.headers["Authorization"] == "Bearer user-token"
 
 
@@ -50,6 +91,59 @@ async def test_list_boards_requests_open_board_fields() -> None:
     assert boards[0]["id"] == "board-1"
     assert route.calls.last.request.url.params["filter"] == "open"
     assert route.calls.last.request.url.params["fields"] == "id,name,url,closed"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_list_board_cards_paginates_by_last_activity() -> None:
+    page = [
+        {"id": f"card-{index}", "dateLastActivity": "2026-01-01T00:00:00.000Z"}
+        for index in range(1000)
+    ]
+    route = respx.get("https://api.trello.com/1/boards/board-1/cards").mock(
+        side_effect=[
+            httpx.Response(200, json=page),
+            httpx.Response(200, json=[{"id": "card-last"}]),
+        ]
+    )
+
+    async with TrelloClient(token="user-token") as client:
+        cards = await client.list_board_cards("board-1")
+
+    assert len(cards) == 1001
+    assert route.call_count == 2
+    assert route.calls[1].request.url.params["before"] == "2026-01-01T00:00:00.000Z"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_list_board_comments_paginates_by_page_number() -> None:
+    page = [{"id": f"action-{index}"} for index in range(1000)]
+    route = respx.get("https://api.trello.com/1/boards/board-1/actions").mock(
+        side_effect=[
+            httpx.Response(200, json=page),
+            httpx.Response(200, json=[{"id": "action-last"}]),
+        ]
+    )
+
+    async with TrelloClient(token="user-token") as client:
+        actions = await client.list_board_comments("board-1")
+
+    assert len(actions) == 1001
+    assert route.calls[0].request.url.params["page"] == "0"
+    assert route.calls[1].request.url.params["page"] == "1"
+
+
+def test_trello_webhook_signature_requires_exact_body_and_callback_url() -> None:
+    body = b'{"action":{"id":"action-1"}}'
+    callback_url = "https://example.test/api/v1/connections/trello/webhooks"
+    signature = trello_webhook_signature(body, "application-secret", callback_url)
+
+    assert verify_trello_webhook_signature(body, signature, "application-secret", callback_url)
+    assert not verify_trello_webhook_signature(
+        body + b" ", signature, "application-secret", callback_url
+    )
+    assert not verify_trello_webhook_signature(body, None, "application-secret", callback_url)
 
 
 @pytest.mark.asyncio
@@ -143,6 +237,43 @@ async def test_oauth_authorization_url_binds_state_and_pkce_to_workspace(
     assert captured["workspace_id"] == workspace_id
     assert captured["user_id"] == user_id
     assert captured["state_hash"] == hashlib.sha256(query["state"][0].encode()).hexdigest()
+
+
+@pytest.mark.asyncio
+async def test_token_authorization_url_uses_trello_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "TRELLO_API_KEY", "trello-api-key")
+    monkeypatch.setattr(
+        settings,
+        "TRELLO_TOKEN_RETURN_URL",
+        "http://localhost:3000/dashboard/trello/callback",
+    )
+    monkeypatch.setattr(settings, "TRELLO_TOKEN_SCOPE", "read")
+    monkeypatch.setattr(settings, "TRELLO_TOKEN_EXPIRATION", "never")
+    captured: dict[str, object] = {}
+
+    async def capture_state(_repository: ConnectionRepository, **values: object) -> None:
+        captured.update(values)
+
+    monkeypatch.setattr(ConnectionRepository, "create_oauth_state", capture_state)
+    service = TrelloConnectionService(None, uuid4(), uuid4())  # type: ignore[arg-type]
+
+    parsed = urlparse(await service.token_authorization_url())
+    query = parse_qs(parsed.query)
+    return_url = urlparse(query["return_url"][0])
+    return_query = parse_qs(return_url.query)
+
+    assert parsed.netloc == "trello.com"
+    assert parsed.path == "/1/authorize"
+    assert query["key"] == ["trello-api-key"]
+    assert query["scope"] == ["read"]
+    assert query["expiration"] == ["never"]
+    assert query["response_type"] == ["token"]
+    assert query["callback_method"] == ["fragment"]
+    assert return_url.path == "/dashboard/trello/callback"
+    assert len(return_query["state"][0]) >= 32
+    assert captured["state_hash"] == hashlib.sha256(return_query["state"][0].encode()).hexdigest()
 
 
 @pytest.mark.asyncio

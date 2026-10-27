@@ -31,6 +31,14 @@ services:
       timeout: 5s
       retries: 5
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: client-insights-mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
   api:
     build:
       context: ./backend
@@ -38,6 +46,8 @@ services:
     container_name: client-insights-api
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
     environment:
       - APP_ENV=development
       - DEBUG=true
@@ -52,14 +62,39 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-http://localhost:3000}
+      - SMTP_HOST=${SMTP_HOST:-mailpit}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@client-insights.local}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-false}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
+      - PASSWORD_RESET_TOKEN_EXPIRE_MINUTES=${PASSWORD_RESET_TOKEN_EXPIRE_MINUTES:-30}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY:-}
+      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN:-}
+      - MAILGUN_API_BASE_URL=${MAILGUN_API_BASE_URL:-https://api.mailgun.net/v3}
+      - MAILGUN_FROM_EMAIL=${MAILGUN_FROM_EMAIL:-}
       - SECRET_KEY=${SECRET_KEY:-temporary_dev_secret_key_minimum_32_chars_long}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGhpc19pc19hXzMyX2J5dGVfZXhhbXBsZV9rZXlfMTI=}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - TRELLO_API_BASE_URL=${TRELLO_API_BASE_URL:-https://api.trello.com/1}
+      - TRELLO_API_KEY=${TRELLO_API_KEY:-}
+      - TRELLO_WEBHOOK_CALLBACK_URL=${TRELLO_WEBHOOK_CALLBACK_URL:-}
+      - TRELLO_WEBHOOK_SECRET=${TRELLO_WEBHOOK_SECRET:-}
+      - TRELLO_TOKEN_RETURN_URL=${TRELLO_TOKEN_RETURN_URL:-http://localhost:3000/dashboard/trello/callback}
+      - TRELLO_TOKEN_SCOPE=${TRELLO_TOKEN_SCOPE:-read}
+      - TRELLO_TOKEN_EXPIRATION=${TRELLO_TOKEN_EXPIRATION:-never}
       - TRELLO_OAUTH_CLIENT_ID=${TRELLO_OAUTH_CLIENT_ID:-}
       - TRELLO_OAUTH_CLIENT_SECRET=${TRELLO_OAUTH_CLIENT_SECRET:-}
       - TRELLO_OAUTH_CALLBACK_URL=${TRELLO_OAUTH_CALLBACK_URL:-http://localhost:3000/dashboard/trello/callback}
       - TRELLO_OAUTH_SCOPES=${TRELLO_OAUTH_SCOPES:-read:board:trello read:organization:trello read:member:trello offline_access}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-}
+      - JIRA_CLIENT_ID=${JIRA_CLIENT_ID:-}
+      - JIRA_CLIENT_SECRET=${JIRA_CLIENT_SECRET:-}
+      - JIRA_CALLBACK_URL=${JIRA_CALLBACK_URL:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ENCRYPTION_FALLBACK_KEYS=${ENCRYPTION_FALLBACK_KEYS:-}
     ports:
@@ -71,6 +106,57 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: client-insights-worker
+    restart: unless-stopped
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=INFO
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=development
+      - DEBUG=false
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/client_insights
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-http://localhost:3000}
+      - SMTP_HOST=${SMTP_HOST:-mailpit}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@client-insights.local}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-false}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
+      - PASSWORD_RESET_TOKEN_EXPIRE_MINUTES=${PASSWORD_RESET_TOKEN_EXPIRE_MINUTES:-30}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY:-}
+      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN:-}
+      - MAILGUN_API_BASE_URL=${MAILGUN_API_BASE_URL:-https://api.mailgun.net/v3}
+      - MAILGUN_FROM_EMAIL=${MAILGUN_FROM_EMAIL:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - TRELLO_API_BASE_URL=${TRELLO_API_BASE_URL:-https://api.trello.com/1}
+      - TRELLO_API_KEY=${TRELLO_API_KEY:-}
+      - TRELLO_WEBHOOK_CALLBACK_URL=${TRELLO_WEBHOOK_CALLBACK_URL:-}
+      - TRELLO_WEBHOOK_SECRET=${TRELLO_WEBHOOK_SECRET:-}
+      - TRELLO_OAUTH_CLIENT_ID=${TRELLO_OAUTH_CLIENT_ID:-}
+      - TRELLO_OAUTH_CLIENT_SECRET=${TRELLO_OAUTH_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-}
+      - JIRA_CLIENT_ID=${JIRA_CLIENT_ID:-}
+      - JIRA_CLIENT_SECRET=${JIRA_CLIENT_SECRET:-}
+      - JIRA_CALLBACK_URL=${JIRA_CALLBACK_URL:-}
+      - SECRET_KEY=${SECRET_KEY:-temporary_dev_secret_key_minimum_32_chars_long}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGhpc19pc19hXzMyX2J5dGVfZXhhbXBsZV9rZXlfMTI=}
+      - ENCRYPTION_FALLBACK_KEYS=${ENCRYPTION_FALLBACK_KEYS:-}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
 
   frontend:
     build:
