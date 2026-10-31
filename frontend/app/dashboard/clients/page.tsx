@@ -262,62 +262,62 @@ export default function ClientsPage() {
               return (
                 <div
                   key={client.id}
-                  className="group relative flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-indigo-300 hover:shadow-md"
+                  className="group relative flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-[#4A5C6A] hover:shadow-md dark:border-[#253745] dark:bg-[#11212D]"
                 >
                   <div>
                     {/* Header: Name & Risk Badge */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 font-bold text-white shadow-sm">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#253745] font-bold text-white shadow-sm border border-[#4A5C6A]">
                           {client.name.trim().charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <h3 className="font-bold text-zinc-900 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                          <h3 className="font-bold text-zinc-900 group-hover:text-indigo-600 transition-colors line-clamp-1 dark:text-[#F1F5F9] dark:group-hover:text-[#CCD0CF]">
                             {client.name}
                           </h3>
-                          <p className="text-xs text-zinc-400">
+                          <p className="text-xs text-zinc-400 dark:text-[#9BA8AB]">
                             Added {new Date(client.created_at).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
 
                       {hasHighRisks ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 border border-rose-200">
-                          <AlertTriangle className="h-3 w-3 text-rose-600" />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60">
+                          <AlertTriangle className="h-3 w-3 text-rose-600 dark:text-rose-400" />
                           {client.risks_count} {client.risks_count === 1 ? "Risk" : "Risks"}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                           Healthy
                         </span>
                       )}
                     </div>
 
                     {/* Metrics Row */}
-                    <div className="mt-5 grid grid-cols-3 gap-2 border-y border-zinc-100 py-3.5 text-center">
+                    <div className="mt-5 grid grid-cols-3 gap-2 border-y border-zinc-100 py-3.5 text-center dark:border-[#253745]">
                       <div>
-                        <span className="block text-xs text-zinc-400">Cards</span>
-                        <span className="mt-0.5 block text-base font-bold text-zinc-800">
+                        <span className="block text-xs text-zinc-400 dark:text-[#9BA8AB]">Cards</span>
+                        <span className="mt-0.5 block text-base font-bold text-zinc-800 dark:text-[#F1F5F9]">
                           {client.cards_count}
                         </span>
                       </div>
                       <div>
-                        <span className="block text-xs text-zinc-400">Needs</span>
-                        <span className="mt-0.5 block text-base font-bold text-indigo-600">
+                        <span className="block text-xs text-zinc-400 dark:text-[#9BA8AB]">Needs</span>
+                        <span className="mt-0.5 block text-base font-bold text-indigo-600 dark:text-[#CCD0CF]">
                           {client.needs_count}
                         </span>
                       </div>
                       <div>
-                        <span className="block text-xs text-zinc-400">Insights</span>
-                        <span className="mt-0.5 block text-base font-bold text-zinc-800">
+                        <span className="block text-xs text-zinc-400 dark:text-[#9BA8AB]">Insights</span>
+                        <span className="mt-0.5 block text-base font-bold text-zinc-800 dark:text-[#F1F5F9]">
                           {client.insights_count}
                         </span>
                       </div>
                     </div>
 
                     {/* Last Run Date */}
-                    <p className="mt-3 text-xs text-zinc-400">
+                    <p className="mt-3 text-xs text-zinc-400 dark:text-[#9BA8AB]">
                       {client.last_run_at ? (
                         <>Last Analysis: {new Date(client.last_run_at).toLocaleDateString()}</>
                       ) : (
@@ -330,7 +330,7 @@ export default function ClientsPage() {
                   <div className="mt-5 pt-2">
                     <Link
                       href={`/dashboard/clients/${client.id}`}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-50 py-2.5 text-xs font-semibold text-zinc-700 transition-colors hover:bg-indigo-600 hover:text-white"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-50 py-2.5 text-xs font-semibold text-zinc-700 transition-colors hover:bg-indigo-600 hover:text-white dark:bg-[#162736] dark:text-[#CCD0CF] dark:border dark:border-[#253745] dark:hover:bg-[#253745] dark:hover:text-white"
                     >
                       View Profile & Dossier
                       <ArrowRight className="h-3.5 w-3.5" />

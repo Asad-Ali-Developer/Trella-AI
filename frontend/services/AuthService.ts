@@ -20,6 +20,16 @@ class AuthService {
     return data;
   }
 
+  async googleAuth(payload?: {
+    email?: string;
+    name?: string;
+    credential?: string;
+    code?: string;
+  }): Promise<AuthResponse> {
+    const { data } = await http.post<AuthResponse>("/auth/google", payload ?? {});
+    return data;
+  }
+
   async requestPasswordReset(email: string): Promise<void> {
     await http.post("/auth/password-reset/request", { email });
   }

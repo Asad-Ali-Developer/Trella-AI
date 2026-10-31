@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -8,14 +9,27 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        border: "hsl(240 5% 84%)",
-        background: "hsl(0 0% 100%)",
-        foreground: "hsl(240 10% 4%)",
-        muted: "hsl(240 5% 96%)",
-        "muted-foreground": "hsl(240 4% 46%)",
-        accent: "hsl(243 75% 59%)",
-        "accent-foreground": "hsl(0 0% 100%)",
-        card: "hsl(0 0% 100%)",
+        palette: {
+          darkest: "#06141B",
+          navy: "#11212D",
+          deep: "#253745",
+          slate: "#4A5C6A",
+          muted: "#9BA8AB",
+          light: "#CCD0CF",
+        },
+        border: "var(--border)",
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        muted: "var(--muted)",
+        "muted-foreground": "var(--muted-foreground)",
+        accent: "var(--accent)",
+        "accent-foreground": "var(--accent-foreground)",
+        card: "var(--card)",
+      },
+      borderRadius: {
+        box: "1rem",
+        card: "1.25rem",
+        pill: "9999px",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

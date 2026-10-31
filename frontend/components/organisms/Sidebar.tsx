@@ -1,11 +1,21 @@
 "use client";
 
-import { Blocks, BrainCircuit, BriefcaseBusiness, FileText, LayoutDashboard, LogOut, Sparkles, Users } from "lucide-react";
+import {
+  Blocks,
+  BrainCircuit,
+  BriefcaseBusiness,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/atoms/Button";
+import { ThemeToggle } from "@/components/atoms/ThemeToggle";
 import { WorkspaceSwitcher } from "@/components/organisms/WorkspaceSwitcher";
 import type { User, Workspace } from "@/lib/types";
 
@@ -28,13 +38,13 @@ export function Sidebar({
 
   function navClass(active: boolean) {
     return active
-      ? "flex items-center gap-3 rounded-lg bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700"
-      : "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground";
+      ? "flex items-center gap-3 rounded-xl border border-[#4A5C6A] bg-[#253745] px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all dark:text-[#F1F5F9]"
+      : "flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-[#4A5C6A] transition-colors hover:bg-[#F1F5F9] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:bg-[#162736] dark:hover:text-[#F1F5F9]";
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-zinc-200 bg-white md:h-screen md:w-64 md:border-b-0 md:border-r">
-      <div className="border-b border-zinc-100 px-5 py-2.5">
+    <aside className="flex w-full shrink-0 flex-col border-b border-[#E2E8F0] bg-white transition-colors duration-200 dark:border-[#253745] dark:bg-[#11212D] md:h-screen md:w-64 md:border-b-0 md:border-r">
+      <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-2.5 dark:border-[#253745]">
         <div className="relative h-[40px] w-full overflow-hidden" aria-label="DeepClient">
           <Image
             src="/DeepClient.png"
@@ -42,18 +52,18 @@ export function Sidebar({
             width={512}
             height={293}
             priority
-            className="absolute -top-[21px] left-0 h-auto w-[148px] max-w-none"
+            className="absolute -top-[21px] left-0 h-auto w-[148px] max-w-none dark:brightness-110"
           />
         </div>
       </div>
       <div className="space-y-6 p-4">
         <WorkspaceSwitcher
-            workspaces={workspaces}
-            selectedId={selectedId}
-            onSelect={onSelectWorkspace}
-          />
+          workspaces={workspaces}
+          selectedId={selectedId}
+          onSelect={onSelectWorkspace}
+        />
         <nav aria-label="Main navigation" className="space-y-1">
-          <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+          <p className="px-3.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-[#9BA8AB]">
             Workspace
           </p>
           <Link
@@ -126,19 +136,24 @@ export function Sidebar({
           </Link>
         </nav>
       </div>
-      <div className="mt-auto space-y-3 border-t border-zinc-100 p-4">
-        <div className="flex items-center gap-3 rounded-xl bg-zinc-50 p-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
-            {user?.name?.trim().charAt(0).toUpperCase() || "U"}
+      <div className="mt-auto space-y-3 border-t border-[#E2E8F0] p-4 dark:border-[#253745]">
+        <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#E2E8F0] bg-[#F1F5F9] p-2.5 dark:border-[#253745] dark:bg-[#162736]">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#4A5C6A] bg-[#253745] text-sm font-semibold text-white">
+              {user?.name?.trim().charAt(0).toUpperCase() || "U"}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-[#06141B] dark:text-[#F1F5F9]">
+                {user?.name ?? "…"}
+              </p>
+              <p className="truncate text-xs text-[#4A5C6A] dark:text-[#9BA8AB]">{user?.email}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-zinc-900">{user?.name ?? "…"}</p>
-            <p className="truncate text-xs text-zinc-500">{user?.email}</p>
-          </div>
+          <ThemeToggle />
         </div>
         <Button
           variant="ghost"
-          className="h-10 w-full justify-start gap-2.5 px-3 text-zinc-500 hover:text-zinc-900"
+          className="h-10 w-full justify-start gap-2.5 px-3 text-[#4A5C6A] hover:bg-[#F1F5F9] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:bg-[#162736] dark:hover:text-[#F1F5F9]"
           onClick={onLogout}
         >
           <LogOut className="h-4 w-4" />

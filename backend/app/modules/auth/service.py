@@ -52,6 +52,27 @@ class AuthService:
         tokens = self._generate_tokens(user.id)
         return user, tokens
 
+    async def google_auth(self, email: str, name: str | None = None) -> tuple[User, TokenResponse]:
+        """Authenticate or register a user via Google OAuth."""
+        clean_email = email.strip().lower()
+        user = await self.user_repo.get_by_email(clean_email)
+        if not user:
+            random_pw = secrets.token_urlsafe(32)
+            display_name = name.strip() if name and name.strip() else clean_email.split("@")[0].capitalize()
+            user = await self.user_repo.create(
+                email=clean_email,
+                name=display_name,
+                hashed_password=hash_password(random_pw),
+            )
+        elif not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive.",
+            )
+
+        tokens = self._generate_tokens(user.id)
+        return user, tokens
+
     async def request_password_reset(self, email: str) -> tuple[str, str] | None:
         """Create a hashed one-time reset token for an existing active account."""
         user = await self.user_repo.get_by_email(email)

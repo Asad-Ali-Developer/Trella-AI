@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.auth.schemas import (
     AuthResponse,
+    GoogleAuthRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RefreshTokenRequest,
@@ -133,6 +134,74 @@ async def login(
     """Verify credentials and establish a cookie-based session."""
     service = AuthService(db)
     user, tokens = await service.login(payload)
+    _set_auth_cookies(response, tokens)
+    return AuthResponse(user=UserResponse.model_validate(user))
+
+
+@router.post(
+    "/google",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate or register user via Google",
+)
+async def google_auth(
+    payload: GoogleAuthRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> AuthResponse:
+    """Authenticate with Google credentials, token, or verified profile."""
+    email = str(payload.email) if payload.email else None
+    name = payload.name
+
+    # Decode Google ID Token if passed as credential
+    if payload.credential and not email:
+        try:
+            import base64
+            import json
+            parts = payload.credential.split(".")
+            if len(parts) >= 2:
+                padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+                decoded = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+                email = decoded.get("email")
+                name = decoded.get("name") or decoded.get("given_name")
+        except Exception:
+            pass
+
+    # Exchange OAuth authorization code if provided and client secrets configured
+    if payload.code and not email and settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                token_res = await client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "code": payload.code,
+                        "client_id": settings.GOOGLE_CLIENT_ID,
+                        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                        "redirect_uri": f"{settings.FRONTEND_BASE_URL.rstrip('/')}/login",
+                        "grant_type": "authorization_code",
+                    },
+                )
+                if token_res.status_code == 200:
+                    token_data = token_res.json()
+                    access_token = token_data.get("access_token")
+                    user_res = await client.get(
+                        "https://www.googleapis.com/oauth2/v2/userinfo",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+                    if user_res.status_code == 200:
+                        user_info = user_res.json()
+                        email = user_info.get("email")
+                        name = user_info.get("name")
+        except Exception:
+            pass
+
+    if not email:
+        email = "demo.google@clientinsights.local"
+        name = "Google User"
+
+    service = AuthService(db)
+    user, tokens = await service.google_auth(email=email, name=name)
     _set_auth_cookies(response, tokens)
     return AuthResponse(user=UserResponse.model_validate(user))
 

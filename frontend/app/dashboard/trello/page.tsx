@@ -22,6 +22,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
@@ -341,21 +348,23 @@ export default function TrelloSettingsPage() {
                         Use an existing account
                       </label>
                       <div className="flex flex-col gap-2 sm:flex-row">
-                        <select
-                          id="trello-account"
-                          value={selectedAccountId}
-                          onChange={(event) => setSelectedAccountId(event.target.value)}
-                          className="min-h-10 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                        >
-                          {accounts.map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.username}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex-1">
+                          <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                            <SelectTrigger id="trello-account">
+                              <SelectValue placeholder="Choose an existing account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {accounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  {account.username}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <Button
                           type="button"
-                          className="gap-2 rounded-lg px-4"
+                          className="gap-2 rounded-xl px-4"
                           disabled={!selectedAccountId || linkingAccount}
                           onClick={() => void reuseTrelloAccount()}
                         >
@@ -528,31 +537,38 @@ export default function TrelloSettingsPage() {
               </div>
               <div className="p-5 sm:p-6">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="block text-sm font-medium text-zinc-700">
-                    Trello board
-                    <select
-                      className="mt-2 block h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-                      value={mappingBoardId}
-                      onChange={(event) => setMappingBoardId(event.target.value)}
-                    >
-                      <option value="">Choose a board</option>
-                      {includedBoards.map((board) => (
-                        <option key={board.id} value={board.id}>{board.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm font-medium text-zinc-700">
-                    Match using
-                    <select
-                      className="mt-2 block h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-                      value={mappingType}
-                      onChange={(event) => setMappingType(event.target.value as TrelloMappingType)}
-                    >
-                      <option value="board">The entire board</option>
-                      <option value="list">A Trello list</option>
-                      <option value="label">A Trello label</option>
-                    </select>
-                  </label>
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-[#CCD0CF]">
+                      Trello board
+                    </label>
+                    <Select value={mappingBoardId} onValueChange={setMappingBoardId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a board" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {includedBoards.map((board) => (
+                          <SelectItem key={board.id} value={board.id}>
+                            {board.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-[#CCD0CF]">
+                      Match using
+                    </label>
+                    <Select value={mappingType} onValueChange={(val) => setMappingType(val as TrelloMappingType)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Match using" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="board">The entire board</SelectItem>
+                        <SelectItem value="list">A Trello list</SelectItem>
+                        <SelectItem value="label">A Trello label</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   {mappingType !== "board" ? (
                     <label className="block text-sm font-medium text-zinc-700">
                       Trello {mappingType} name

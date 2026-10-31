@@ -206,14 +206,13 @@ export default function DashboardPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-8 pb-10">
-        <header className="flex flex-col gap-4 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto w-full max-w-6xl space-y-8 pb-10">        <header className="flex flex-col gap-4 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-[#253745]">
           <div>
-            <p className="text-sm font-medium text-indigo-600">Overview</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">
+            <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">Overview</p>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">
               Dashboard
             </h1>
-            <p className="mt-2 text-sm text-zinc-500">
+            <p className="mt-2 text-sm text-zinc-500 dark:text-[#9BA8AB]">
               {selectedWorkspace
                 ? `A snapshot of ${selectedWorkspace.client_name || selectedWorkspace.name}.`
                 : "Your client workspaces and connected sources at a glance."}
@@ -222,21 +221,21 @@ export default function DashboardPage() {
           <div className="flex flex-wrap gap-2">
             <Link
               href="/dashboard/clients"
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#253745] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#11212D] dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A]"
             >
               <Users className="h-4 w-4" />
               Client Dossiers
             </Link>
             <Link
               href="/dashboard/reports"
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF] dark:hover:bg-[#253745] dark:hover:text-white"
             >
               <FileText className="h-4 w-4" />
               Reports & Runs
             </Link>
             <Link
               href="/dashboard/skills"
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF] dark:hover:bg-[#253745] dark:hover:text-white"
             >
               <Sparkles className="h-4 w-4" />
               AI Skills Lab
@@ -244,7 +243,7 @@ export default function DashboardPage() {
             {selectedWorkspace ? (
               <Link
                 href="/dashboard/apps"
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF] dark:hover:bg-[#253745] dark:hover:text-white"
               >
                 Connected apps
                 <ArrowRight className="h-4 w-4" />
@@ -256,7 +255,7 @@ export default function DashboardPage() {
         {statsError ? (
           <div
             role="alert"
-            className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+            className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300"
           >
             {statsError}
           </div>
@@ -266,11 +265,11 @@ export default function DashboardPage() {
           <>
             <section aria-label="Workspace statistics">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-base font-semibold text-zinc-900">
+                <h2 className="text-base font-semibold text-zinc-900 dark:text-[#F1F5F9]">
                   Workspace overview
                 </h2>
                 {statsLoading ? (
-                  <span role="status" className="text-xs text-zinc-500">
+                  <span role="status" className="text-xs text-zinc-500 dark:text-[#9BA8AB]">
                     Refreshing stats…
                   </span>
                 ) : null}
@@ -279,10 +278,10 @@ export default function DashboardPage() {
                 {statCards.map(({ label, value, detail, Icon, color }) => (
                   <article
                     key={label}
-                    className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
+                    className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-[#253745] dark:bg-[#11212D]"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-zinc-500">
+                      <p className="text-sm font-medium text-zinc-500 dark:text-[#9BA8AB]">
                         {label}
                       </p>
                       <span
@@ -291,29 +290,29 @@ export default function DashboardPage() {
                         <Icon className="h-[18px] w-[18px]" />
                       </span>
                     </div>
-                    <p className="mt-4 text-3xl font-semibold tracking-tight text-zinc-950">
+                    <p className="mt-4 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">
                       {statsLoading && label !== "Workspaces" ? "—" : value}
                     </p>
-                    <p className="mt-1 text-xs text-zinc-500">{detail}</p>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-[#9BA8AB]">{detail}</p>
                   </article>
                 ))}
               </div>
             </section>
 
-            <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
+            <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6 dark:border-[#253745] dark:bg-[#11212D]">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-4">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-[#253745] dark:text-[#CCD0CF]">
                     <BriefcaseBusiness className="h-5 w-5" />
                   </span>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-[#9BA8AB]">
                       Current workspace
                     </p>
-                    <h2 className="mt-1 text-lg font-semibold text-zinc-950">
+                    <h2 className="mt-1 text-lg font-bold text-zinc-950 dark:text-[#F1F5F9]">
                       {selectedWorkspace.client_name || selectedWorkspace.name}
                     </h2>
-                    <p className="mt-1 text-sm text-zinc-500">
+                    <p className="mt-1 text-sm text-zinc-500 dark:text-[#9BA8AB]">
                       {selectedWorkspace.description ||
                         "Connect the tools this client’s team uses to build shared context."}
                     </p>
@@ -321,7 +320,7 @@ export default function DashboardPage() {
                 </div>
                 <Link
                   href={`/dashboard/workspaces/${selectedWorkspace.id}`}
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF] dark:hover:bg-[#253745] dark:hover:text-white"
                 >
                   View workspace
                   <ArrowRight className="h-4 w-4" />
@@ -329,19 +328,18 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 sm:p-6">
+            <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 sm:p-6 dark:border-[#253745] dark:bg-[#11212D]">
               <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700 dark:text-[#34D399]" />
                 <div>
-                  <h2 className="text-sm font-semibold text-indigo-950">
+                  <h2 className="text-sm font-semibold text-indigo-950 dark:text-[#F1F5F9]">
                     A clearer picture of client work
                   </h2>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-900/75">
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-900/75 dark:text-[#9BA8AB]">
                     DeepClient brings project activity and client context
                     together in each workspace. Trello, GitHub, and Jira are available now;
                     Slack is coming soon.
                   </p>
-
                 </div>
               </div>
             </section>

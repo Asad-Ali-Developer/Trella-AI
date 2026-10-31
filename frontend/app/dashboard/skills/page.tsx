@@ -208,14 +208,14 @@ export default function SkillsAndReportsPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+            <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:border dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF]">
               <Sparkles className="h-3.5 w-3.5" />
               Phase 4: LLM Layer & Skill Engine
             </div>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl">
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 dark:text-[#F1F5F9] md:text-3xl">
               AI Skills & Insights
             </h1>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-1 text-sm text-zinc-500 dark:text-[#9BA8AB]">
               Run intelligence skills over your workspace context graph to extract needs, risks,
               and stakeholder patterns with verified citations.
             </p>
@@ -224,7 +224,7 @@ export default function SkillsAndReportsPage() {
           <Button
             onClick={handleRunSkill}
             disabled={running || !selectedSkillId || loading}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-6 font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#253745] px-6 font-semibold text-white shadow-sm hover:bg-[#11212D] dark:border dark:border-[#4A5C6A] dark:bg-[#253745] dark:hover:bg-[#354D60] disabled:opacity-50"
           >
             {running ? (
               <>
@@ -241,19 +241,19 @@ export default function SkillsAndReportsPage() {
         </div>
 
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
             {error}
           </div>
         )}
         {notice && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
             {notice}
           </div>
         )}
 
         {/* Skill Selector Cards */}
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-[#9BA8AB]">
             Select a Skill to Execute
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
@@ -265,32 +265,34 @@ export default function SkillsAndReportsPage() {
                   onClick={() => setSelectedSkillId(skill.id)}
                   className={`cursor-pointer rounded-2xl border p-5 transition-all ${
                     isSelected
-                      ? "border-indigo-600 bg-indigo-50/40 shadow-sm"
-                      : "border-zinc-200 bg-white hover:border-zinc-300"
+                      ? "border-indigo-600 bg-indigo-50/40 shadow-sm dark:border-[#4A5C6A] dark:bg-[#162736]"
+                      : "border-zinc-200 bg-white hover:border-zinc-300 dark:border-[#253745] dark:bg-[#11212D] dark:hover:border-[#4A5C6A]"
                   }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div
                         className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                          isSelected ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-600"
+                          isSelected
+                            ? "bg-indigo-600 text-white dark:bg-[#253745] dark:text-[#CCD0CF]"
+                            : "bg-zinc-100 text-zinc-600 dark:bg-[#162736] dark:text-[#9BA8AB]"
                         }`}
                       >
                         <Brain className="h-5 w-5" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-zinc-900">{skill.name}</h3>
-                        <p className="text-xs text-zinc-400">v{skill.version} • {skill.slug}</p>
+                        <h3 className="font-semibold text-zinc-900 dark:text-[#F1F5F9]">{skill.name}</h3>
+                        <p className="text-xs text-zinc-400 dark:text-[#9BA8AB]">v{skill.version} • {skill.slug}</p>
                       </div>
                     </div>
                     {isSelected && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800 dark:border dark:border-[#4A5C6A] dark:bg-[#253745] dark:text-[#CCD0CF]">
                         Active
                       </span>
                     )}
                   </div>
-                  <p className="mt-3 text-sm text-zinc-600">{skill.description}</p>
-                  <div className="mt-4 flex items-center gap-4 text-xs text-zinc-400">
+                  <p className="mt-3 text-sm text-zinc-600 dark:text-[#CCD0CF]">{skill.description}</p>
+                  <div className="mt-4 flex items-center gap-4 text-xs text-zinc-400 dark:text-[#9BA8AB]">
                     <span>
                       Model: <strong>{String((skill.model_config_json as Record<string, unknown>)?.model || "gemini-3.5-flash")}</strong>
                     </span>
@@ -307,32 +309,32 @@ export default function SkillsAndReportsPage() {
         {activeRunDetail ? (
           <div className="space-y-6">
             {/* Run Metadata Banner */}
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-[#253745] dark:bg-[#11212D]">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-4 dark:border-[#253745]">
                 <div className="flex items-center gap-3">
                   <div
                     className={`flex h-8 w-8 items-center justify-center rounded-lg ${
                       activeRunDetail.status === "completed"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
                         : activeRunDetail.status === "failed"
-                        ? "bg-rose-100 text-rose-700"
-                        : "bg-amber-100 text-amber-700"
+                        ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
                     }`}
                   >
                     {activeRunDetail.status === "completed" ? (
                       <CheckCircle2 className="h-5 w-5" />
                     ) : activeRunDetail.status === "failed" ? (
-                      <AlertTriangle className="h-5 w-5 text-rose-600" />
+                      <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400" />
                     ) : (
                       <LoaderCircle className="h-5 w-5 animate-spin" />
                     )}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-zinc-900">
+                    <h3 className="font-semibold text-zinc-900 dark:text-[#F1F5F9]">
                       Report: {selectedSkill?.name || "Skill Execution"}
                     </h3>
-                    <p className="text-xs text-zinc-400">
-                      Status: <strong className="capitalize">{activeRunDetail.status}</strong> • Executed on{" "}
+                    <p className="text-xs text-zinc-400 dark:text-[#9BA8AB]">
+                      Status: <strong className="capitalize text-zinc-700 dark:text-[#CCD0CF]">{activeRunDetail.status}</strong> • Executed on{" "}
                       {new Date(activeRunDetail.created_at).toLocaleString()}
                     </p>
                   </div>
@@ -341,13 +343,13 @@ export default function SkillsAndReportsPage() {
                 <div className="flex items-center gap-3">
                   {activeRunDetail.status === "completed" && (
                     activeRunDetail.citations_valid ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-200">
-                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-200 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                         All Citations Grounded
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 border border-amber-200">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 border border-amber-200 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                         Contains Ungrounded Citations
                       </span>
                     )
@@ -356,7 +358,7 @@ export default function SkillsAndReportsPage() {
                     <Button
                       onClick={handleRunSkill}
                       disabled={running}
-                      className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                      className="rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600"
                     >
                       Retry Analysis
                     </Button>
@@ -366,12 +368,12 @@ export default function SkillsAndReportsPage() {
 
               {/* Error Notice if Failed */}
               {activeRunDetail.status === "failed" && (
-                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4">
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
                   <div className="flex items-start gap-2.5">
-                    <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                    <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5 dark:text-rose-400" />
                     <div>
-                      <h4 className="text-sm font-semibold text-rose-900">Analysis Failed</h4>
-                      <p className="mt-1 text-xs text-rose-700 leading-relaxed">
+                      <h4 className="text-sm font-semibold text-rose-900 dark:text-rose-200">Analysis Failed</h4>
+                      <p className="mt-1 text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
                         {activeRunDetail.error || "The analysis run encountered an error or upstream model timeout. Please click 'Retry Analysis' to run again."}
                       </p>
                     </div>
@@ -381,42 +383,42 @@ export default function SkillsAndReportsPage() {
 
               {/* Metrics Grid */}
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="rounded-xl bg-zinc-50 p-3">
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-[#253745] dark:bg-[#162736]">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-[#9BA8AB]">
                     <Coins className="h-3.5 w-3.5" />
                     Estimated Cost
                   </div>
-                  <p className="mt-1 text-base font-bold text-zinc-900">
+                  <p className="mt-1 text-base font-bold text-zinc-900 dark:text-[#F1F5F9]">
                     ${activeRunDetail.cost_usd.toFixed(6)}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-zinc-50 p-3">
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-[#253745] dark:bg-[#162736]">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-[#9BA8AB]">
                     <Layers className="h-3.5 w-3.5" />
                     Prompt Tokens
                   </div>
-                  <p className="mt-1 text-base font-bold text-zinc-900">
+                  <p className="mt-1 text-base font-bold text-zinc-900 dark:text-[#F1F5F9]">
                     {activeRunDetail.tokens_in.toLocaleString()}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-zinc-50 p-3">
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-[#253745] dark:bg-[#162736]">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-[#9BA8AB]">
                     <Sparkles className="h-3.5 w-3.5" />
                     Completion Tokens
                   </div>
-                  <p className="mt-1 text-base font-bold text-zinc-900">
+                  <p className="mt-1 text-base font-bold text-zinc-900 dark:text-[#F1F5F9]">
                     {activeRunDetail.tokens_out.toLocaleString()}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-zinc-50 p-3">
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-[#253745] dark:bg-[#162736]">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-[#9BA8AB]">
                     <Clock className="h-3.5 w-3.5" />
                     Trigger
                   </div>
-                  <p className="mt-1 text-base font-bold capitalize text-zinc-900">
+                  <p className="mt-1 text-base font-bold capitalize text-zinc-900 dark:text-[#F1F5F9]">
                     {activeRunDetail.trigger}
                   </p>
                 </div>
@@ -424,11 +426,11 @@ export default function SkillsAndReportsPage() {
 
               {/* Executive Summary */}
               {activeRunDetail.output_json?.executive_summary && (
-                <div className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-900">
+                <div className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 dark:border-[#253745] dark:bg-[#162736]">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-900 dark:text-[#CCD0CF]">
                     Executive Summary
                   </h4>
-                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-800">
+                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-800 dark:text-[#CCD0CF]">
                     {activeRunDetail.output_json.executive_summary}
                   </p>
                 </div>
@@ -437,12 +439,12 @@ export default function SkillsAndReportsPage() {
 
             {/* Individual Insight Blocks */}
             <div className="space-y-4">
-              <h3 className="text-base font-bold text-zinc-900">
+              <h3 className="text-base font-bold text-zinc-900 dark:text-[#F1F5F9]">
                 Extracted Insights ({activeRunDetail.insights.length})
               </h3>
 
               {activeRunDetail.insights.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-zinc-200 p-8 text-center text-sm text-zinc-500">
+                <div className="rounded-2xl border border-dashed border-zinc-200 p-8 text-center text-sm text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
                   No individual insights were generated for this run.
                 </div>
               ) : (
@@ -452,7 +454,7 @@ export default function SkillsAndReportsPage() {
                     return (
                       <div
                         key={insight.id}
-                        className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition-all hover:border-zinc-300"
+                        className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition-all hover:border-zinc-300 dark:border-[#253745] dark:bg-[#11212D] dark:hover:border-[#4A5C6A]"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="space-y-1">
@@ -472,27 +474,27 @@ export default function SkillsAndReportsPage() {
                               </span>
 
                               {insight.severity_or_priority && (
-                                <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
+                                <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-[#253745] dark:text-[#CCD0CF]">
                                   {insight.severity_or_priority} priority
                                 </span>
                               )}
                             </div>
 
-                            <h4 className="pt-1 text-base font-semibold text-zinc-900">
+                            <h4 className="pt-1 text-base font-semibold text-zinc-900 dark:text-[#F1F5F9]">
                               {insight.title}
                             </h4>
                           </div>
 
                           {/* Thumbs Up / Down Feedback */}
-                          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 p-1">
+                          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 p-1 dark:border-[#253745] dark:bg-[#162736]">
                             <button
                               onClick={() => handleFeedback(insight.id, "thumbs_up")}
                               disabled={isVoting}
                               title="Helpful insight"
                               className={`rounded p-1.5 transition-colors ${
                                 insight.feedback === "thumbs_up"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-[#9BA8AB] dark:hover:bg-[#253745] dark:hover:text-[#CCD0CF]"
                               }`}
                             >
                               <ThumbsUp className="h-4 w-4" />
@@ -503,8 +505,8 @@ export default function SkillsAndReportsPage() {
                               title="Inaccurate insight"
                               className={`rounded p-1.5 transition-colors ${
                                 insight.feedback === "thumbs_down"
-                                  ? "bg-red-100 text-red-700"
-                                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                                  ? "bg-red-100 text-red-700 dark:bg-rose-950/60 dark:text-rose-300"
+                                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-[#9BA8AB] dark:hover:bg-[#253745] dark:hover:text-[#CCD0CF]"
                               }`}
                             >
                               <ThumbsDown className="h-4 w-4" />
@@ -512,25 +514,25 @@ export default function SkillsAndReportsPage() {
                           </div>
                         </div>
 
-                        <p className="mt-2 text-sm text-zinc-600 leading-relaxed">
+                        <p className="mt-2 text-sm text-zinc-600 leading-relaxed dark:text-[#CCD0CF]">
                           {insight.detail}
                         </p>
 
                         {/* Citations & Source Links */}
                         {insight.source_refs && insight.source_refs.length > 0 && (
-                          <div className="mt-4 border-t border-zinc-100 pt-3">
-                            <p className="text-xs font-medium text-zinc-400">Cited Sources:</p>
+                          <div className="mt-4 border-t border-zinc-100 pt-3 dark:border-[#253745]">
+                            <p className="text-xs font-medium text-zinc-400 dark:text-[#9BA8AB]">Cited Sources:</p>
                             <div className="mt-1.5 flex flex-wrap gap-2">
                               {insight.source_refs.map((src, idx) => (
                                 <div
                                   key={idx}
                                   className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ${
                                     src.valid
-                                      ? "border-zinc-200 bg-zinc-50 text-zinc-700"
-                                      : "border-red-200 bg-red-50 text-red-700"
+                                      ? "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF]"
+                                      : "border-red-200 bg-red-50 text-red-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300"
                                   }`}
                                 >
-                                  <span className="font-mono text-[11px] text-zinc-500">
+                                  <span className="font-mono text-[11px] text-zinc-500 dark:text-[#9BA8AB]">
                                     [{src.source_id}]
                                   </span>
                                   <span className="font-medium">
@@ -576,8 +578,8 @@ export default function SkillsAndReportsPage() {
               Execution History
             </h3>
             <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <table className="w-full text-left text-sm text-zinc-600">
-                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <table className="w-full text-left text-sm text-zinc-600 dark:text-zinc-300">
+                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
                   <tr>
                     <th className="px-5 py-3">Date</th>
                     <th className="px-5 py-3">Status</th>
@@ -587,15 +589,15 @@ export default function SkillsAndReportsPage() {
                     <th className="px-5 py-3 text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {runs.map((r) => (
                     <tr
                       key={r.id}
-                      className={`hover:bg-zinc-50 transition-colors ${
-                        activeRunDetail?.id === r.id ? "bg-indigo-50/30" : ""
+                      className={`hover:bg-zinc-50 transition-colors dark:hover:bg-zinc-800/60 ${
+                        activeRunDetail?.id === r.id ? "bg-indigo-50/30 dark:bg-indigo-950/40" : ""
                       }`}
                     >
-                      <td className="px-5 py-3.5 font-medium text-zinc-900">
+                      <td className="px-5 py-3.5 font-medium text-zinc-900 dark:text-zinc-100">
                         {new Date(r.created_at).toLocaleString()}
                       </td>
                       <td className="px-5 py-3.5">

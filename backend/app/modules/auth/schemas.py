@@ -19,6 +19,15 @@ class UserLoginRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    """Payload for Google authentication."""
+
+    email: EmailStr | None = None
+    name: str | None = None
+    credential: str | None = None
+    code: str | None = None
+
+
 class RefreshTokenRequest(BaseModel):
     """Payload for token refresh."""
 

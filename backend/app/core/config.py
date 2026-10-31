@@ -32,15 +32,19 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_cors_origins(cls, v: Any) -> list[str]:
         if isinstance(v, str):
-            v = v.strip()
-            if v.startswith("[") and v.endswith("]"):
+            stripped = v.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
                 import json
                 try:
-                    return json.loads(v)
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return [str(origin).strip() for origin in parsed if str(origin).strip()]
                 except Exception:
                     pass
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        if isinstance(v, (list, tuple, set)):
+            return [str(origin).strip() for origin in v if str(origin).strip()]
+        return []
 
     # Database
     DATABASE_URL: str = Field(
@@ -128,6 +132,10 @@ class Settings(BaseSettings):
     JIRA_SCOPES: str = Field(default="read:jira-work read:jira-user offline_access")
     JIRA_API_BASE_URL: str = Field(default="https://api.atlassian.com")
     JIRA_AUTH_URL: str = Field(default="https://auth.atlassian.com")
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = Field(default="")
+    GOOGLE_CLIENT_SECRET: str = Field(default="")
 
     @property
     def encryption_fallback_keys(self) -> list[str]:

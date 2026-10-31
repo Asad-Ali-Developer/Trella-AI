@@ -240,36 +240,36 @@ export default function ConnectedAppsPage() {
                       disabled={!clickable}
                       aria-label={`${name}${connected ? ", connected" : available ? ", connect app" : ", coming soon"}`}
                       onClick={() => clickable && setSelectedApp(id)}
-                      className={`group relative flex min-h-56 flex-col rounded-2xl border bg-white p-5 text-left shadow-sm transition ${
+                      className={`group relative flex min-h-56 flex-col rounded-2xl border bg-white p-5 text-left shadow-sm transition dark:border-[#253745] dark:bg-[#11212D] ${
                         available
-                          ? "border-zinc-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"
+                          ? "border-zinc-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100 dark:hover:border-[#4A5C6A]"
                           : "cursor-default border-zinc-200/80"
                       }`}
                     >
                       <div className="flex w-full items-start justify-between gap-3">
-                        <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${iconClass}`}>
+                        <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${iconClass} dark:bg-[#162736]`}>
                           <IntegrationLogo app={id} className="h-6 w-6" />
                         </span>
                         {connected ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60">
                             <Check className="h-3.5 w-3.5" />
                             Connected
                           </span>
                         ) : available ? (
-                          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 border border-indigo-200 dark:bg-[#162736] dark:text-[#CCD0CF] dark:border-[#253745]">
                             Available
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/60">
                             <Clock3 className="h-3.5 w-3.5" />
                             Coming soon
                           </span>
                         )}
                       </div>
-                      <h3 className="mt-5 text-base font-semibold text-zinc-950">{name}</h3>
-                      <p className="mt-1 text-sm leading-5 text-zinc-500">{summary}</p>
+                      <h3 className="mt-5 text-base font-bold text-zinc-950 dark:text-[#F1F5F9]">{name}</h3>
+                      <p className="mt-1 text-sm leading-5 text-zinc-500 dark:text-[#9BA8AB]">{summary}</p>
                       <span className={`mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold ${
-                        available ? "text-indigo-700" : "text-zinc-400"
+                        available ? "text-indigo-700 dark:text-[#CCD0CF]" : "text-zinc-400 dark:text-[#64748B]"
                       }`}>
                         {connected ? "View settings" : available ? "View details" : "Not available yet"}
                         {available ? (
@@ -284,13 +284,13 @@ export default function ConnectedAppsPage() {
               ))}
             </div>
 
-            <aside className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+            <aside className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-[#253745] dark:bg-[#11212D]">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-[#253745] dark:text-[#CCD0CF]">
                 <GitBranch className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-zinc-900">One workspace. A clearer picture of every client.</h2>
-                <p className="mt-1 text-sm leading-5 text-zinc-500">
+                <h2 className="text-sm font-semibold text-zinc-900 dark:text-[#F1F5F9]">One workspace. A clearer picture of every client.</h2>
+                <p className="mt-1 text-sm leading-5 text-zinc-500 dark:text-[#9BA8AB]">
                   DeepClient is designed to relate project plans to development activity, turn that shared context into traceable insights, and deliver reports through your team’s tools. Jira and Slack integrations are coming soon.
                 </p>
               </div>

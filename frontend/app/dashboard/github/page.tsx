@@ -17,6 +17,13 @@ import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo } from "@/components/atoms/IntegrationLogo";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
@@ -309,11 +316,22 @@ export default function GithubSettingsPage() {
                     <ShieldCheck className="h-4 w-4" /> Connect GitHub
                   </Button>
                   {accounts.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      <select aria-label="Existing GitHub account" value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)} className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm">
-                        {accounts.map((account) => <option key={account.id} value={account.id}>@{account.username}</option>)}
-                      </select>
-                      <Button type="button" variant="secondary" className="rounded-lg" disabled={!selectedAccountId || linking} onClick={() => void reuseGithubAccount()}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="w-48">
+                        <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                          <SelectTrigger aria-label="Existing GitHub account">
+                            <SelectValue placeholder="Select account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {accounts.map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                @{account.username}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button type="button" variant="secondary" className="rounded-xl" disabled={!selectedAccountId || linking} onClick={() => void reuseGithubAccount()}>
                         {linking ? "Linking…" : "Reuse account"}
                       </Button>
                     </div>
@@ -380,16 +398,25 @@ export default function GithubSettingsPage() {
                       </label>
                       <div className="flex items-center gap-2 pl-7 sm:pl-0">
                         <label htmlFor={`client-${repository.id}`} className="sr-only">Associate {repository.full_name} with a client</label>
-                        <select
-                          id={`client-${repository.id}`}
-                          value={repository.client_id ?? ""}
-                          onChange={(event) => setRepositories((current) => current.map((item) => item.id === repository.id ? { ...item, client_id: event.target.value || null } : item))}
-                          className="min-h-9 max-w-52 rounded-lg border border-zinc-200 bg-white px-2 text-xs text-zinc-700"
-                        >
-                          <option value="">No client association</option>
-                          {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-                        </select>
-                        <a href={repository.url} target="_blank" rel="noreferrer" aria-label={`Open ${repository.full_name} on GitHub`} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
+                        <div className="w-48">
+                          <Select
+                            value={repository.client_id ?? "none"}
+                            onValueChange={(val) => setRepositories((current) => current.map((item) => item.id === repository.id ? { ...item, client_id: val === "none" ? null : val } : item))}
+                          >
+                            <SelectTrigger id={`client-${repository.id}`} className="h-9 text-xs">
+                              <SelectValue placeholder="No client association" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No client association</SelectItem>
+                              {clients.map((client) => (
+                                <SelectItem key={client.id} value={client.id}>
+                                  {client.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <a href={repository.url} target="_blank" rel="noreferrer" aria-label={`Open ${repository.full_name} on GitHub`} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-[#253745] dark:hover:text-[#CCD0CF]">
                           <ExternalLink className="h-4 w-4" />
                         </a>
                       </div>

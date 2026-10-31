@@ -33,15 +33,15 @@ export function WorkspaceSwitcher({ workspaces, selectedId, onSelect }: Workspac
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between rounded-md border border-border bg-white px-2.5 py-2 text-left text-sm hover:bg-muted"
+        className="flex w-full items-center justify-between rounded-xl border border-[#9BA8AB] bg-white px-3 py-2.5 text-left text-sm font-semibold text-[#06141B] shadow-sm transition-all hover:bg-[#CCD0CF]/40 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#CCD0CF] dark:hover:bg-[#253745]"
       >
-        <span className="truncate font-medium">
+        <span className="truncate">
           {selected ? selected.name : "Select workspace"}
         </span>
-        <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+        <ChevronsUpDown className="h-4 w-4 shrink-0 text-[#4A5C6A] dark:text-[#9BA8AB]" />
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 z-20 mt-1 rounded-md border border-border bg-white p-1 shadow-sm">
+        <div className="absolute left-0 right-0 z-20 mt-1.5 rounded-2xl border border-[#9BA8AB] bg-white p-1.5 shadow-xl backdrop-blur-md dark:border-[#253745] dark:bg-[#11212D]">
           {workspaces.map((workspace) => (
             <button
               key={workspace.id}
@@ -51,10 +51,12 @@ export function WorkspaceSwitcher({ workspaces, selectedId, onSelect }: Workspac
                 onSelect(workspace);
                 setOpen(false);
               }}
-              className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium text-[#06141B] transition hover:bg-[#CCD0CF]/60 dark:text-[#CCD0CF] dark:hover:bg-[#253745]"
             >
               <span className="truncate">{workspace.name}</span>
-              <span className="text-[11px] uppercase text-muted-foreground">{workspace.role}</span>
+              <span className="rounded-full border border-[#4A5C6A] bg-[#253745] px-2 py-0.5 text-[10px] font-semibold text-[#CCD0CF] uppercase">
+                {workspace.role}
+              </span>
             </button>
           ))}
         </div>
