@@ -21,6 +21,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/atoms/Button";
+import { MarkdownContent } from "@/components/atoms/MarkdownContent";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { SkillsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
@@ -204,8 +207,11 @@ export default function SkillsAndReportsPage() {
         />
       }
     >
-      <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
-        {/* Header */}
+      {loading ? (
+        <SkillsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
+          {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:border dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF]">
@@ -427,12 +433,10 @@ export default function SkillsAndReportsPage() {
               {/* Executive Summary */}
               {activeRunDetail.output_json?.executive_summary && (
                 <div className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 dark:border-[#253745] dark:bg-[#162736]">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-900 dark:text-[#CCD0CF]">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-900 dark:text-[#CCD0CF] mb-2">
                     Executive Summary
                   </h4>
-                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-800 dark:text-[#CCD0CF]">
-                    {activeRunDetail.output_json.executive_summary}
-                  </p>
+                  <MarkdownContent content={activeRunDetail.output_json.executive_summary} />
                 </div>
               )}
             </div>
@@ -514,9 +518,9 @@ export default function SkillsAndReportsPage() {
                           </div>
                         </div>
 
-                        <p className="mt-2 text-sm text-zinc-600 leading-relaxed dark:text-[#CCD0CF]">
-                          {insight.detail}
-                        </p>
+                        <div className="mt-2 text-sm leading-relaxed">
+                          <MarkdownContent content={insight.detail} />
+                        </div>
 
                         {/* Citations & Source Links */}
                         {insight.source_refs && insight.source_refs.length > 0 && (
@@ -639,7 +643,8 @@ export default function SkillsAndReportsPage() {
             </div>
           </div>
         )}
-      </div>
+        </PageTransition>
+      )}
     </DashboardTemplate>
   );
 }

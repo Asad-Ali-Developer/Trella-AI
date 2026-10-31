@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button";
+import { MarkdownContent } from "@/components/atoms/MarkdownContent";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { workspaceStore } from "@/lib/storage";
@@ -376,14 +377,12 @@ export default function ReportDetailPage() {
 
           {/* Executive Summary */}
           {run.output_json?.executive_summary && (
-            <div className="mt-6 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-indigo-50/20 p-5">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900">
-                <Sparkles className="h-4 w-4 text-indigo-600" />
+            <div className="mt-6 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-indigo-50/20 p-5 dark:border-[#253745] dark:from-[#162736] dark:to-[#11212D]">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-[#CCD0CF] mb-2">
+                <Sparkles className="h-4 w-4 text-indigo-600 dark:text-[#CCD0CF]" />
                 Executive Summary
               </div>
-              <p className="mt-2 text-sm leading-relaxed text-zinc-800 font-normal">
-                {run.output_json.executive_summary}
-              </p>
+              <MarkdownContent content={run.output_json.executive_summary} />
             </div>
           )}
         </div>
@@ -549,7 +548,9 @@ function ReportInsightCard({
         </div>
       </div>
 
-      <p className="mt-2 text-sm leading-relaxed text-zinc-600">{insight.detail}</p>
+      <div className="mt-2 text-sm leading-relaxed">
+        <MarkdownContent content={insight.detail} />
+      </div>
 
       {/* Clickable Citations Grounding */}
       {insight.source_refs && insight.source_refs.length > 0 && (

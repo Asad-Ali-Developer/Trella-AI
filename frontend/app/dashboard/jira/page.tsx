@@ -15,6 +15,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo } from "@/components/atoms/IntegrationLogo";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { IntegrationSettingsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import {
@@ -240,30 +242,29 @@ export default function JiraSettingsPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-5xl space-y-7 pb-10">
-        <header className="flex flex-col gap-4 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-indigo-600">
-              {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300">/</span> Jira
-            </p>
-            <h1 className="mt-1 flex items-center gap-3 text-3xl font-semibold tracking-tight text-zinc-950">
-              <IntegrationLogo app="jira" className="h-7 w-7" />
-              Jira settings
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              Link an Atlassian Jira Cloud account, select engineering projects for this workspace, and connect each project to a client.
-            </p>
-          </div>
-        </header>
+      {loading ? (
+        <IntegrationSettingsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-5xl space-y-7 pb-10">
+          <header className="flex flex-col gap-4 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-[#253745]">
+            <div>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">
+                {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300 dark:text-[#4A5C6A]">/</span> Jira
+              </p>
+              <h1 className="mt-1 flex items-center gap-3 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">
+                <IntegrationLogo app="jira" className="h-7 w-7" />
+                Jira settings
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+                Link an Atlassian Jira Cloud account, select engineering projects for this workspace, and connect each project to a client.
+              </p>
+            </div>
+          </header>
 
-        {error ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div> : null}
-        {notice ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
+          {error ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">{error}</div> : null}
+          {notice ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">{notice}</div> : null}
 
-        {loading ? (
-          <div role="status" className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-            Loading Jira settings…
-          </div>
-        ) : !selectedWorkspace ? (
+          {!selectedWorkspace ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center">
             <h2 className="text-lg font-semibold text-zinc-950">Create a workspace first</h2>
             <p className="mt-2 text-sm text-zinc-500">Jira accounts and project selections are managed per workspace.</p>
@@ -486,7 +487,8 @@ export default function JiraSettingsPage() {
             </p>
           </>
         )}
-      </div>
+        </PageTransition>
+      )}
     </DashboardTemplate>
   );
 }

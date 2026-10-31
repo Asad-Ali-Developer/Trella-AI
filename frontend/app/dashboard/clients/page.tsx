@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { ClientsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { workspaceStore } from "@/lib/storage";
@@ -141,8 +143,11 @@ export default function ClientsPage() {
         />
       }
     >
-      <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
-        {/* Header */}
+      {loading ? (
+        <ClientsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
+          {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
@@ -227,14 +232,7 @@ export default function ClientsPage() {
         </div>
 
         {/* Clients Grid */}
-        {loading ? (
-          <div className="flex h-64 items-center justify-center rounded-2xl border border-zinc-200 bg-white">
-            <div className="flex items-center gap-2 text-zinc-500">
-              <LoaderCircle className="h-5 w-5 animate-spin" />
-              Loading client dossiers…
-            </div>
-          </div>
-        ) : filteredClients.length === 0 ? (
+        {filteredClients.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-12 text-center">
             <Building2 className="mx-auto h-12 w-12 text-zinc-300" />
             <h3 className="mt-4 text-base font-semibold text-zinc-900">
@@ -386,7 +384,8 @@ export default function ClientsPage() {
             </div>
           </div>
         )}
-      </div>
+        </PageTransition>
+      )}
     </DashboardTemplate>
   );
 }

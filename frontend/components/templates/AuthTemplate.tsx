@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Sparkles, ShieldCheck, BarChart3, Zap, CheckCircle2 } from "lucide-react";
 
@@ -45,17 +46,24 @@ export function AuthTemplate({ title, subtitle, children }: AuthTemplateProps) {
       <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10 lg:px-16">
         <Link
           href="/"
-          className="group inline-flex items-center gap-2.5 text-base font-semibold tracking-tight transition hover:opacity-90"
+          className="group inline-flex items-center gap-2.5 transition hover:opacity-90"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#253745] text-white shadow-md shadow-[#06141B]/15 transition-transform group-hover:scale-105 border border-[#4A5C6A]">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <span className="flex items-center gap-2 text-xl font-bold tracking-tight text-[#06141B] dark:text-[#F1F5F9]">
-            Trella
-            <span className="rounded-full border border-[#4A5C6A] bg-[#253745] px-2.5 py-0.5 text-[11px] font-semibold text-white">
-              AI
-            </span>
-          </span>
+          <Image
+            src="/DeepClient-light.png"
+            alt="DeepClient"
+            width={380}
+            height={98}
+            priority
+            className="h-9 w-auto dark:hidden"
+          />
+          <Image
+            src="/DeepClient-dark.png"
+            alt="DeepClient"
+            width={380}
+            height={98}
+            priority
+            className="hidden h-9 w-auto dark:block"
+          />
         </Link>
 
         <div className="flex items-center gap-3">

@@ -67,6 +67,40 @@ body {
 }
 
 /* ==============================================================================
+   Shimmer Animation for Skeleton Loaders
+   ============================================================================== */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.7) 0%,
+    rgba(241, 245, 249, 1) 50%,
+    rgba(226, 232, 240, 0.7) 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.6s infinite ease-in-out !important;
+}
+
+.dark .animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(22, 39, 54, 0.6) 0%,
+    rgba(37, 55, 69, 0.95) 50%,
+    rgba(22, 39, 54, 0.6) 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.6s infinite ease-in-out !important;
+}
+
+/* ==============================================================================
    LIGHT MODE: Crisp, Clean, Bright Canvas (Lightened)
    ============================================================================== */
 :root body {

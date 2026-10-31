@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo } from "@/components/atoms/IntegrationLogo";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { WorkspacesPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { WorkspaceCreateDrawer } from "@/components/organisms/WorkspaceCreateDrawer";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -131,39 +133,38 @@ export default function WorkspacesPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-8 pb-10">
-        <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-[#253745]">
-          <div>
-            <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">Your organization</p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">Workspaces</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
-              Each workspace brings one client’s projects, connected tools, and insights together.
-            </p>
-          </div>
-          <Button className="h-11 gap-2 self-start rounded-xl px-4 bg-[#253745] text-white hover:bg-[#11212D] dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A] sm:self-auto" onClick={() => setDrawerOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Create workspace
-          </Button>
-        </header>
+      {loading ? (
+        <WorkspacesPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-6xl space-y-8 pb-10">
+          <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-[#253745]">
+            <div>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">Your organization</p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">Workspaces</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+                Each workspace brings one client’s projects, connected tools, and insights together.
+              </p>
+            </div>
+            <Button className="h-11 gap-2 self-start rounded-xl px-4 bg-[#253745] text-white hover:bg-[#11212D] dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A] sm:self-auto" onClick={() => setDrawerOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create workspace
+            </Button>
+          </header>
 
-        {error ? (
-          <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
-            <span>{error}</span>
-            <button
-              type="button"
-              className="shrink-0 font-semibold underline underline-offset-2"
-              onClick={() => void refreshWorkspaceStatuses(workspaces)}
-            >
-              Retry
-            </button>
-          </div>
-        ) : null}
+          {error ? (
+            <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+              <span>{error}</span>
+              <button
+                type="button"
+                className="shrink-0 font-semibold underline underline-offset-2"
+                onClick={() => void refreshWorkspaceStatuses(workspaces)}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
 
-        {loading ? (
-          <div role="status" className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
-            Loading workspaces…
-          </div>
-        ) : workspaces.length ? (
+          {workspaces.length ? (
           <section aria-label="Your workspaces" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {workspaces.map((workspace) => {
               const appStatus = appsByWorkspace[workspace.id];
@@ -268,7 +269,8 @@ export default function WorkspacesPage() {
             </Button>
           </section>
         )}
-      </div>
+        </PageTransition>
+      )}
 
       {drawerOpen ? (
         <WorkspaceCreateDrawer

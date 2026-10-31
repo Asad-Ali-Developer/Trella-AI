@@ -15,6 +15,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo, type IntegrationId } from "@/components/atoms/IntegrationLogo";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { AppsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
@@ -178,28 +180,27 @@ export default function ConnectedAppsPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-8 pb-10">
-        <header className="border-b border-zinc-200 pb-6">
-          <p className="text-sm font-medium text-indigo-600">
-            {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300">/</span> Workspace
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">Connected Apps</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-            Make this workspace the home for a client’s work. Connect project tools to build shared context, then deliver useful reports to your team.
-          </p>
-        </header>
+      {loading ? (
+        <AppsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-6xl space-y-8 pb-10">
+          <header className="border-b border-zinc-200 pb-6 dark:border-[#253745]">
+            <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">
+              {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300 dark:text-[#4A5C6A]">/</span> Workspace
+            </p>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">Connected Apps</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+              Make this workspace the home for a client’s work. Connect project tools to build shared context, then deliver useful reports to your team.
+            </p>
+          </header>
 
-        {error ? (
-          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-            {error}
-          </div>
-        ) : null}
+          {error ? (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+              {error}
+            </div>
+          ) : null}
 
-        {loading ? (
-          <div role="status" className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-            Loading your connected apps…
-          </div>
-        ) : !selectedWorkspace ? (
+          {!selectedWorkspace ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center">
             <h2 className="text-lg font-semibold text-zinc-900">Create a workspace to connect apps</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
@@ -297,7 +298,8 @@ export default function ConnectedAppsPage() {
             </aside>
           </>
         )}
-      </div>
+        </PageTransition>
+      )}
 
       {selectedAppDetails ? (
         <div

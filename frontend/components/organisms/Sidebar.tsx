@@ -44,15 +44,23 @@ export function Sidebar({
 
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-[#E2E8F0] bg-white transition-colors duration-200 dark:border-[#253745] dark:bg-[#11212D] md:h-screen md:w-64 md:border-b-0 md:border-r">
-      <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-2.5 dark:border-[#253745]">
-        <div className="relative h-[40px] w-full overflow-hidden" aria-label="DeepClient">
+      <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-3 dark:border-[#253745]">
+        <div className="flex items-center pt-1.5" aria-label="DeepClient">
           <Image
-            src="/DeepClient.png"
+            src="/DeepClient-light.png"
             alt="DeepClient"
-            width={512}
-            height={293}
+            width={380}
+            height={98}
             priority
-            className="absolute -top-[21px] left-0 h-auto w-[148px] max-w-none dark:brightness-110"
+            className="h-8 w-auto dark:hidden"
+          />
+          <Image
+            src="/DeepClient-dark.png"
+            alt="DeepClient"
+            width={380}
+            height={98}
+            priority
+            className="hidden h-8 w-auto dark:block"
           />
         </div>
       </div>

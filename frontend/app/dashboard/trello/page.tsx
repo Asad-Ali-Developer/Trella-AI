@@ -20,6 +20,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { IntegrationSettingsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import {
@@ -278,56 +280,54 @@ export default function TrelloSettingsPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-7 pb-10">
-        <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-indigo-600">
-              {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300">/</span> Integrations
-            </p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">Trello</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              Choose the boards to bring into DeepClient, then match them to your clients.
-            </p>
-          </div>
-          {connection?.connected ? (
-            <div className="flex w-fit items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-emerald-700">
-                <Check className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-emerald-900">Trello connected</p>
-                <p className="text-xs text-emerald-800">Account: {connection.username}</p>
+      {loading ? (
+        <IntegrationSettingsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-6xl space-y-7 pb-10">
+          <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-center sm:justify-between dark:border-[#253745]">
+            <div>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">
+                {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300 dark:text-[#4A5C6A]">/</span> Integrations
+              </p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">Trello</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+                Choose the boards to bring into DeepClient, then match them to your clients.
+              </p>
+            </div>
+            {connection?.connected ? (
+              <div className="flex w-fit items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/60 dark:bg-emerald-950/40">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-emerald-700 dark:bg-[#162736] dark:text-emerald-400">
+                  <Check className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">Trello connected</p>
+                  <p className="text-xs text-emerald-800 dark:text-emerald-400">Account: {connection.username}</p>
+                </div>
               </div>
+            ) : null}
+          </header>
+
+          {error ? (
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+              <p>{error}</p>
             </div>
           ) : null}
-        </header>
+          {notice ? (
+            <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+              <p>{notice}</p>
+            </div>
+          ) : null}
 
-        {error ? (
-          <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-            <p>{error}</p>
-          </div>
-        ) : null}
-        {notice ? (
-          <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
-            <p>{notice}</p>
-          </div>
-        ) : null}
-
-        {!selectedWorkspace ? (
-          <section className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center">
-            <h2 className="text-lg font-semibold text-zinc-900">Create a workspace to get started</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
-              Trello connections and board selections are saved to a workspace. Create or choose one from the sidebar.
-            </p>
-          </section>
-        ) : loading ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-6 py-8 text-sm text-zinc-500" role="status">
-            <LoaderCircle className="h-5 w-5 animate-spin text-indigo-600" />
-            Loading your Trello workspace…
-          </div>
-        ) : !connection?.connected ? (
+          {!selectedWorkspace ? (
+            <section className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center dark:border-[#253745] dark:bg-[#11212D]">
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-[#F1F5F9]">Create a workspace to get started</h2>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+                Trello connections and board selections are saved to a workspace. Create or choose one from the sidebar.
+              </p>
+            </section>
+          ) : !connection?.connected ? (
           <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <div className="grid gap-8 p-6 sm:p-9 md:grid-cols-[1fr_auto] md:items-center">
               <div>
@@ -661,7 +661,8 @@ export default function TrelloSettingsPage() {
             </section>
           </>
         )}
-      </div>
+        </PageTransition>
+      )}
     </DashboardTemplate>
   );
 }

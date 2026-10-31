@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Search,
   RefreshCw,
+  Sparkles,
   UsersRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +19,9 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/atoms/Button";
+import { MarkdownContent, highlightMentions } from "@/components/atoms/MarkdownContent";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { ContextPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import {
@@ -221,47 +225,46 @@ export default function WorkspaceContextPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-7 pb-10">
-        <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-[#253745]">
-          <div>
-            <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">
-              {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300 dark:text-[#4A5C6A]">/</span> Context
-            </p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">
-              Workspace context
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
-              Build an ordered snapshot from this workspace’s connected accounts and included, synced sources.
-              Each workspace is processed independently—even when it has only one connected account.
-            </p>
-          </div>
-          <Button
-            type="button"
-            className="gap-2 rounded-xl px-4 bg-[#253745] text-white hover:bg-[#11212D] dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A]"
-            disabled={!selectedWorkspace || building || loading}
-            onClick={() => void buildContext()}
-          >
-            {building ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {building ? "Building context…" : context ? "Refresh context" : "Build context"}
-          </Button>
-        </header>
+      {loading ? (
+        <ContextPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-6xl space-y-7 pb-10">
+          <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-[#253745]">
+            <div>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">
+                {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300 dark:text-[#4A5C6A]">/</span> Context
+              </p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">
+                Workspace context
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+                Build an ordered snapshot from this workspace’s connected accounts and included, synced sources.
+                Each workspace is processed independently—even when it has only one connected account.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="gap-2 rounded-xl px-4 bg-[#253745] text-white hover:bg-[#11212D] dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A]"
+              disabled={!selectedWorkspace || building || loading}
+              onClick={() => void buildContext()}
+            >
+              {building ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {building ? "Building context…" : context ? "Refresh context" : "Build context"}
+            </Button>
+          </header>
 
-        {error ? (
-          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
-            {error}
-          </div>
-        ) : null}
-        {notice ? (
-          <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
-            {notice}
-          </div>
-        ) : null}
+          {error ? (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+              {error}
+            </div>
+          ) : null}
+          {notice ? (
+            <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
+              {notice}
+            </div>
+          ) : null}
 
-        {loading ? (
-          <div role="status" className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
-            Loading your workspaces…
-          </div>
-        ) : !selectedWorkspace ? (
+          {!selectedWorkspace ? (
           <section className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center dark:border-[#253745] dark:bg-[#11212D]">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-[#F1F5F9]">Create a workspace to get started</h2>
             <p className="mt-2 text-sm text-zinc-500 dark:text-[#9BA8AB]">Context is always generated inside a specific workspace.</p>
@@ -347,7 +350,7 @@ export default function WorkspaceContextPage() {
                     <li key={member.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm font-semibold text-zinc-900 dark:text-[#F1F5F9]">{member.name}</p>
-                        <p className="mt-0.5 text-xs text-zinc-500 dark:text-[#9BA8AB]">@{member.username}</p>
+                        <div className="mt-1">{highlightMentions(`@${member.username}`)}</div>
                       </div>
                       <div className="w-full sm:w-48">
                         <Select
@@ -518,12 +521,20 @@ export default function WorkspaceContextPage() {
                           {item.source_name ? <span className="text-xs text-zinc-500 dark:text-[#9BA8AB]">{item.source_name}</span> : null}
                           {item.client_name ? <span className="text-xs text-zinc-500 dark:text-[#9BA8AB]">· {item.client_name}</span> : null}
                         </div>
-                        {item.title ? <h3 className="mt-2 text-sm font-semibold text-zinc-900 dark:text-[#F1F5F9]">{item.title}</h3> : null}
-                        {item.text ? <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-zinc-600 dark:text-[#CCD0CF]">{item.text}</p> : null}
+                        {item.title ? <h3 className="mt-2 text-base font-bold text-zinc-900 dark:text-[#F1F5F9]">{highlightMentions(item.title)}</h3> : null}
+                        {item.text ? (
+                          <div className="mt-2 text-sm">
+                            <MarkdownContent content={item.text} />
+                          </div>
+                        ) : null}
                         {item.summary ? (
-                          <p className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-sm leading-6 text-indigo-950 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#CCD0CF]">
-                            <span className="font-semibold text-indigo-900 dark:text-[#F1F5F9]">Cached summary: </span>{item.summary}
-                          </p>
+                          <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 dark:border-[#253745] dark:bg-[#11212D]">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-900 dark:text-[#F1F5F9] mb-1.5">
+                              <Sparkles className="h-3.5 w-3.5 text-indigo-600 dark:text-[#CCD0CF]" />
+                              Cached Summary
+                            </div>
+                            <MarkdownContent content={item.summary} />
+                          </div>
                         ) : null}
                       </li>
                     ))}
@@ -537,7 +548,8 @@ export default function WorkspaceContextPage() {
             </section>
           </>
         )}
-      </div>
+        </PageTransition>
+      )}
     </DashboardTemplate>
   );
 }
