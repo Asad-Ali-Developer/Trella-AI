@@ -4,7 +4,6 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -15,9 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.security.encryption import encryption
-from app.modules.connections.models import ProviderAccount, WorkspaceConnection
 from app.modules.connections.repository import ConnectionRepository
-from app.modules.jira.client import JiraAPIError, JiraClient, JiraOAuthClient, JiraOAuthTokens
+from app.modules.jira.client import JiraAPIError, JiraClient, JiraOAuthClient
 from app.modules.jira.models import JiraOAuthState, JiraProject
 from app.modules.jira.schemas import (
     JiraClientOption,
@@ -29,7 +27,6 @@ from app.modules.jira.schemas import (
 from app.modules.trello.models import TrelloClientRecord
 from app.modules.workspaces.repository import WorkspaceRepository
 from app.workers.tasks import notify_app_connected
-
 
 logger = get_logger("app.modules.jira.service")
 

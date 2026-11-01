@@ -16,7 +16,6 @@ from app.modules.clients.schemas import (
 from app.modules.github.models import GithubCommit, GithubRepository
 from app.modules.runs.models import Insight, Run
 from app.modules.runs.schemas import InsightResponse, RunResponse
-from app.modules.skills.models import Skill
 from app.modules.trello.models import TrelloCard, TrelloClientRecord
 
 logger = get_logger("app.modules.clients.service")

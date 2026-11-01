@@ -13,9 +13,11 @@ from app.db.session import async_session_maker
 from app.modules.auth.router import router as auth_router
 from app.modules.clients.router import router as clients_router
 from app.modules.context.router import router as context_router
+from app.modules.delivery.router import router as delivery_router
 from app.modules.github.router import router as github_router
 from app.modules.jira.router import router as jira_router
 from app.modules.runs.router import router as runs_router
+from app.modules.scheduler.router import router as scheduler_router
 from app.modules.skills.router import router as skills_router
 from app.modules.skills.service import SkillService
 from app.modules.trello.router import router as trello_router
@@ -88,9 +90,11 @@ def create_application() -> FastAPI:
     application.include_router(auth_router, prefix=settings.API_V1_PREFIX)
     application.include_router(clients_router, prefix=settings.API_V1_PREFIX)
     application.include_router(context_router, prefix=settings.API_V1_PREFIX)
+    application.include_router(delivery_router, prefix=settings.API_V1_PREFIX)
     application.include_router(github_router, prefix=settings.API_V1_PREFIX)
     application.include_router(jira_router, prefix=settings.API_V1_PREFIX)
     application.include_router(runs_router, prefix=settings.API_V1_PREFIX)
+    application.include_router(scheduler_router, prefix=settings.API_V1_PREFIX)
     application.include_router(skills_router, prefix=settings.API_V1_PREFIX)
     application.include_router(trello_router, prefix=settings.API_V1_PREFIX)
     application.include_router(workspaces_router, prefix=settings.API_V1_PREFIX)

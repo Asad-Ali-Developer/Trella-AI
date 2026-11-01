@@ -278,3 +278,63 @@ async def _execute_skill_run(run_id: UUID) -> None:
 def execute_skill_run_task(run_id: str) -> None:
     asyncio.run(_execute_skill_run(UUID(run_id)))
 
+
+async def _check_due_schedules() -> None:
+    from app.modules.scheduler.service import ScheduleService
+
+    async with worker_session_maker() as db:
+        service = ScheduleService(db)
+        due_schedules = await service.find_due_schedules()
+        for sched in due_schedules:
+            logger.info("enqueuing_due_schedule", schedule_id=str(sched.id), name=sched.name)
+            dispatch_task(execute_scheduled_run_task, str(sched.id))
+
+
+@celery_app.task(
+    name="app.workers.tasks.check_due_schedules_task",
+    autoretry_for=(OSError,),
+    retry_backoff=False,
+)
+def check_due_schedules_task() -> None:
+    """Periodic Celery beat task to scan for due report schedules every minute."""
+    asyncio.run(_check_due_schedules())
+
+
+async def _execute_scheduled_run(schedule_id: UUID) -> None:
+    from app.modules.scheduler.service import ScheduleService
+
+    async with worker_session_maker() as db:
+        service = ScheduleService(db)
+        await service.execute_scheduled_run(schedule_id)
+
+
+@celery_app.task(
+    name="app.workers.tasks.execute_scheduled_run_task",
+    autoretry_for=(OSError,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def execute_scheduled_run_task(schedule_id: str) -> None:
+    """Execute an automated report run for a scheduled job."""
+    asyncio.run(_execute_scheduled_run(UUID(schedule_id)))
+
+
+async def _deliver_report(delivery_id: UUID) -> None:
+    from app.modules.scheduler.service import ScheduleService
+
+    async with worker_session_maker() as db:
+        service = ScheduleService(db)
+        await service.dispatch_delivery(delivery_id)
+
+
+@celery_app.task(
+    name="app.workers.tasks.deliver_report_task",
+    autoretry_for=EMAIL_RETRY_ERRORS,
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def deliver_report_task(delivery_id: str) -> None:
+    """Deliver a generated report to its configured channel (Slack or Email)."""
+    asyncio.run(_deliver_report(UUID(delivery_id)))
+
+

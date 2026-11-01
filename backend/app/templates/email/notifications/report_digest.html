@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Client Insights Digest • {{ target_name }}{% endblock %}
+
+{% block preheader %}Your scheduled client digest for {{ target_name }} is ready to review.{% endblock %}
+
+{% block content %}
+<tr>
+  <td style="padding: 0 36px 28px 36px;">
+    <h1 style="margin: 0 0 12px 0; font-size: 24px; font-weight: 700; color: #0F172A; line-height: 32px;">
+      {{ headline }}
+    </h1>
+    <p style="margin: 0 0 20px 0; font-size: 15px; color: #475569; line-height: 24px;">
+      Here is your scheduled AI synthesis for <strong>{{ target_name }}</strong> across connected Trello and GitHub activity in workspace <strong>{{ workspace_name }}</strong>.
+    </p>
+
+    <!-- Key Needs -->
+    {% if needs %}
+    <div style="margin-bottom: 24px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 20px;">
+      <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #334155;">
+        🎯 Key Client Needs
+      </h3>
+      <ul style="margin: 0; padding-left: 20px; color: #1E293B; font-size: 14px; line-height: 22px;">
+        {% for need in needs %}
+        <li style="margin-bottom: 8px;">
+          <strong>[{{ need.priority|upper }}]</strong> {{ need.text }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- Key Risks -->
+    {% if risks %}
+    <div style="margin-bottom: 24px; background: #FFFBEB; border: 1px solid #FEF3C7; border-radius: 12px; padding: 18px 20px;">
+      <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #92400E;">
+        ⚠️ Identified Risks & Bottlenecks
+      </h3>
+      <ul style="margin: 0; padding-left: 20px; color: #78350F; font-size: 14px; line-height: 22px;">
+        {% for risk in risks %}
+        <li style="margin-bottom: 8px;">
+          <strong>[{{ risk.severity|upper }}]</strong> {{ risk.text }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- Patterns -->
+    {% if patterns %}
+    <div style="margin-bottom: 28px; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 20px;">
+      <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #334155;">
+        🔍 Work Patterns & Trends
+      </h3>
+      <ul style="margin: 0; padding-left: 20px; color: #1E293B; font-size: 14px; line-height: 22px;">
+        {% for pattern in patterns %}
+        <li style="margin-bottom: 8px;">
+          {{ pattern.text }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- CTA Button -->
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 28px 0;">
+      <tr>
+        <td align="center" style="border-radius: 10px; background-color: #4F46E5;">
+          <a href="{{ report_url }}" target="_blank" class="btn" style="display: inline-block; padding: 14px 28px; font-size: 15px; font-weight: 600; color: #FFFFFF; text-decoration: none; border-radius: 10px;">
+            View Full Report in DeepClient ↗
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin: 24px 0 0 0; font-size: 13px; color: #94A3B8; line-height: 20px; border-top: 1px solid #E2E8F0; padding-top: 16px;">
+      You received this email because automated delivery is scheduled for your workspace.
+      {% if unsubscribe_url %}
+      <br>To unsubscribe from this digest, <a href="{{ unsubscribe_url }}" style="color: #64748B; text-decoration: underline;">click here</a>.
+      {% endif %}
+    </p>
+  </td>
+</tr>
+{% endblock %}

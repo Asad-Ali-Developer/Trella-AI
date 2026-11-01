@@ -88,3 +88,27 @@ class GithubOAuthState(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SlackOAuthState(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Single-use Slack OAuth state bound to its initiating user and workspace."""
+
+    __tablename__ = "slack_oauth_states"
+    __table_args__ = (
+        Index("ix_slack_oauth_states_hash", "state_hash", unique=True),
+        Index("ix_slack_oauth_states_expiry", "expires_at"),
+    )
+
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+

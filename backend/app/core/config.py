@@ -137,6 +137,18 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = Field(default="")
     GOOGLE_CLIENT_SECRET: str = Field(default="")
 
+    # Slack OAuth App
+    SLACK_CLIENT_ID: str = Field(default="")
+    SLACK_CLIENT_SECRET: str = Field(default="")
+    SLACK_SIGNING_SECRET: str = Field(default="")
+    SLACK_CALLBACK_URL: str = Field(default="http://localhost:3000/dashboard/slack/callback")
+    SLACK_SCOPES: str = Field(
+        default="chat:write,chat:write.public,channels:read,groups:read,im:read,mpim:read,users:read"
+    )
+
+    # Resend Email Service
+    RESEND_API_KEY: str = Field(default="")
+
     @property
     def encryption_fallback_keys(self) -> list[str]:
         """Parse previous encryption keys used for MultiFernet rotation."""

@@ -4,6 +4,7 @@ import {
   Blocks,
   BrainCircuit,
   BriefcaseBusiness,
+  Clock,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -98,6 +99,14 @@ export function Sidebar({
           >
             <FileText className="h-[18px] w-[18px]" />
             Reports & Runs
+          </Link>
+          <Link
+            href="/dashboard/schedules"
+            aria-current={pathname.startsWith("/dashboard/schedules") ? "page" : undefined}
+            className={navClass(pathname.startsWith("/dashboard/schedules"))}
+          >
+            <Clock className="h-[18px] w-[18px]" />
+            Schedules & Delivery
           </Link>
           <Link
             href="/dashboard/skills"

@@ -1,7 +1,7 @@
 """HTTP Client and OAuth handling for Jira Cloud via Atlassian OAuth 2.0 (3LO)."""
 
-from typing import Any
-from urllib.parse import quote, urlencode
+from typing import Any, cast
+from urllib.parse import urlencode
 
 import httpx
 from pydantic import BaseModel, Field
@@ -159,7 +159,7 @@ class JiraClient:
         try:
             response = await self.client.get(f"{self.base_url}/me")
             if response.status_code == 200:
-                return response.json()
+                return cast(dict[str, Any], response.json())
             return None
         except httpx.RequestError:
             return None
@@ -171,11 +171,10 @@ class JiraClient:
                 f"{self.base_url}/ex/jira/{cloud_id}/rest/api/3/myself"
             )
             if response.status_code == 200:
-                return response.json()
+                return cast(dict[str, Any], response.json())
             return None
         except httpx.RequestError:
             return None
-
 
     async def get_accessible_resources(self) -> list[dict[str, Any]]:
         """Fetch Jira Cloud sites accessible to this authorization."""
@@ -188,7 +187,7 @@ class JiraClient:
                     f"Failed to fetch accessible Jira sites ({response.status_code}): {response.text}",
                     status_code=response.status_code,
                 )
-            return response.json()
+            return cast(list[dict[str, Any]], response.json())
         except httpx.RequestError as exc:
             raise JiraAPIError(f"Network error fetching Jira sites: {exc}") from exc
 
@@ -205,7 +204,7 @@ class JiraClient:
                 )
             data = response.json()
             # Jira returns { "values": [...] }
-            return data.get("values", [])
+            return cast(list[dict[str, Any]], data.get("values", []))
         except httpx.RequestError as exc:
             raise JiraAPIError(f"Network error fetching Jira projects: {exc}") from exc
 
@@ -230,6 +229,6 @@ class JiraClient:
                     f"Failed to query Jira issues ({response.status_code}): {response.text}",
                     status_code=response.status_code,
                 )
-            return response.json().get("issues", [])
+            return cast(list[dict[str, Any]], response.json().get("issues", []))
         except httpx.RequestError as exc:
             raise JiraAPIError(f"Network error querying Jira issues: {exc}") from exc

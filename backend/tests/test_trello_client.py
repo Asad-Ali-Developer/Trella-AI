@@ -295,6 +295,7 @@ async def test_oauth_error_response_does_not_leak_client_secret() -> None:
 def test_rate_limiter_multiple_event_loops() -> None:
     """Ensure TrelloRateLimiter can be called across multiple sequential event loops without loop mismatch."""
     import asyncio
+
     from app.modules.trello.rate_limiter import TrelloRateLimiter
 
     mock_redis = AsyncMock()

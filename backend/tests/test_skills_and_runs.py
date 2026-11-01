@@ -1,6 +1,5 @@
 """Comprehensive tests for Phase 4: LLM Layer, Skill Engine, Runs, and Citations."""
 
-import hashlib
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -17,14 +16,10 @@ from app.modules.context.schemas import (
     WorkspaceContextResponse,
 )
 from app.modules.llm.base import LLMResult
-from app.modules.llm.factory import get_llm_provider
 from app.modules.llm.gemini import GeminiProvider
 from app.modules.runs.citations import validate_and_enrich_citations
-from app.modules.runs.models import Insight, Run
 from app.modules.runs.schemas import RunCreateRequest
 from app.modules.runs.service import RunService
-from app.modules.skills.builtin import BUILTIN_SKILLS
-from app.modules.skills.models import Skill
 from app.modules.skills.schemas import (
     CitedSource,
     ClientNeedsReport,

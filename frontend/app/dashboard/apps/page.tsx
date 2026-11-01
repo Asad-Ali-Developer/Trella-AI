@@ -22,10 +22,11 @@ import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
-import type { GithubConnectionStatus, JiraConnectionStatus, TrelloConnectionStatus, Workspace } from "@/lib/types";
+import type { GithubConnectionStatus, JiraConnectionStatus, SlackConnectionStatus, TrelloConnectionStatus, Workspace } from "@/lib/types";
 import { authService } from "@/services/AuthService";
 import { githubService } from "@/services/GithubService";
 import { jiraService } from "@/services/JiraService";
+import { slackService } from "@/services/SlackService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -63,10 +64,10 @@ const apps = [
     id: "slack" as const,
     name: "Slack",
     category: "Report delivery",
-    summary: "Send useful client reports and updates to your team.",
-    detail: "Slack notifications and sharing are in our roadmap. Coming soon.",
+    summary: "Deliver rich Block Kit report digests to your team channels.",
+    detail: "Connect Slack to post formatted client summaries, needs, risks, and trends directly into your team channels on schedule.",
     iconClass: "bg-violet-50 text-violet-700",
-    available: false,
+    available: true,
   },
 ];
 
@@ -92,6 +93,7 @@ export default function ConnectedAppsPage() {
   const [trelloConnection, setTrelloConnection] = useState<TrelloConnectionStatus | null>(null);
   const [githubConnection, setGithubConnection] = useState<GithubConnectionStatus | null>(null);
   const [jiraConnection, setJiraConnection] = useState<JiraConnectionStatus | null>(null);
+  const [slackConnection, setSlackConnection] = useState<SlackConnectionStatus | null>(null);
   const [selectedApp, setSelectedApp] = useState<AppId | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -101,21 +103,47 @@ export default function ConnectedAppsPage() {
     setSelectedWorkspace(workspace);
     setError("");
     try {
-      const [trello, github, jira] = await Promise.all([
+      const [trello, github, jira, slack] = await Promise.all([
         trelloService.status(workspace.id),
         githubService.status(workspace.id),
         jiraService.status(workspace.id),
+        slackService.getStatus(workspace.id),
       ]);
       setTrelloConnection(trello);
       setGithubConnection(github);
       setJiraConnection(jira);
+      setSlackConnection(slack);
     } catch {
       setTrelloConnection(null);
       setGithubConnection(null);
       setJiraConnection(null);
+      setSlackConnection(null);
       setError("Could not check app connections. Please try again.");
     }
   }, []);
+
+  async function handleConnectSlack() {
+    if (!selectedWorkspace) return;
+    try {
+      setError("");
+      const url = await slackService.getAuthorizationUrl(selectedWorkspace.id);
+      window.location.href = url;
+    } catch {
+      setError("Failed to initiate Slack authorization. Please try again.");
+    }
+  }
+
+  async function handleDisconnectSlack() {
+    if (!selectedWorkspace) return;
+    try {
+      setError("");
+      await slackService.disconnect(selectedWorkspace.id);
+      await loadConnectionStatus(selectedWorkspace);
+      setSelectedApp(null);
+    } catch {
+      setError("Failed to disconnect Slack. Please try again.");
+    }
+  }
 
 
   const load = useCallback(async () => {
@@ -167,6 +195,7 @@ export default function ConnectedAppsPage() {
   const trelloIsConnected = trelloConnection?.connected ?? false;
   const githubIsConnected = githubConnection?.connected ?? false;
   const jiraIsConnected = jiraConnection?.connected ?? false;
+  const slackIsConnected = slackConnection?.connected ?? false;
 
   return (
     <DashboardTemplate
@@ -230,7 +259,8 @@ export default function ConnectedAppsPage() {
                     {group.apps.map(({ id, name, summary, iconClass, available }) => {
                   const connected = (id === "trello" && trelloIsConnected) ||
                     (id === "github" && githubIsConnected) ||
-                    (id === "jira" && jiraIsConnected);
+                    (id === "jira" && jiraIsConnected) ||
+                    (id === "slack" && slackIsConnected);
                   const clickable = available && !loading;
 
 
@@ -292,7 +322,7 @@ export default function ConnectedAppsPage() {
               <div>
                 <h2 className="text-sm font-semibold text-zinc-900 dark:text-[#F1F5F9]">One workspace. A clearer picture of every client.</h2>
                 <p className="mt-1 text-sm leading-5 text-zinc-500 dark:text-[#9BA8AB]">
-                  DeepClient is designed to relate project plans to development activity, turn that shared context into traceable insights, and deliver reports through your team’s tools. Jira and Slack integrations are coming soon.
+                  DeepClient relates project plans to development activity, turns that shared context into traceable insights, and delivers scheduled reports through Slack and email.
                 </p>
               </div>
             </aside>
@@ -332,7 +362,9 @@ export default function ConnectedAppsPage() {
                         ? `Connected as ${trelloConnection?.username}`
                         : selectedApp === "jira" && jiraIsConnected
                           ? `Connected as ${jiraConnection?.username}${jiraConnection?.site_name ? ` (${jiraConnection.site_name})` : ""}`
-                          : "Workspace integration"}
+                          : selectedApp === "slack" && slackIsConnected
+                            ? `Connected to ${slackConnection?.team_name ?? "Slack"}`
+                            : "Workspace integration"}
                   </p>
                 </div>
               </div>
@@ -347,7 +379,7 @@ export default function ConnectedAppsPage() {
             </div>
             <div className="p-5">
               <p className="text-sm leading-6 text-zinc-600">{selectedAppDetails.detail}</p>
-              {selectedAppDetails.id === "trello" || selectedAppDetails.id === "github" || selectedAppDetails.id === "jira" ? (
+              {selectedAppDetails.id === "trello" || selectedAppDetails.id === "github" || selectedAppDetails.id === "jira" || selectedAppDetails.id === "slack" ? (
                 <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-zinc-50 p-3 text-xs leading-5 text-zinc-500">
                   <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
                   <p>
@@ -355,7 +387,9 @@ export default function ConnectedAppsPage() {
                       ? "Choose which boards to sync and manage client mappings from Trello settings."
                       : selectedAppDetails.id === "github"
                         ? "Choose repositories, connect them to workspace clients, and sync commit history from GitHub settings."
-                        : "Choose Jira projects, connect them to workspace clients, and track issue updates from Jira settings."}
+                        : selectedAppDetails.id === "jira"
+                          ? "Choose Jira projects, connect them to workspace clients, and track issue updates from Jira settings."
+                          : "Deliver scheduled Block Kit report digests and client updates directly to your team's Slack channels."}
                   </p>
                 </div>
               ) : null}
@@ -369,22 +403,54 @@ export default function ConnectedAppsPage() {
               >
                 Close
               </Button>
-              <Button
-                type="button"
-                className="gap-2 rounded-lg px-4"
-                onClick={() => {
-                  if (selectedAppDetails.id === "github") router.push("/dashboard/github");
-                  else if (selectedAppDetails.id === "jira") router.push("/dashboard/jira");
-                  else router.push("/dashboard/trello");
-                }}
-              >
-                {selectedAppDetails.id === "github"
-                  ? githubIsConnected ? "Open GitHub settings" : "Connect GitHub"
-                  : selectedAppDetails.id === "jira"
-                    ? jiraIsConnected ? "Open Jira settings" : "Connect Jira"
-                    : trelloIsConnected ? "Open Trello settings" : "Connect Trello"}
-                <ExternalLink className="h-4 w-4" />
-              </Button>
+              {selectedAppDetails.id === "slack" ? (
+                slackIsConnected ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                      onClick={() => void handleDisconnectSlack()}
+                    >
+                      Disconnect
+                    </Button>
+                    <Button
+                      type="button"
+                      className="gap-2 rounded-lg px-4"
+                      onClick={() => router.push("/dashboard/schedules")}
+                    >
+                      Configure Schedules
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    className="gap-2 rounded-lg px-4"
+                    onClick={() => void handleConnectSlack()}
+                  >
+                    Connect Slack
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                )
+              ) : (
+                <Button
+                  type="button"
+                  className="gap-2 rounded-lg px-4"
+                  onClick={() => {
+                    if (selectedAppDetails.id === "github") router.push("/dashboard/github");
+                    else if (selectedAppDetails.id === "jira") router.push("/dashboard/jira");
+                    else router.push("/dashboard/trello");
+                  }}
+                >
+                  {selectedAppDetails.id === "github"
+                    ? githubIsConnected ? "Open GitHub settings" : "Connect GitHub"
+                    : selectedAppDetails.id === "jira"
+                      ? jiraIsConnected ? "Open Jira settings" : "Connect Jira"
+                      : trelloIsConnected ? "Open Trello settings" : "Connect Trello"}
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              )}
             </div>
 
           </section>

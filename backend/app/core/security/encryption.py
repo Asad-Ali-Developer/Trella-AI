@@ -54,3 +54,14 @@ class TokenEncryption:
 
 
 encryption = TokenEncryption()
+
+
+def encrypt_secret(plaintext: str) -> str:
+    """Helper alias for encryption.encrypt."""
+    return encryption.encrypt(plaintext)
+
+
+def decrypt_secret(ciphertext: str) -> str:
+    """Helper alias for encryption.decrypt."""
+    return encryption.decrypt(ciphertext)
+

@@ -131,6 +131,7 @@ async def test_token_refresh(async_client: AsyncClient) -> None:
 
     # Invalid refresh token
     async_client.cookies.set("refresh_token", "invalid_jwt_token_123")
+    headers["X-CSRF-Token"] = async_client.cookies.get("csrf_token") or ""
     res_bad = await async_client.post(
         "/api/v1/auth/refresh",
         headers=headers,

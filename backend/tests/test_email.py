@@ -1,8 +1,6 @@
 from email.message import EmailMessage
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.core import email
 from app.core.config import settings
 from app.core.mailgun import MailgunClient, MailgunError

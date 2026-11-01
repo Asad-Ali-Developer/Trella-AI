@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import get_current_user
+from app.core.email import is_email_configured
 from app.core.security.csrf import CSRF_COOKIE_NAME, validate_csrf_request
 from app.db.session import get_db
 from app.modules.auth.models import User
@@ -21,7 +22,6 @@ from app.modules.auth.schemas import (
     UserResponse,
     UserSignupRequest,
 )
-from app.core.email import is_email_configured
 from app.modules.auth.service import AuthService
 from app.workers.tasks import (
     dispatch_task,

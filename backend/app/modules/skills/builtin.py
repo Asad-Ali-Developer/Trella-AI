@@ -1,6 +1,7 @@
 """Built-in default skills for Client Insights platform."""
 
 from typing import Any
+
 from app.modules.skills.schemas import ClientNeedsReport
 
 BUILTIN_SKILLS: list[dict[str, Any]] = [

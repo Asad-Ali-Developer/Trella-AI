@@ -1,4 +1,5 @@
 import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,6 @@ from app.modules.jira.schemas import (
 )
 from app.modules.jira.service import JiraConnectionService
 from app.modules.workspaces.models import Membership, Workspace
-
 
 router = APIRouter(prefix="/connections/jira", tags=["jira"])
 
