@@ -209,6 +209,25 @@ export interface RiskInsight {
   sources: CitedSource[];
 }
 
+export interface ReportHeadline {
+  status_word?: string | null;
+  status_word_tone?: "positive" | "neutral" | "negative" | string | null;
+  rest?: string | null;
+  summary?: string | null;
+}
+
+export interface ReportHealth {
+  status?: "green" | "amber" | "red" | "insufficient_data" | string | null;
+  confidence?: "high" | "medium" | "low" | "insufficient_data" | string | null;
+}
+
+export interface ReportStats {
+  scope_changes?: number | null;
+  deadlines_moved?: number | null;
+  our_reply_gap_days?: number | null;
+  client_comments?: number | null;
+}
+
 export interface ClientNeedsReport {
   client_name: string;
   executive_summary: string;
@@ -216,6 +235,9 @@ export interface ClientNeedsReport {
   patterns: PatternInsight[];
   stakeholders: StakeholderInsight[];
   risks: RiskInsight[];
+  headline?: ReportHeadline | null;
+  health?: ReportHealth | null;
+  stats?: ReportStats | null;
 }
 
 export interface Skill {

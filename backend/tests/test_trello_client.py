@@ -290,3 +290,20 @@ async def test_oauth_error_response_does_not_leak_client_secret() -> None:
     assert error.value.status_code == 400
     assert "private-client-secret" not in str(error.value)
     assert "private-refresh-token" not in str(error.value)
+
+
+def test_rate_limiter_multiple_event_loops() -> None:
+    """Ensure TrelloRateLimiter can be called across multiple sequential event loops without loop mismatch."""
+    import asyncio
+    from app.modules.trello.rate_limiter import TrelloRateLimiter
+
+    mock_redis = AsyncMock()
+    mock_redis.eval = AsyncMock(return_value=[1, 1000])
+    limiter = TrelloRateLimiter(redis=mock_redis)
+
+    async def run_once() -> None:
+        await limiter.acquire("api-key", "token", "/boards/123")
+
+    asyncio.run(run_once())
+    asyncio.run(run_once())
+

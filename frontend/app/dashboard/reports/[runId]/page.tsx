@@ -24,12 +24,15 @@ import {
   Sparkles,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   TrendingUp,
   Users,
 } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button";
 import { MarkdownContent } from "@/components/atoms/MarkdownContent";
+import { ConfirmDeleteModal } from "@/components/molecules/ConfirmDeleteModal";
+import { ReportHero } from "@/components/organisms/ReportHero";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { workspaceStore } from "@/lib/storage";
@@ -51,6 +54,10 @@ export default function ReportDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+
+  // Delete Report State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Thumbs Feedback
   const [feedbackLoading, setFeedbackLoading] = useState<Record<string, boolean>>({});
@@ -167,6 +174,20 @@ export default function ReportDetailPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleConfirmDelete() {
+    if (!selectedWorkspace || !run) return;
+    setIsDeleting(true);
+    try {
+      await runService.delete(selectedWorkspace.id, run.id);
+      router.push("/dashboard/reports");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete report.";
+      setError(message);
+      setIsDeleting(false);
+      setDeleteModalOpen(false);
+    }
+  }
+
   async function handleLogout() {
     await authService.logout();
     router.replace("/login");
@@ -226,6 +247,7 @@ export default function ReportDetailPage() {
   const patterns = run.insights.filter((i) => i.category === "pattern");
   const stakeholders = run.insights.filter((i) => i.category === "stakeholder");
   const risks = run.insights.filter((i) => i.category === "risk");
+  const showHero = run.status !== "failed" && run.status !== "running" && Boolean(run.output_json?.headline);
 
   return (
     <DashboardTemplate
@@ -266,10 +288,18 @@ export default function ReportDetailPage() {
             <Button
               onClick={handleExportJSON}
               variant="ghost"
-              className="h-9 gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+              className="h-9 gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF] dark:hover:bg-[#253745] dark:hover:text-white"
             >
               <Download className="h-3.5 w-3.5" />
               Export JSON
+            </Button>
+            <Button
+              onClick={() => setDeleteModalOpen(true)}
+              variant="ghost"
+              className="h-9 gap-1.5 rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-xs font-medium text-rose-600 hover:bg-rose-100 hover:text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete Report
             </Button>
           </div>
         </div>
@@ -376,7 +406,7 @@ export default function ReportDetailPage() {
           </div>
 
           {/* Executive Summary */}
-          {run.output_json?.executive_summary && (
+          {!showHero && run.output_json?.executive_summary && (
             <div className="mt-6 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-indigo-50/20 p-5 dark:border-[#253745] dark:from-[#162736] dark:to-[#11212D]">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-[#CCD0CF] mb-2">
                 <Sparkles className="h-4 w-4 text-indigo-600 dark:text-[#CCD0CF]" />
@@ -386,6 +416,8 @@ export default function ReportDetailPage() {
             </div>
           )}
         </div>
+
+        {showHero && <ReportHero run={run} clientName={run.client_name} />}
 
         {/* Section: Needs */}
         {needs.length > 0 && (
@@ -476,6 +508,21 @@ export default function ReportDetailPage() {
             No individual insights were extracted in this run.
           </div>
         )}
+
+        <ConfirmDeleteModal
+          isOpen={deleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) setDeleteModalOpen(false);
+          }}
+          onConfirm={handleConfirmDelete}
+          isLoading={isDeleting}
+          title="Delete Intelligence Report"
+          description="Are you sure you want to delete this report? This action cannot be undone and will permanently remove all extracted insights and citations."
+          itemDetails={{
+            title: run ? (run.skill_name || "Client Needs Analyzer") : undefined,
+            subtitle: run ? `Client: ${run.client_name || "All Clients"} • ${new Date(run.created_at).toLocaleString()}` : undefined,
+          }}
+        />
       </div>
     </DashboardTemplate>
   );

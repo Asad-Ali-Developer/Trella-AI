@@ -43,6 +43,18 @@ class AuthService {
     return data;
   }
 
+  async updateProfile(payload: { name: string }): Promise<User> {
+    const { data } = await http.patch<User>("/auth/me", payload);
+    return data;
+  }
+
+  async changePassword(payload: {
+    current_password: string;
+    new_password: string;
+  }): Promise<void> {
+    await http.post("/auth/change-password", payload);
+  }
+
   async logout(): Promise<void> {
     await http.post("/auth/logout");
     workspaceStore.clear();

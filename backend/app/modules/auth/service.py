@@ -18,10 +18,12 @@ from app.core.security.auth import (
 from app.modules.auth.models import User
 from app.modules.auth.repository import UserRepository
 from app.modules.auth.schemas import (
+    PasswordChangeRequest,
     PasswordResetConfirmRequest,
     RefreshTokenRequest,
     TokenResponse,
     UserLoginRequest,
+    UserProfileUpdateRequest,
     UserSignupRequest,
 )
 
@@ -183,3 +185,28 @@ class AuthService:
             token_type="bearer",
             expires_in=expires_in,
         )
+
+    async def update_profile(self, user: User, request: UserProfileUpdateRequest) -> User:
+        """Update current user profile fields."""
+        clean_name = request.name.strip()
+        if not clean_name:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Name cannot be empty.",
+            )
+        updated_user = await self.user_repo.update(user, name=clean_name)
+        return updated_user
+
+    async def change_password(self, user: User, request: PasswordChangeRequest) -> None:
+        """Change current user's password after validating existing credentials."""
+        if not verify_password(request.current_password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect.",
+            )
+        if request.current_password == request.new_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be different from current password.",
+            )
+        await self.user_repo.update(user, hashed_password=hash_password(request.new_password))

@@ -22,7 +22,12 @@ from app.modules.runs.prompts import (
     build_generation_prompt,
     render_skill_template,
 )
-from app.modules.runs.report_schemas import V2_EXTRA_FIELDS, ClientNeedsReportV2
+from app.modules.runs.report_schemas import (
+    V2_EXTRA_FIELDS,
+    ClientNeedsReportV2,
+    build_stats,
+    normalize_headline,
+)
 from app.modules.runs.schemas import RunCreateRequest
 from app.modules.skills.models import Skill
 from app.modules.workspaces.models import Workspace
@@ -70,45 +75,65 @@ def _filter_cited(
 
 
 def _sanitize_extras(
-    report: ClientNeedsReportV2,
+    report: Any,
     valid_ids: set[str],
     text_by_id: dict[str, str],
 ) -> dict[str, int]:
     """Validate citations on the V2-only sections (the legacy validator covers the core four)."""
     stats = {"dropped_uncited_items": 0, "evidence_mismatches": 0}
 
-    def f(items: list[Any]) -> list[Any]:
+    def f(items: list[Any] | None) -> list[Any]:
+        if not items:
+            return []
         return _filter_cited(items, valid_ids, text_by_id, stats)
 
-    report.health.drivers = f(report.health.drivers)
-    report.scope_changes = f(report.scope_changes)
-    report.work_churn.likely_causes = f(report.work_churn.likely_causes)
-    report.mood.swings = f(report.mood.swings)
-    report.mood.positive_signals = f(report.mood.positive_signals)
-    report.delivery_performance.wins = f(report.delivery_performance.wins)
-    report.delivery_performance.slips = f(report.delivery_performance.slips)
-    report.delivery_performance.open_commitments = f(report.delivery_performance.open_commitments)
-    report.recommended_actions = f(report.recommended_actions)
+    health = getattr(report, "health", None)
+    if health is not None:
+        health.drivers = f(getattr(health, "drivers", []))
+    if hasattr(report, "scope_changes") and report.scope_changes is not None:
+        report.scope_changes = f(report.scope_changes)
+    work_churn = getattr(report, "work_churn", None)
+    if work_churn is not None:
+        work_churn.likely_causes = f(getattr(work_churn, "likely_causes", []))
+    mood = getattr(report, "mood", None)
+    if mood is not None:
+        mood.swings = f(getattr(mood, "swings", []))
+        mood.positive_signals = f(getattr(mood, "positive_signals", []))
+    delivery = getattr(report, "delivery_performance", None)
+    if delivery is not None:
+        delivery.wins = f(getattr(delivery, "wins", []))
+        delivery.slips = f(getattr(delivery, "slips", []))
+        delivery.open_commitments = f(getattr(delivery, "open_commitments", []))
+    if hasattr(report, "recommended_actions") and report.recommended_actions is not None:
+        report.recommended_actions = f(report.recommended_actions)
     return stats
 
 
 def _compute_metrics(items: list[Any]) -> dict[str, Any]:
     """Code-computed facts the LLM may quote. Event metrics arrive with card_events (planned)."""
-    roles = [getattr(i, "author_role", None) for i in items]
+    roles = [
+        getattr(i, "author_role", None)
+        or (i.metadata.get("author_role") if hasattr(i, "metadata") and isinstance(i.metadata, dict) else None)
+        for i in items
+    ]
     return {
         "context_items_total": len(items),
         "items_by_type": dict(Counter(str(i.item_type) for i in items)),
         "client_authored_items": sum(1 for r in roles if r == "client"),
         "internal_authored_items": sum(1 for r in roles if r == "internal"),
-        "role_data_available": any(r is not None for r in roles),
+        "role_data_available": any(r in ("client", "internal") for r in roles),
         "event_metrics": "unavailable",
     }
 
 
 def _item_header(item: Any, item_id: str) -> str:
-    author = getattr(item, "author_name", None)
-    role = getattr(item, "author_role", None) or "unknown"
-    created = getattr(item, "created_at", None)
+    author = getattr(item, "author_name", None) or (
+        item.metadata.get("author_name") if hasattr(item, "metadata") and isinstance(item.metadata, dict) else None
+    )
+    role = getattr(item, "author_role", None) or (
+        item.metadata.get("author_role") if hasattr(item, "metadata") and isinstance(item.metadata, dict) else None
+    ) or "unknown"
+    created = getattr(item, "created_at", None) or getattr(item, "occurred_at", None)
     meta = []
     if author:
         meta.append(f"Author: {author}")
@@ -221,12 +246,13 @@ class RunService:
                         break
 
             scope = getattr(skill, "scope_json", None) or {}
+            metrics = _compute_metrics(all_items)
             full_prompt = build_generation_prompt(
                 task_instruction=render_skill_template(skill.prompt_template, client_name),
                 client_name=client_name,
                 period=str(scope.get("date_range", "unspecified")),
                 reference_date=datetime.now(UTC).date().isoformat(),
-                metrics=_compute_metrics(all_items),
+                metrics=metrics,
                 context_text=context_text,
             )
 
@@ -256,8 +282,10 @@ class RunService:
             self._persist_extra_insights(run, parsed_report, ref_index)
 
             # 7. Update run record
+            normalize_headline(parsed_report)
             output = enriched_report.model_dump()
             output.update(parsed_report.model_dump(include=V2_EXTRA_FIELDS, by_alias=True))
+            output["stats"] = build_stats(metrics, parsed_report)
             output["quality"] = {"prompt_version": PROMPT_VERSION, **extra_stats}
 
             run.tokens_in = llm_result.prompt_tokens
@@ -345,44 +373,72 @@ class RunService:
     def _persist_extra_insights(
         self,
         run: Run,
-        report: ClientNeedsReportV2,
+        report: Any,
         ref_index: dict[str, dict[str, Any]],
     ) -> None:
         def refs(ids: list[str]) -> list[dict[str, Any]]:
             return [ref_index[i] for i in ids if i in ref_index]
 
-        for sc in report.scope_changes:
+        scope_changes = getattr(report, "scope_changes", None) or []
+        for sc in scope_changes:
             detail = sc.text
-            if sc.before or sc.after:
-                detail += f" (before: {sc.before or 'n/a'} -> after: {sc.after or 'n/a'})"
-            if sc.interpretation:
-                detail += f" Interpretation: {sc.interpretation}"
+            before = getattr(sc, "before", None)
+            after = getattr(sc, "after", None)
+            if before or after:
+                detail += f" (before: {before or 'n/a'} -> after: {after or 'n/a'})"
+            interpretation = getattr(sc, "interpretation", None)
+            if interpretation:
+                detail += f" Interpretation: {interpretation}"
             self._add_insight(
-                run, category="scope_change", title=f"[{sc.classification}] {sc.text}",
-                detail=detail, severity_or_priority=sc.impact, source_refs=refs(sc.sources),
+                run,
+                category="scope_change",
+                title=f"[{getattr(sc, 'classification', 'scope')}] {sc.text}",
+                detail=detail,
+                severity_or_priority=getattr(sc, "impact", None),
+                source_refs=refs(getattr(sc, "sources", []) or []),
             )
-        for swing in report.mood.swings:
+
+        mood = getattr(report, "mood", None)
+        if mood and hasattr(mood, "swings"):
+            for swing in getattr(mood, "swings", []) or []:
+                evidence = getattr(swing, "evidence", None)
+                self._add_insight(
+                    run,
+                    category="mood_swing",
+                    title=f"Tone shift: {getattr(swing, 'from_sentiment', 'unknown')} -> {getattr(swing, 'to_sentiment', 'unknown')}",
+                    detail=(getattr(swing, "trigger", None) or "Trigger not evidenced.")
+                    + (f' Evidence: "{evidence}"' if evidence else ""),
+                    source_refs=refs(getattr(swing, "sources", []) or []),
+                )
+
+        delivery = getattr(report, "delivery_performance", None)
+        if delivery:
+            for win in getattr(delivery, "wins", []) or []:
+                self._add_insight(
+                    run,
+                    category="delivery_win",
+                    title=win.text,
+                    detail=win.text,
+                    source_refs=refs(getattr(win, "sources", []) or []),
+                )
+            for slip in getattr(delivery, "slips", []) or []:
+                self._add_insight(
+                    run,
+                    category="delivery_slip",
+                    title=slip.text,
+                    detail=slip.text,
+                    source_refs=refs(getattr(slip, "sources", []) or []),
+                )
+
+        recommended_actions = getattr(report, "recommended_actions", None) or []
+        for act in recommended_actions:
             self._add_insight(
-                run, category="mood_swing",
-                title=f"Tone shift: {swing.from_sentiment} -> {swing.to_sentiment}",
-                detail=(swing.trigger or "Trigger not evidenced.")
-                + (f' Evidence: "{swing.evidence}"' if swing.evidence else ""),
-                source_refs=refs(swing.sources),
-            )
-        for win in report.delivery_performance.wins:
-            self._add_insight(
-                run, category="delivery_win", title=win.text, detail=win.text,
-                source_refs=refs(win.sources),
-            )
-        for slip in report.delivery_performance.slips:
-            self._add_insight(
-                run, category="delivery_slip", title=slip.text, detail=slip.text,
-                source_refs=refs(slip.sources),
-            )
-        for act in report.recommended_actions:
-            self._add_insight(
-                run, category="action", title=act.action, detail=f"{act.action} Why: {act.why}",
-                severity_or_priority=act.urgency, source_refs=refs(act.sources),
+                run,
+                category="action",
+                title=act.action,
+                detail=f"{act.action} Why: {getattr(act, 'why', '')}",
+                severity_or_priority=getattr(act, "urgency", None),
+                source_refs=refs(getattr(act, "sources", []) or []),
             )
 
     # ------------------------------------------------------------------ queries
@@ -414,6 +470,13 @@ class RunService:
                 detail="Run not found in this workspace.",
             )
         return run
+
+    async def delete_run(self, run_id: UUID, workspace_id: UUID) -> None:
+        """Delete a run and all associated insights with workspace isolation."""
+        run = await self.get_run(run_id=run_id, workspace_id=workspace_id)
+        await self.db.delete(run)
+        await self.db.commit()
+        logger.info("run_deleted", run_id=str(run_id), workspace_id=str(workspace_id))
 
     async def submit_insight_feedback(
         self,

@@ -11,11 +11,13 @@ from app.modules.auth.models import User
 from app.modules.auth.schemas import (
     AuthResponse,
     GoogleAuthRequest,
+    PasswordChangeRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RefreshTokenRequest,
     TokenResponse,
     UserLoginRequest,
+    UserProfileUpdateRequest,
     UserResponse,
     UserSignupRequest,
 )
@@ -251,3 +253,35 @@ async def get_me(
 ) -> UserResponse:
     """Retrieve profile of the currently authenticated user."""
     return UserResponse.model_validate(current_user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update current user profile",
+)
+async def update_me(
+    payload: UserProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    """Update display name and personal profile for the authenticated user."""
+    service = AuthService(db)
+    updated = await service.update_profile(current_user, payload)
+    return UserResponse.model_validate(updated)
+
+
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change user password",
+)
+async def change_password(
+    payload: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Validate current credentials and securely set a new password."""
+    service = AuthService(db)
+    await service.change_password(current_user, payload)

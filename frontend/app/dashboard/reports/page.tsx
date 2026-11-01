@@ -19,10 +19,13 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { ConfirmDeleteModal } from "@/components/molecules/ConfirmDeleteModal";
+import { Pagination } from "@/components/molecules/Pagination";
 import { ReportsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -57,6 +60,15 @@ export default function ReportsAndRunsPage() {
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 5;
+
+  // Delete Report Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [runToDelete, setRunToDelete] = useState<Run | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // New Run Trigger Drawer
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -180,6 +192,25 @@ export default function ReportsAndRunsPage() {
     }
   }
 
+  async function handleConfirmDelete() {
+    if (!selectedWorkspace || !runToDelete) return;
+    setIsDeleting(true);
+    setError("");
+    setNotice("");
+    try {
+      await runService.delete(selectedWorkspace.id, runToDelete.id);
+      setRuns((prev) => prev.filter((r) => r.id !== runToDelete.id));
+      setNotice("Report successfully deleted.");
+      setDeleteModalOpen(false);
+      setRunToDelete(null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete report.";
+      setError(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   async function handleLogout() {
     await authService.logout();
     router.replace("/login");
@@ -190,6 +221,18 @@ export default function ReportsAndRunsPage() {
     if (clientFilter !== "all" && r.client_id !== clientFilter) return false;
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredRuns.length / pageSize));
+  const paginatedRuns = filteredRuns.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const totalTokens = runs.reduce((acc, r) => acc + r.tokens_in + r.tokens_out, 0);
   const totalCost = runs.reduce((acc, r) => acc + r.cost_usd, 0);
@@ -216,7 +259,7 @@ export default function ReportsAndRunsPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 border border-indigo-200 dark:bg-[#162736] dark:text-[#CCD0CF] dark:border-[#253745]">
               <FileText className="h-3.5 w-3.5" />
-              Phase 5: Reports & Execution History
+              Reports & Execution History
             </div>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl dark:text-[#F1F5F9]">
               Reports & Run History
@@ -287,7 +330,13 @@ export default function ReportsAndRunsPage() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Filter:</span>
             <div className="w-36">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select
+                value={statusFilter}
+                onValueChange={(val) => {
+                  setStatusFilter(val);
+                  setCurrentPage(1);
+                }}
+              >
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
@@ -301,7 +350,13 @@ export default function ReportsAndRunsPage() {
             </div>
 
             <div className="w-40">
-              <Select value={clientFilter} onValueChange={setClientFilter}>
+              <Select
+                value={clientFilter}
+                onValueChange={(val) => {
+                  setClientFilter(val);
+                  setCurrentPage(1);
+                }}
+              >
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue placeholder="All Clients" />
                 </SelectTrigger>
@@ -339,92 +394,118 @@ export default function ReportsAndRunsPage() {
             </Button>
           </div>
         ) : (
-          <div className="divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-            {filteredRuns.map((run) => {
-              const client = clients.find((c) => c.id === run.client_id);
-              const skill = skills.find((s) => s.id === run.skill_id);
-              const isRunning = run.status === "running" || run.status === "pending";
+          <div className="space-y-4">
+            <div className="divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden dark:divide-zinc-800 dark:border-zinc-800 dark:bg-[#11212D]">
+              {paginatedRuns.map((run) => {
+                const client = clients.find((c) => c.id === run.client_id);
+                const skill = skills.find((s) => s.id === run.skill_id);
+                const isRunning = run.status === "running" || run.status === "pending";
 
-              return (
-                <div
-                  key={run.id}
-                  className="flex flex-col justify-between gap-4 p-5 hover:bg-zinc-50/70 transition-colors sm:flex-row sm:items-center dark:hover:bg-zinc-800/50"
-                >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold ${
-                        run.status === "completed"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
-                          : run.status === "failed"
-                          ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
-                      }`}
-                    >
-                      {run.status === "completed" ? (
-                        <CheckCircle2 className="h-5 w-5" />
-                      ) : run.status === "failed" ? (
-                        <AlertTriangle className="h-5 w-5" />
-                      ) : (
-                        <LoaderCircle className="h-5 w-5 animate-spin" />
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2.5">
-                        <h4 className="font-bold text-zinc-900 dark:text-zinc-100">
-                          {run.skill_name || skill?.name || "Client Needs Analyzer"}
-                        </h4>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                            run.status === "completed"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800/60"
-                              : run.status === "failed"
-                              ? "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-400 dark:border-rose-800/60"
-                              : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800/60"
-                          }`}
-                        >
-                          {run.status}
-                        </span>
-                        {run.status === "completed" && run.citations_valid && (
-                          <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800/60">
-                            <ShieldCheck className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
-                            Grounded
-                          </span>
+                return (
+                  <div
+                    key={run.id}
+                    className="flex flex-col justify-between gap-4 p-5 hover:bg-zinc-50/70 transition-colors sm:flex-row sm:items-center dark:hover:bg-zinc-800/50"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold ${
+                          run.status === "completed"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                            : run.status === "failed"
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                        }`}
+                      >
+                        {run.status === "completed" ? (
+                          <CheckCircle2 className="h-5 w-5" />
+                        ) : run.status === "failed" ? (
+                          <AlertTriangle className="h-5 w-5" />
+                        ) : (
+                          <LoaderCircle className="h-5 w-5 animate-spin" />
                         )}
                       </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-zinc-400 dark:text-zinc-500">
-                        <span>
-                          Client: <strong className="text-zinc-700 dark:text-zinc-200">{run.client_name || client?.name || "All Clients"}</strong>
-                        </span>
-                        <span>•</span>
-                        <span>Trigger: <strong className="capitalize text-zinc-700 dark:text-zinc-200">{run.trigger}</strong></span>
-                        <span>•</span>
-                        <span>{new Date(run.created_at).toLocaleString()}</span>
+                      <div>
+                        <div className="flex items-center gap-2.5">
+                          <h4 className="font-bold text-zinc-900 dark:text-zinc-100">
+                            {run.skill_name || skill?.name || "Client Needs Analyzer"}
+                          </h4>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                              run.status === "completed"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800/60"
+                                : run.status === "failed"
+                                ? "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-400 dark:border-rose-800/60"
+                                : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800/60"
+                            }`}
+                          >
+                            {run.status}
+                          </span>
+                          {run.status === "completed" && run.citations_valid && (
+                            <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800/60">
+                              <ShieldCheck className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                              Grounded
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-zinc-400 dark:text-zinc-500">
+                          <span>
+                            Client: <strong className="text-zinc-700 dark:text-zinc-200">{run.client_name || client?.name || "All Clients"}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>Trigger: <strong className="capitalize text-zinc-700 dark:text-zinc-200">{run.trigger}</strong></span>
+                          <span>•</span>
+                          <span>{new Date(run.created_at).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Metrics & Action Link */}
+                    <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 dark:border-zinc-800">
+                      <div className="text-right text-xs">
+                        <p className="font-semibold text-zinc-800 dark:text-zinc-200">
+                          {(run.tokens_in + run.tokens_out).toLocaleString()} tokens
+                        </p>
+                        <p className="text-zinc-400 dark:text-zinc-500">${run.cost_usd.toFixed(6)}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/dashboard/reports/${run.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-600 hover:text-white transition-colors dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white"
+                        >
+                          View Report
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRunToDelete(run);
+                            setDeleteModalOpen(true);
+                          }}
+                          title="Delete report"
+                          aria-label={`Delete report for ${run.client_name || "client"}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 transition-colors dark:border-[#253745] dark:bg-[#162736] dark:text-[#9BA8AB] dark:hover:border-rose-900/60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
 
-                  {/* Metrics & Action Link */}
-                  <div className="flex items-center justify-between sm:justify-end gap-6 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 dark:border-zinc-800">
-                    <div className="text-right text-xs">
-                      <p className="font-semibold text-zinc-800 dark:text-zinc-200">
-                        {(run.tokens_in + run.tokens_out).toLocaleString()} tokens
-                      </p>
-                      <p className="text-zinc-400 dark:text-zinc-500">${run.cost_usd.toFixed(6)}</p>
-                    </div>
-
-                    <Link
-                      href={`/dashboard/reports/${run.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-600 hover:text-white transition-colors dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white"
-                    >
-                      View Report
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredRuns.length}
+              pageSize={pageSize}
+              onPageChange={(p) => setCurrentPage(p)}
+              itemName="reports"
+            />
           </div>
         )}
 
@@ -509,6 +590,26 @@ export default function ReportsAndRunsPage() {
             </div>
           </div>
         )}
+        {/* Confirm Delete Report Modal */}
+        <ConfirmDeleteModal
+          isOpen={deleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) {
+              setDeleteModalOpen(false);
+              setRunToDelete(null);
+            }
+          }}
+          onConfirm={handleConfirmDelete}
+          isLoading={isDeleting}
+          title="Delete Intelligence Report"
+          description="Are you sure you want to delete this report? This action cannot be undone and will permanently remove all extracted insights and citation data."
+          itemDetails={{
+            title: runToDelete ? (runToDelete.skill_name || "Client Needs Analyzer") : undefined,
+            subtitle: runToDelete
+              ? `Client: ${runToDelete.client_name || "All Clients"} • ${new Date(runToDelete.created_at).toLocaleString()}`
+              : undefined,
+          }}
+        />
         </PageTransition>
       )}
     </DashboardTemplate>

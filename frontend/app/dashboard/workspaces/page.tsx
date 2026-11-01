@@ -244,10 +244,10 @@ export default function WorkspacesPage() {
                     <Link
                       href={`/dashboard/workspaces/${workspace.id}`}
                       onClick={() => selectWorkspace(workspace)}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700 dark:text-[#CCD0CF] dark:hover:text-white"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white"
                     >
                       Workspace details
-                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                     </Link>
                   </div>
                 </article>

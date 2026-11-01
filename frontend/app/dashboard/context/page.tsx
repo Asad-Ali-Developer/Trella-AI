@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
 import { MarkdownContent, highlightMentions } from "@/components/atoms/MarkdownContent";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { AddClientFromMemberModal } from "@/components/molecules/AddClientFromMemberModal";
 import { ContextPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -34,8 +35,9 @@ import {
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
-import type { SimilarContextCard, Workspace, WorkspaceContextSnapshot } from "@/lib/types";
+import type { ClientSummary, SimilarContextCard, Workspace, WorkspaceContextSnapshot } from "@/lib/types";
 import { authService } from "@/services/AuthService";
+import { clientService } from "@/services/ClientService";
 import { contextService } from "@/services/ContextService";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -59,6 +61,25 @@ export default function WorkspaceContextPage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  // Add Client From Member Modal State
+  const [workspaceClients, setWorkspaceClients] = useState<ClientSummary[]>([]);
+  const [clientModalOpen, setClientModalOpen] = useState(false);
+  const [clientModalMember, setClientModalMember] = useState<{
+    id: string;
+    name: string;
+    username: string;
+  } | null>(null);
+  const [isAddingClient, setIsAddingClient] = useState(false);
+
+  const loadClients = useCallback(async (workspaceId: string) => {
+    try {
+      const list = await clientService.list(workspaceId);
+      setWorkspaceClients(list);
+    } catch {
+      // silent
+    }
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const [currentUser, workspaceList] = await Promise.all([
@@ -72,6 +93,7 @@ export default function WorkspaceContextPage() {
       if (workspace) {
         workspaceStore.setWorkspaceId(workspace.id);
         setSelectedWorkspace(workspace);
+        void loadClients(workspace.id);
       }
     } catch {
       dispatch(clearSession());
@@ -80,7 +102,7 @@ export default function WorkspaceContextPage() {
     } finally {
       setLoading(false);
     }
-  }, [dispatch, router]);
+  }, [dispatch, loadClients, router]);
 
   useEffect(() => {
     void load();
@@ -202,7 +224,7 @@ export default function WorkspaceContextPage() {
     }
   }
 
-  function selectWorkspace(workspace: Workspace) {
+    function selectWorkspace(workspace: Workspace) {
     workspaceStore.setWorkspaceId(workspace.id);
     setSelectedWorkspace(workspace);
     setContext(null);
@@ -211,6 +233,75 @@ export default function WorkspaceContextPage() {
     setIndexRemaining(null);
     setError("");
     setNotice("");
+    void loadClients(workspace.id);
+  }
+
+  async function handleConfirmAddClient() {
+    if (!selectedWorkspace || !clientModalMember) return;
+    setIsAddingClient(true);
+    setError("");
+    setNotice("");
+    try {
+      // 1. Classify member as client in workspace context
+      await updateMemberClassification(clientModalMember.id, "client");
+
+      // 2. Add client to clients table if not already existing
+      const cleanName = clientModalMember.name.trim();
+      const existing = workspaceClients.find(
+        (c) => c.name.trim().toLowerCase() === cleanName.toLowerCase(),
+      );
+      if (!existing && cleanName) {
+        try {
+          const createdClient = await clientService.create(selectedWorkspace.id, cleanName);
+          setWorkspaceClients((prev) => [...prev, createdClient]);
+        } catch {
+          // If already registered or 409, continue safely
+        }
+      }
+
+      // 3. Update workspace client_name if currently empty
+      if (!selectedWorkspace.client_name && cleanName) {
+        try {
+          const updatedWs = await workspaceService.update(selectedWorkspace.id, {
+            name: selectedWorkspace.name,
+            client_name: cleanName,
+          });
+          setSelectedWorkspace(updatedWs);
+        } catch {
+          // Non-critical
+        }
+      }
+
+      setNotice(`${clientModalMember.name} classified as Client and saved into workspace clients.`);
+      setClientModalOpen(false);
+      setClientModalMember(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to classify and add client.";
+      setError(msg);
+    } finally {
+      setIsAddingClient(false);
+    }
+  }
+
+  async function handleConfirmRoleOnly() {
+    if (!clientModalMember) return;
+    setIsAddingClient(true);
+    try {
+      await updateMemberClassification(clientModalMember.id, "client");
+      setNotice(`${clientModalMember.name} marked as Client.`);
+      setClientModalOpen(false);
+      setClientModalMember(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update member role.";
+      setError(msg);
+    } finally {
+      setIsAddingClient(false);
+    }
+  }
+
+  function handleCancelModal() {
+    setClientModalOpen(false);
+    setClientModalMember(null);
   }
 
   return (
@@ -356,10 +447,21 @@ export default function WorkspaceContextPage() {
                         <Select
                           value={member.role_tag}
                           disabled={updatingMemberId === member.id}
-                          onValueChange={(val) => void updateMemberClassification(
-                            member.id,
-                            val as "unknown" | "client" | "internal",
-                          )}
+                          onValueChange={(val) => {
+                            if (val === "client") {
+                              setClientModalMember({
+                                id: member.id,
+                                name: member.name,
+                                username: member.username,
+                              });
+                              setClientModalOpen(true);
+                            } else {
+                              void updateMemberClassification(
+                                member.id,
+                                val as "unknown" | "client" | "internal",
+                              );
+                            }
+                          }}
                         >
                           <SelectTrigger aria-label={`Classify ${member.name}`}>
                             <SelectValue placeholder="Select classification" />
@@ -548,6 +650,24 @@ export default function WorkspaceContextPage() {
             </section>
           </>
         )}
+        {/* Add Client From Member Modal */}
+        <AddClientFromMemberModal
+          isOpen={clientModalOpen}
+          memberName={clientModalMember?.name || ""}
+          username={clientModalMember?.username || ""}
+          workspaceName={selectedWorkspace?.name || "this workspace"}
+          isAlreadyClient={Boolean(
+            workspaceClients.some(
+              (c) =>
+                c.name.trim().toLowerCase() ===
+                clientModalMember?.name.trim().toLowerCase(),
+            ),
+          )}
+          isLoading={isAddingClient}
+          onClose={handleCancelModal}
+          onConfirmAddClient={handleConfirmAddClient}
+          onConfirmRoleOnly={handleConfirmRoleOnly}
+        />
         </PageTransition>
       )}
     </DashboardTemplate>

@@ -48,6 +48,8 @@ class ContextItem(BaseModel):
     summary: str | None = None
     url: str | None = None
     occurred_at: datetime | None = None
+    author_name: str | None = None
+    author_role: Literal["client", "internal", "unknown"] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

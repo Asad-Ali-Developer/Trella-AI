@@ -152,7 +152,7 @@ body {
   color: #64748B !important;
 }
 
-/* Light Mode Action Buttons */
+/* Light Mode Action Buttons & Hover States */
 .bg-accent,
 .bg-indigo-600 {
   background-color: #253745 !important;
@@ -162,6 +162,22 @@ body {
 .hover\:bg-indigo-600:hover,
 .hover\:bg-indigo-700:hover {
   background-color: #11212D !important;
+  color: #FFFFFF !important;
+}
+
+.hover\:bg-indigo-600:hover *,
+.hover\:bg-indigo-700:hover * {
+  color: #FFFFFF !important;
+}
+
+.hover\:text-white:hover,
+.hover\:text-white:hover * {
+  color: #FFFFFF !important;
+}
+
+.hover\:text-rose-600:hover,
+.hover\:text-rose-600:hover svg {
+  color: #E11D48 !important;
 }
 
 .bg-indigo-50 {
@@ -243,6 +259,8 @@ body {
 .dark h4,
 .dark h5,
 .dark h6,
+.dark strong,
+.dark b,
 .dark .text-foreground,
 .dark .text-white,
 .dark .text-zinc-950,
@@ -286,7 +304,9 @@ body {
 
 .dark .hover\:text-zinc-900:hover,
 .dark .hover\:text-zinc-800:hover,
-.dark .hover\:text-white:hover {
+.dark .hover\:text-white:hover,
+.dark .dark\:hover\:text-white:hover,
+.dark .dark\:hover\:text-white:hover * {
   color: #FFFFFF !important;
 }
 
@@ -302,6 +322,12 @@ body {
 .dark .hover\:bg-indigo-600:hover,
 .dark .hover\:bg-indigo-700:hover {
   background-color: #354D60 !important;
+  color: #FFFFFF !important;
+}
+
+.dark .hover\:bg-indigo-600:hover *,
+.dark .hover\:bg-indigo-700:hover * {
+  color: #FFFFFF !important;
 }
 
 /* Secondary Action Buttons in Dark Mode (e.g. "Client Dossiers", "Reports & Runs") */

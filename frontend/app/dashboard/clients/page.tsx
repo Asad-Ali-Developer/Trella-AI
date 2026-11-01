@@ -152,7 +152,7 @@ export default function ClientsPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
               <Users className="h-3.5 w-3.5" />
-              Phase 5: Client Intelligence Profiles
+              Client Intelligence Profiles
             </div>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl">
               Client Dossiers & Overview

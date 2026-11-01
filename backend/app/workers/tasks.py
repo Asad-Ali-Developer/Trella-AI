@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.email import build_email, is_email_configured, send_email
 from app.core.logging import get_logger
 from app.core.mailgun import MailgunError
-from app.db.session import async_session_maker
+from app.db.session import worker_session_maker
 from app.modules.auth.models import User
 from app.modules.connections.models import WorkspaceConnection
 from app.modules.github.client import GithubAPIError
@@ -172,7 +172,7 @@ async def notify_app_connected(
 
 
 async def _sync_trello_source(source_id: UUID) -> None:
-    async with async_session_maker() as db:
+    async with worker_session_maker() as db:
         source = await db.get(TrelloSource, source_id)
         if source is None or source.excluded:
             return
@@ -226,7 +226,7 @@ def sync_trello_source(source_id: str) -> None:
 
 
 async def _sync_github_repository(repository_id: UUID) -> None:
-    async with async_session_maker() as db:
+    async with worker_session_maker() as db:
         repository = await db.get(GithubRepository, repository_id)
         if repository is None or not repository.included:
             return
@@ -264,7 +264,7 @@ def sync_github_repository_task(repository_id: str) -> None:
 async def _execute_skill_run(run_id: UUID) -> None:
     from app.modules.runs.service import RunService
 
-    async with async_session_maker() as db:
+    async with worker_session_maker() as db:
         service = RunService(db)
         await service.execute_run(run_id)
 

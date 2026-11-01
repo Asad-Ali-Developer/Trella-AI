@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Sparkles,
+  User as UserIcon,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -144,13 +145,13 @@ export function Sidebar({
           </Link>
         </nav>
       </div>
-      <div className="mt-auto space-y-3 border-t border-[#E2E8F0] p-4 dark:border-[#253745]">
+      <div className="mt-auto space-y-2 border-t border-[#E2E8F0] p-4 dark:border-[#253745]">
         <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#E2E8F0] bg-[#F1F5F9] p-2.5 dark:border-[#253745] dark:bg-[#162736]">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#4A5C6A] bg-[#253745] text-sm font-semibold text-white">
               {user?.name?.trim().charAt(0).toUpperCase() || "U"}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-[#06141B] dark:text-[#F1F5F9]">
                 {user?.name ?? "…"}
               </p>
@@ -159,6 +160,19 @@ export function Sidebar({
           </div>
           <ThemeToggle />
         </div>
+
+        <Link
+          href="/dashboard/profile"
+          className={`flex h-10 w-full items-center justify-start gap-2.5 rounded-xl px-3 text-sm font-medium transition-colors ${
+            pathname === "/dashboard/profile"
+              ? "bg-[#253745] font-semibold text-white dark:text-[#F1F5F9]"
+              : "text-[#4A5C6A] hover:bg-[#F1F5F9] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:bg-[#162736] dark:hover:text-[#F1F5F9]"
+          }`}
+        >
+          <UserIcon className="h-4 w-4" />
+          Profile
+        </Link>
+
         <Button
           variant="ghost"
           className="h-10 w-full justify-start gap-2.5 px-3 text-[#4A5C6A] hover:bg-[#F1F5F9] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:bg-[#162736] dark:hover:text-[#F1F5F9]"

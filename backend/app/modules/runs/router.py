@@ -73,6 +73,18 @@ async def get_run(
     return RunDetailResponse.model_validate(run)
 
 
+@router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_run(
+    run_id: UUID,
+    workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a specific run and its associated insights."""
+    workspace, _ = workspace_context
+    service = RunService(db)
+    await service.delete_run(run_id=run_id, workspace_id=workspace.id)
+
+
 @router.post("/{run_id}/execute", response_model=RunResponse)
 async def execute_run(
     run_id: UUID,

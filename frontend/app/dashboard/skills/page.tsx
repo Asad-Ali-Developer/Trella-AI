@@ -15,6 +15,7 @@ import {
   Sparkles,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   UserCheck,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -23,6 +24,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
 import { MarkdownContent } from "@/components/atoms/MarkdownContent";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { ConfirmDeleteModal } from "@/components/molecules/ConfirmDeleteModal";
+import { Pagination } from "@/components/molecules/Pagination";
 import { SkillsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -52,6 +55,15 @@ export default function SkillsAndReportsPage() {
   const [feedbackLoading, setFeedbackLoading] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  // Delete Report State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [runToDelete, setRunToDelete] = useState<Run | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // History Pagination
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageSize = 5;
 
   const loadInitialData = useCallback(async () => {
     try {
@@ -148,6 +160,28 @@ export default function SkillsAndReportsPage() {
     }
   }
 
+  async function handleConfirmDeleteRun() {
+    if (!selectedWorkspace || !runToDelete) return;
+    setIsDeleting(true);
+    setError("");
+    setNotice("");
+    try {
+      await runService.delete(selectedWorkspace.id, runToDelete.id);
+      setRuns((prev) => prev.filter((r) => r.id !== runToDelete.id));
+      if (activeRunDetail?.id === runToDelete.id) {
+        setActiveRunDetail(null);
+      }
+      setNotice("Report successfully deleted.");
+      setDeleteModalOpen(false);
+      setRunToDelete(null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete report.";
+      setError(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   async function handleSelectPastRun(runId: string) {
     if (!selectedWorkspace) return;
     try {
@@ -216,7 +250,7 @@ export default function SkillsAndReportsPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:border dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF]">
               <Sparkles className="h-3.5 w-3.5" />
-              Phase 4: LLM Layer & Skill Engine
+              LLM Layer & Skill Engine
             </div>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 dark:text-[#F1F5F9] md:text-3xl">
               AI Skills & Insights
@@ -576,73 +610,132 @@ export default function SkillsAndReportsPage() {
         )}
 
         {/* Run History Table */}
-        {runs.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
-              Execution History
-            </h3>
-            <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <table className="w-full text-left text-sm text-zinc-600 dark:text-zinc-300">
-                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
-                  <tr>
-                    <th className="px-5 py-3">Date</th>
-                    <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3">Tokens</th>
-                    <th className="px-5 py-3">Cost (USD)</th>
-                    <th className="px-5 py-3">Citations</th>
-                    <th className="px-5 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {runs.map((r) => (
-                    <tr
-                      key={r.id}
-                      className={`hover:bg-zinc-50 transition-colors dark:hover:bg-zinc-800/60 ${
-                        activeRunDetail?.id === r.id ? "bg-indigo-50/30 dark:bg-indigo-950/40" : ""
-                      }`}
-                    >
-                      <td className="px-5 py-3.5 font-medium text-zinc-900 dark:text-zinc-100">
-                        {new Date(r.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                            r.status === "completed"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-amber-50 text-amber-700"
-                          }`}
-                        >
-                          {r.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        {(r.tokens_in + r.tokens_out).toLocaleString()}
-                      </td>
-                      <td className="px-5 py-3.5 font-mono text-xs">
-                        ${r.cost_usd.toFixed(6)}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        {r.citations_valid ? (
-                          <span className="text-xs text-emerald-600 font-medium">Grounded</span>
-                        ) : (
-                          <span className="text-xs text-amber-600 font-medium">Ungrounded</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={() => handleSelectPastRun(r.id)}
-                          className="font-semibold text-indigo-600 hover:text-indigo-800"
-                        >
-                          View Report
-                        </button>
-                      </td>
+        {runs.length > 0 && (() => {
+          const totalHistoryRuns = runs.length;
+          const historyTotalPages = Math.max(1, Math.ceil(totalHistoryRuns / historyPageSize));
+          const paginatedHistoryRuns = runs.slice(
+            (historyPage - 1) * historyPageSize,
+            historyPage * historyPageSize,
+          );
+
+          return (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
+                  Execution History
+                </h3>
+                <span className="text-xs text-zinc-400">
+                  {totalHistoryRuns} total run{totalHistoryRuns === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#11212D]">
+                <table className="w-full text-left text-sm text-zinc-600 dark:text-zinc-300">
+                  <thead className="border-b border-zinc-100 bg-zinc-50 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
+                    <tr>
+                      <th className="px-5 py-3">Date</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3">Tokens</th>
+                      <th className="px-5 py-3">Cost (USD)</th>
+                      <th className="px-5 py-3">Citations</th>
+                      <th className="px-5 py-3 text-right">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {paginatedHistoryRuns.map((r) => (
+                      <tr
+                        key={r.id}
+                        className={`hover:bg-zinc-50 transition-colors dark:hover:bg-zinc-800/60 ${
+                          activeRunDetail?.id === r.id ? "bg-indigo-50/30 dark:bg-indigo-950/40" : ""
+                        }`}
+                      >
+                        <td className="px-5 py-3.5 font-medium text-zinc-900 dark:text-zinc-100">
+                          {new Date(r.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                              r.status === "completed"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {(r.tokens_in + r.tokens_out).toLocaleString()}
+                        </td>
+                        <td className="px-5 py-3.5 font-mono text-xs">
+                          ${r.cost_usd.toFixed(6)}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {r.citations_valid ? (
+                            <span className="text-xs text-emerald-600 font-medium">Grounded</span>
+                          ) : (
+                            <span className="text-xs text-amber-600 font-medium">Ungrounded</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleSelectPastRun(r.id)}
+                              className="font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                            >
+                              View Report
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRunToDelete(r);
+                                setDeleteModalOpen(true);
+                              }}
+                              title="Delete report"
+                              aria-label="Delete report"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-rose-50 hover:text-rose-600 transition-colors dark:text-[#9BA8AB] dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <Pagination
+                currentPage={historyPage}
+                totalPages={historyTotalPages}
+                totalItems={totalHistoryRuns}
+                pageSize={historyPageSize}
+                onPageChange={(p) => setHistoryPage(p)}
+                itemName="runs"
+              />
             </div>
-          </div>
-        )}
+          );
+        })()}
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmDeleteModal
+          isOpen={deleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) {
+              setDeleteModalOpen(false);
+              setRunToDelete(null);
+            }
+          }}
+          onConfirm={handleConfirmDeleteRun}
+          isLoading={isDeleting}
+          title="Delete Intelligence Report"
+          description="Are you sure you want to delete this report? This action cannot be undone and will permanently remove all associated insights."
+          itemDetails={{
+            title: runToDelete ? (runToDelete.skill_name || "Client Needs Analyzer") : undefined,
+            subtitle: runToDelete
+              ? `Executed on ${new Date(runToDelete.created_at).toLocaleString()}`
+              : undefined,
+          }}
+        />
         </PageTransition>
       )}
     </DashboardTemplate>
