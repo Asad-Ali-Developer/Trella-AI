@@ -17,7 +17,11 @@ from app.core.security.encryption import decrypt_secret
 from app.modules.auth.models import User
 from app.modules.connections.models import ProviderAccount, WorkspaceConnection
 from app.modules.delivery.models import Delivery
-from app.modules.delivery.slack import SlackClient, build_slack_block_kit_digest
+from app.modules.delivery.slack import (
+    SlackClient,
+    build_slack_block_kit_digest,
+    extract_headline_text,
+)
 from app.modules.runs.models import Run
 from app.modules.runs.schemas import RunCreateRequest
 from app.modules.runs.service import RunService
@@ -435,7 +439,10 @@ class ScheduleService:
             report_output=report_output,
             report_url=report_url,
         )
-        headline = report_output.get("headline") or "DeepClient Digest"
+        headline = extract_headline_text(
+            report_output.get("headline"),
+            fallback=f"📊 DeepClient Digest • {client_name or 'All Clients'}",
+        )
 
         # If delivery.schedule_id is present, get slack_channel_id
         channel_id = None
@@ -457,7 +464,10 @@ class ScheduleService:
     ) -> None:
         """Send formatted HTML email with unsubscribe header."""
         target_name = client_name or "All Clients"
-        headline = report_output.get("headline") or f"Weekly Client Synthesis • {target_name}"
+        headline = extract_headline_text(
+            report_output.get("headline"),
+            fallback=f"Weekly Client Synthesis • {target_name}",
+        )
         unsubscribe_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/dashboard/schedules?unsubscribe={delivery.recipient}"
 
         headers = {

@@ -104,3 +104,29 @@ async def test_slack_oauth_flow_and_channels(
         disconnect_res = await async_client.delete("/api/v1/connections/slack", headers=headers)
         assert disconnect_res.status_code == 200
         assert disconnect_res.json()["connected"] is False
+
+
+def test_extract_headline_text() -> None:
+    from app.modules.delivery.slack import extract_headline_text
+
+    # Dict with summary
+    h_dict = {
+        "status_word": "escalating",
+        "rest": ", and expressing urgency over recurring authentication and API failures.",
+        "summary": "Reports persistent bugs in OAuth, authentication, and backend APIs.",
+    }
+    assert extract_headline_text(h_dict) == "Reports persistent bugs in OAuth, authentication, and backend APIs."
+
+    # Dict without summary, falling back to status_word + rest
+    h_dict_no_summary = {
+        "status_word": "escalating",
+        "rest": "tension over delays.",
+    }
+    assert extract_headline_text(h_dict_no_summary) == "escalating tension over delays."
+
+    # String headline
+    assert extract_headline_text("Weekly Summary Headline") == "Weekly Summary Headline"
+
+    # None / Empty fallback
+    assert extract_headline_text(None, fallback="Fallback") == "Fallback"
+

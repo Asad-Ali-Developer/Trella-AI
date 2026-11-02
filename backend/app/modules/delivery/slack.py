@@ -132,6 +132,20 @@ class SlackClient:
             return cast(dict[str, Any], payload)
 
 
+def extract_headline_text(headline_raw: Any, fallback: str = "Scheduled Client Insights & Progress Report") -> str:
+    """Extract a clean human-readable headline string from either a string or structured dict."""
+    if isinstance(headline_raw, dict):
+        if headline_raw.get("summary"):
+            return str(headline_raw["summary"]).strip()
+        rest = str(headline_raw.get("rest", "")).strip()
+        status_word = str(headline_raw.get("status_word", "")).strip()
+        sentence = f"{status_word} {rest}".strip()
+        return sentence if sentence else fallback
+    if isinstance(headline_raw, str) and headline_raw.strip():
+        return headline_raw.strip()
+    return fallback
+
+
 def build_slack_block_kit_digest(
     workspace_name: str,
     client_name: str | None,
@@ -153,12 +167,15 @@ def build_slack_block_kit_digest(
     })
 
     # 2. Context metadata block
-    headline = report_output.get("headline") or "Scheduled Client Insights & Progress Report"
+    headline_text = extract_headline_text(
+        report_output.get("headline"),
+        fallback="Scheduled Client Insights & Progress Report",
+    )
     blocks.append({
         "type": "section",
         "text": {
             "type": "mrkdwn",
-            "text": f"*{headline}*\nWorkspace: *{workspace_name}* | Client: *{target_name}*",
+            "text": f"*{headline_text}*\nWorkspace: *{workspace_name}* | Client: *{target_name}*",
         },
     })
     blocks.append({"type": "divider"})
