@@ -113,4 +113,4 @@ async def run_schedule_now(
     service = ScheduleService(db)
     # Ensure schedule belongs to current workspace
     await service.get_schedule(schedule_id, workspace.id)
-    return await service.execute_scheduled_run(schedule_id)
+    return await service.execute_scheduled_run(schedule_id, deliver_synchronously=True)

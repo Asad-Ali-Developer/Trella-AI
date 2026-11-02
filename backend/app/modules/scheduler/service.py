@@ -216,7 +216,9 @@ class ScheduleService:
 
         return due_schedules
 
-    async def execute_scheduled_run(self, schedule_id: UUID) -> Run | None:
+    async def execute_scheduled_run(
+        self, schedule_id: UUID, deliver_synchronously: bool = False
+    ) -> Run | None:
         """Execute a scheduled run, applying delta checks and queueing deliveries."""
         schedule = await self.db.get(Schedule, schedule_id)
         if schedule is None or not schedule.active:
@@ -270,7 +272,9 @@ class ScheduleService:
 
         # 3. Handle run completion or failure
         if executed_run.status == "completed":
-            await self._enqueue_deliveries_for_run(schedule, executed_run)
+            await self._enqueue_deliveries_for_run(
+                schedule, executed_run, deliver_synchronously=deliver_synchronously
+            )
         else:
             await self._handle_execution_failure(
                 schedule,
@@ -280,8 +284,10 @@ class ScheduleService:
 
         return executed_run
 
-    async def _enqueue_deliveries_for_run(self, schedule: Schedule, run: Run) -> list[Delivery]:
-        """Create Delivery records and dispatch them to the Celery delivery queue."""
+    async def _enqueue_deliveries_for_run(
+        self, schedule: Schedule, run: Run, deliver_synchronously: bool = False
+    ) -> list[Delivery]:
+        """Create Delivery records and dispatch them to the Celery delivery queue or synchronously."""
         from app.workers.tasks import deliver_report_task, dispatch_task
 
         deliveries: list[Delivery] = []
@@ -322,10 +328,20 @@ class ScheduleService:
 
         await self.db.commit()
 
-        # Enqueue delivery tasks via Celery worker
+        # Enqueue delivery tasks via Celery worker or deliver synchronously
         for d in deliveries:
             await self.db.refresh(d)
-            dispatch_task(deliver_report_task, str(d.id))
+            if deliver_synchronously:
+                try:
+                    await self.dispatch_delivery(d.id)
+                except Exception as exc:
+                    logger.error(
+                        "synchronous_delivery_dispatch_failed",
+                        delivery_id=str(d.id),
+                        error=str(exc),
+                    )
+            else:
+                dispatch_task(deliver_report_task, str(d.id))
 
         return deliveries
 
