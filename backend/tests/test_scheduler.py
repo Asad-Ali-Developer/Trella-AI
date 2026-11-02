@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
@@ -234,6 +235,26 @@ async def test_schedule_crud_and_isolation(
     assert deliv_res.status_code == 200
     assert "deliveries" in deliv_res.json()
     assert "total" in deliv_res.json()
+
+    # 7.5. Run Now endpoint execution
+    with patch("app.modules.runs.service.RunService.execute_run") as mock_exec:
+        from app.modules.runs.models import Run
+
+        async def _fake_exec(run_id: uuid.UUID) -> Run:
+            r = await db_session.get(Run, run_id)
+            assert r is not None
+            r.status = "completed"
+            await db_session.flush()
+            return r
+
+        mock_exec.side_effect = _fake_exec
+
+        run_now_res = await async_client.post(
+            f"/api/v1/schedules/{schedule_id}/run-now",
+            headers=headers,
+        )
+        assert run_now_res.status_code == 200
+        assert run_now_res.json()["status"] == "completed"
 
     # 8. Delete Schedule
     del_res = await async_client.delete(f"/api/v1/schedules/{schedule_id}", headers=headers)

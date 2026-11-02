@@ -263,7 +263,7 @@ class ScheduleService:
         run_create = RunCreateRequest(
             skill_id=schedule.skill_id,
             client_id=schedule.client_id,
-            trigger="schedule",
+            trigger="scheduled",
         )
         run = await run_service.create_run(schedule.workspace_id, None, run_create)
         executed_run = await run_service.execute_run(run.id)

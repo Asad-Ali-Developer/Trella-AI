@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_workspace
 from app.db.session import get_db
 from app.modules.runs.models import Run
-from app.modules.runs.schemas import RunDetailResponse
+from app.modules.runs.schemas import RunResponse
 from app.modules.scheduler.models import Schedule
 from app.modules.scheduler.schemas import (
     DeliveryListResponse,
@@ -102,7 +102,7 @@ async def delete_schedule(
     await service.delete_schedule(schedule_id, workspace.id)
 
 
-@router.post("/{schedule_id}/run-now", response_model=RunDetailResponse | None)
+@router.post("/{schedule_id}/run-now", response_model=RunResponse | None)
 async def run_schedule_now(
     schedule_id: UUID,
     workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
