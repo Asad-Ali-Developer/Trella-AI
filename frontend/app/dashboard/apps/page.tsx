@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo, type IntegrationId } from "@/components/atoms/IntegrationLogo";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { Portal } from "@/components/atoms/Portal";
 import { AppsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -332,129 +333,131 @@ export default function ConnectedAppsPage() {
       )}
 
       {selectedAppDetails ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-[2px]"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedApp(null);
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="app-dialog-title"
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+        <Portal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-[2px]"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setSelectedApp(null);
+            }}
           >
-            <div className="flex items-start justify-between border-b border-zinc-100 p-5">
-              <div className="flex items-center gap-3">
-                <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                  selectedAppDetails.iconClass
-                }`}>
-                  <IntegrationLogo app={selectedAppDetails.id} className="h-6 w-6" />
-                </span>
-                <div>
-                  <h2 id="app-dialog-title" className="text-lg font-semibold text-zinc-950">
-                    {selectedAppDetails.name}
-                  </h2>
-                  <p className="text-sm text-zinc-500">
-                    {selectedApp === "github" && githubIsConnected
-                      ? `Connected as @${githubConnection?.username}`
-                      : selectedApp === "trello" && trelloIsConnected
-                        ? `Connected as ${trelloConnection?.username}`
-                        : selectedApp === "jira" && jiraIsConnected
-                          ? `Connected as ${jiraConnection?.username}${jiraConnection?.site_name ? ` (${jiraConnection.site_name})` : ""}`
-                          : selectedApp === "slack" && slackIsConnected
-                            ? `Connected to ${slackConnection?.team_name ?? "Slack"}`
-                            : "Workspace integration"}
-                  </p>
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="app-dialog-title"
+              className="w-full max-w-md overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+            >
+              <div className="flex items-start justify-between border-b border-zinc-100 p-5">
+                <div className="flex items-center gap-3">
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                    selectedAppDetails.iconClass
+                  }`}>
+                    <IntegrationLogo app={selectedAppDetails.id} className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h2 id="app-dialog-title" className="text-lg font-semibold text-zinc-950">
+                      {selectedAppDetails.name}
+                    </h2>
+                    <p className="text-sm text-zinc-500">
+                      {selectedApp === "github" && githubIsConnected
+                        ? `Connected as @${githubConnection?.username}`
+                        : selectedApp === "trello" && trelloIsConnected
+                          ? `Connected as ${trelloConnection?.username}`
+                          : selectedApp === "jira" && jiraIsConnected
+                            ? `Connected as ${jiraConnection?.username}${jiraConnection?.site_name ? ` (${jiraConnection.site_name})` : ""}`
+                            : selectedApp === "slack" && slackIsConnected
+                              ? `Connected to ${slackConnection?.team_name ?? "Slack"}`
+                              : "Workspace integration"}
+                    </p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  aria-label="Close app details"
+                  onClick={() => setSelectedApp(null)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                aria-label="Close app details"
-                onClick={() => setSelectedApp(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-5">
-              <p className="text-sm leading-6 text-zinc-600">{selectedAppDetails.detail}</p>
-              {selectedAppDetails.id === "trello" || selectedAppDetails.id === "github" || selectedAppDetails.id === "jira" || selectedAppDetails.id === "slack" ? (
-                <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-zinc-50 p-3 text-xs leading-5 text-zinc-500">
-                  <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
-                  <p>
-                    {selectedAppDetails.id === "trello"
-                      ? "Choose which boards to sync and manage client mappings from Trello settings."
-                      : selectedAppDetails.id === "github"
-                        ? "Choose repositories, connect them to workspace clients, and sync commit history from GitHub settings."
-                        : selectedAppDetails.id === "jira"
-                          ? "Choose Jira projects, connect them to workspace clients, and track issue updates from Jira settings."
-                          : "Deliver scheduled Block Kit report digests and client updates directly to your team's Slack channels."}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-zinc-100 bg-zinc-50 p-4 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-lg"
-                onClick={() => setSelectedApp(null)}
-              >
-                Close
-              </Button>
-              {selectedAppDetails.id === "slack" ? (
-                slackIsConnected ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                      onClick={() => void handleDisconnectSlack()}
-                    >
-                      Disconnect
-                    </Button>
+              <div className="p-5">
+                <p className="text-sm leading-6 text-zinc-600">{selectedAppDetails.detail}</p>
+                {selectedAppDetails.id === "trello" || selectedAppDetails.id === "github" || selectedAppDetails.id === "jira" || selectedAppDetails.id === "slack" ? (
+                  <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-zinc-50 p-3 text-xs leading-5 text-zinc-500">
+                    <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                    <p>
+                      {selectedAppDetails.id === "trello"
+                        ? "Choose which boards to sync and manage client mappings from Trello settings."
+                        : selectedAppDetails.id === "github"
+                          ? "Choose repositories, connect them to workspace clients, and sync commit history from GitHub settings."
+                          : selectedAppDetails.id === "jira"
+                            ? "Choose Jira projects, connect them to workspace clients, and track issue updates from Jira settings."
+                            : "Deliver scheduled Block Kit report digests and client updates directly to your team's Slack channels."}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex flex-col-reverse gap-2 border-t border-zinc-100 bg-zinc-50 p-4 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-lg"
+                  onClick={() => setSelectedApp(null)}
+                >
+                  Close
+                </Button>
+                {selectedAppDetails.id === "slack" ? (
+                  slackIsConnected ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        onClick={() => void handleDisconnectSlack()}
+                      >
+                        Disconnect
+                      </Button>
+                      <Button
+                        type="button"
+                        className="gap-2 rounded-lg px-4"
+                        onClick={() => router.push("/dashboard/schedules")}
+                      >
+                        Configure Schedules
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </>
+                  ) : (
                     <Button
                       type="button"
                       className="gap-2 rounded-lg px-4"
-                      onClick={() => router.push("/dashboard/schedules")}
+                      onClick={() => void handleConnectSlack()}
                     >
-                      Configure Schedules
+                      Connect Slack
                       <ExternalLink className="h-4 w-4" />
                     </Button>
-                  </>
+                  )
                 ) : (
                   <Button
                     type="button"
                     className="gap-2 rounded-lg px-4"
-                    onClick={() => void handleConnectSlack()}
+                    onClick={() => {
+                      if (selectedAppDetails.id === "github") router.push("/dashboard/github");
+                      else if (selectedAppDetails.id === "jira") router.push("/dashboard/jira");
+                      else router.push("/dashboard/trello");
+                    }}
                   >
-                    Connect Slack
+                    {selectedAppDetails.id === "github"
+                      ? githubIsConnected ? "Open GitHub settings" : "Connect GitHub"
+                      : selectedAppDetails.id === "jira"
+                        ? jiraIsConnected ? "Open Jira settings" : "Connect Jira"
+                        : trelloIsConnected ? "Open Trello settings" : "Connect Trello"}
                     <ExternalLink className="h-4 w-4" />
                   </Button>
-                )
-              ) : (
-                <Button
-                  type="button"
-                  className="gap-2 rounded-lg px-4"
-                  onClick={() => {
-                    if (selectedAppDetails.id === "github") router.push("/dashboard/github");
-                    else if (selectedAppDetails.id === "jira") router.push("/dashboard/jira");
-                    else router.push("/dashboard/trello");
-                  }}
-                >
-                  {selectedAppDetails.id === "github"
-                    ? githubIsConnected ? "Open GitHub settings" : "Connect GitHub"
-                    : selectedAppDetails.id === "jira"
-                      ? jiraIsConnected ? "Open Jira settings" : "Connect Jira"
-                      : trelloIsConnected ? "Open Trello settings" : "Connect Trello"}
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+                )}
+              </div>
 
-          </section>
-        </div>
+            </section>
+          </div>
+        </Portal>
       ) : null}
     </DashboardTemplate>
   );

@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import { Check, LoaderCircle, Sparkles, UserPlus, Users } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
+import { Portal } from "@/components/atoms/Portal";
 
 interface AddClientFromMemberModalProps {
   isOpen: boolean;
@@ -41,14 +42,15 @@ export function AddClientFromMemberModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isLoading) {
-          onClose();
-        }
-      }}
-    >
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !isLoading) {
+            onClose();
+          }
+        }}
+      >
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl transition-all dark:border-[#253745] dark:bg-[#11212D] dark:text-[#F1F5F9]">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-400">
@@ -126,5 +128,6 @@ export function AddClientFromMemberModal({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

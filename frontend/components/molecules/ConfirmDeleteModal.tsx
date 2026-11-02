@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import { AlertTriangle, LoaderCircle, Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
+import { Portal } from "@/components/atoms/Portal";
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
@@ -40,14 +41,15 @@ export function ConfirmDeleteModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isLoading) {
-          onClose();
-        }
-      }}
-    >
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !isLoading) {
+            onClose();
+          }
+        }}
+      >
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl transition-all dark:border-[#253745] dark:bg-[#11212D] dark:text-[#F1F5F9]">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-900/60 dark:bg-rose-950/50 dark:text-rose-400">
@@ -109,5 +111,6 @@ export function ConfirmDeleteModal({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

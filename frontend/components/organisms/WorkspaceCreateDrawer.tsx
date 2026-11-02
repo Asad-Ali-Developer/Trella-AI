@@ -4,6 +4,7 @@ import { Building2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
+import { Portal } from "@/components/atoms/Portal";
 import type { Workspace } from "@/lib/types";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -63,12 +64,13 @@ export function WorkspaceCreateDrawer({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-[#06141B]/60 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !creating) onClose();
-      }}
-    >
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 bg-[#06141B]/60 backdrop-blur-sm"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !creating) onClose();
+        }}
+      >
       <section
         role="dialog"
         aria-modal="true"
@@ -175,5 +177,6 @@ export function WorkspaceCreateDrawer({
         </form>
       </section>
     </div>
+    </Portal>
   );
 }

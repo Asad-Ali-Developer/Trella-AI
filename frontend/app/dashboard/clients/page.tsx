@@ -23,6 +23,7 @@ import {
 
 import { Button } from "@/components/atoms/Button";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { Portal } from "@/components/atoms/Portal";
 import { ClientsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -342,47 +343,49 @@ export default function ClientsPage() {
 
         {/* Create Client Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
-              <h3 className="text-lg font-bold text-zinc-900">Add New Client</h3>
-              <p className="mt-1 text-xs text-zinc-500">
-                Create a client dossier in this workspace to aggregate project cards, git commits,
-                and intelligence reports.
-              </p>
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
+                <h3 className="text-lg font-bold text-zinc-900">Add New Client</h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Create a client dossier in this workspace to aggregate project cards, git commits,
+                  and intelligence reports.
+                </p>
 
-              <form onSubmit={handleCreateClient} className="mt-4 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700">Client Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={newClientName}
-                    onChange={(e) => setNewClientName(e.target.value)}
-                    placeholder="e.g. Acme Corp, Northwind Traders"
-                    className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
+                <form onSubmit={handleCreateClient} className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700">Client Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      placeholder="e.g. Acme Corp, Northwind Traders"
+                      className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setIsModalOpen(false)}
-                    className="text-xs"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={creating || !newClientName.trim()}
-                    className="rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {creating ? "Creating…" : "Create Client"}
-                  </Button>
-                </div>
-              </form>
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsModalOpen(false)}
+                      className="text-xs"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={creating || !newClientName.trim()}
+                      className="rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {creating ? "Creating…" : "Create Client"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </div>
+          </Portal>
         )}
         </PageTransition>
       )}

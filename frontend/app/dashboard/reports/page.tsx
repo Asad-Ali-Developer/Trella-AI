@@ -24,6 +24,7 @@ import {
 
 import { Button } from "@/components/atoms/Button";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { Portal } from "@/components/atoms/Portal";
 import { ConfirmDeleteModal } from "@/components/molecules/ConfirmDeleteModal";
 import { Pagination } from "@/components/molecules/Pagination";
 import { ReportsPageSkeleton } from "@/components/molecules/PageSkeleton";
@@ -511,84 +512,86 @@ export default function ReportsAndRunsPage() {
 
         {/* Run Analysis Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
-              <h3 className="text-lg font-bold text-zinc-900">Run Intelligence Skill</h3>
-              <p className="mt-1 text-xs text-zinc-500">
-                Execute an AI skill across your workspace context graph to generate an executive report
-                and extract verified citations.
-              </p>
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
+                <h3 className="text-lg font-bold text-zinc-900">Run Intelligence Skill</h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Execute an AI skill across your workspace context graph to generate an executive report
+                  and extract verified citations.
+                </p>
 
-              <form onSubmit={handleStartRun} className="mt-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-[#CCD0CF]">Choose Skill</label>
-                  <div className="mt-1">
-                    <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a skill" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {skills.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name} (v{s.version})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <form onSubmit={handleStartRun} className="mt-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 dark:text-[#CCD0CF]">Choose Skill</label>
+                    <div className="mt-1">
+                      <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a skill" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {skills.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name} (v{s.version})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-[#CCD0CF]">
-                    Target Client (Optional)
-                  </label>
-                  <div className="mt-1">
-                    <Select value={selectedClientId || "all_clients"} onValueChange={(val) => setSelectedClientId(val === "all_clients" ? "" : val)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Clients (Whole Workspace)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all_clients">All Clients (Whole Workspace)</SelectItem>
-                        {clients.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 dark:text-[#CCD0CF]">
+                      Target Client (Optional)
+                    </label>
+                    <div className="mt-1">
+                      <Select value={selectedClientId || "all_clients"} onValueChange={(val) => setSelectedClientId(val === "all_clients" ? "" : val)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Clients (Whole Workspace)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all_clients">All Clients (Whole Workspace)</SelectItem>
+                          {clients.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setIsModalOpen(false)}
-                    className="text-xs"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={running}
-                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {running ? (
-                      <>
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                        Running…
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3.5 w-3.5 fill-white" />
-                        Execute Now
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
+                  <div className="flex items-center justify-end gap-2 pt-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsModalOpen(false)}
+                      className="text-xs"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={running}
+                      className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {running ? (
+                        <>
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          Running…
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3.5 w-3.5 fill-white" />
+                          Execute Now
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </div>
+          </Portal>
         )}
         {/* Confirm Delete Report Modal */}
         <ConfirmDeleteModal

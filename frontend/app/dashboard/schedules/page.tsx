@@ -214,19 +214,18 @@ export default function SchedulesPage() {
   }
 
   return (
-    <PageTransition>
-      <DashboardTemplate
-        sidebar={
-          <Sidebar
-            user={user}
-            workspaces={workspaces}
-            selectedId={selectedWorkspace?.id || null}
-            onSelectWorkspace={handleSelectWorkspace}
-            onLogout={handleLogout}
-          />
-        }
-      >
-        <div className="mx-auto max-w-7xl space-y-6">
+    <DashboardTemplate
+      sidebar={
+        <Sidebar
+          user={user}
+          workspaces={workspaces}
+          selectedId={selectedWorkspace?.id || null}
+          onSelectWorkspace={handleSelectWorkspace}
+          onLogout={handleLogout}
+        />
+      }
+    >
+      <PageTransition className="mx-auto max-w-7xl space-y-6">
           {/* Header */}
           <div className="flex flex-col justify-between gap-4 border-b border-[#E2E8F0] pb-6 dark:border-[#253745] sm:flex-row sm:items-center">
             <div>
@@ -481,34 +480,33 @@ export default function SchedulesPage() {
               loading={loadingDeliveries}
             />
           )}
+        </PageTransition>
 
-          {/* Schedule Create / Edit Modal */}
-          {selectedWorkspace && (
-            <ScheduleModal
-              isOpen={isModalOpen}
-              onClose={() => {
-                setIsModalOpen(false);
-                setEditingSchedule(null);
-              }}
-              onSave={handleSaveSchedule}
-              workspaceId={selectedWorkspace.id}
-              skills={skills}
-              clients={clients}
-              defaultUserEmail={user?.email}
-              initialSchedule={editingSchedule}
-            />
-          )}
-
-          {/* Confirm Delete Modal */}
-          <ConfirmDeleteModal
-            isOpen={deletingSchedule !== null}
-            title="Delete Report Schedule"
-            description={`Are you sure you want to delete the schedule "${deletingSchedule?.name}"? Scheduled digests will no longer be generated or delivered.`}
-            onClose={() => setDeletingSchedule(null)}
-            onConfirm={handleDeleteSchedule}
+        {/* Schedule Create / Edit Modal */}
+        {selectedWorkspace && (
+          <ScheduleModal
+            isOpen={isModalOpen}
+            onClose={() => {
+              setIsModalOpen(false);
+              setEditingSchedule(null);
+            }}
+            onSave={handleSaveSchedule}
+            workspaceId={selectedWorkspace.id}
+            skills={skills}
+            clients={clients}
+            defaultUserEmail={user?.email}
+            initialSchedule={editingSchedule}
           />
-        </div>
+        )}
+
+        {/* Confirm Delete Modal */}
+        <ConfirmDeleteModal
+          isOpen={deletingSchedule !== null}
+          title="Delete Report Schedule"
+          description={`Are you sure you want to delete the schedule "${deletingSchedule?.name}"? Scheduled digests will no longer be generated or delivered.`}
+          onClose={() => setDeletingSchedule(null)}
+          onConfirm={handleDeleteSchedule}
+        />
       </DashboardTemplate>
-    </PageTransition>
   );
 }

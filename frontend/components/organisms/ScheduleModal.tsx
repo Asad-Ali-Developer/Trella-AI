@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
+import { Portal } from "@/components/atoms/Portal";
 import type { ClientSummary, Schedule, ScheduleCreateRequest, Skill, SlackChannel } from "@/lib/types";
 import { slackService } from "@/services/SlackService";
 
@@ -187,7 +188,8 @@ export function ScheduleModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
       <div className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-2xl transition-colors dark:border-[#253745] dark:bg-[#11212D] sm:p-8">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between border-b border-[#E2E8F0] pb-4 dark:border-[#253745]">
@@ -495,5 +497,6 @@ export function ScheduleModal({
         </form>
       </div>
     </div>
+    </Portal>
   );
 }
