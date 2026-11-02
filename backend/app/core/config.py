@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Any, Literal
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,18 +48,27 @@ class Settings(BaseSettings):
         return []
 
     # Database
-    DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/client_insights"
-    )
+    DATABASE_URL: str = Field()
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def assemble_db_connection(cls, v: str) -> str:
         if isinstance(v, str):
             if v.startswith("postgres://"):
-                return v.replace("postgres://", "postgresql+asyncpg://", 1)
-            if v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
-                return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+                v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
+                v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+            # Sanitize query parameters for asyncpg compatibility (e.g. Neon connection strings)
+            parsed = urlparse(v)
+            if parsed.query:
+                params = parse_qs(parsed.query)
+                # asyncpg does not accept 'sslmode' or 'channel_binding', but accepts 'ssl'
+                if "sslmode" in params:
+                    params["ssl"] = params.pop("sslmode")
+                params.pop("channel_binding", None)
+                new_query = urlencode(params, doseq=True)
+                v = urlunparse(parsed._replace(query=new_query))
         return v
 
     # Redis
