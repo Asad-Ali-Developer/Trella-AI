@@ -48,7 +48,9 @@ export default function ReportDetailPage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(
+    null,
+  );
 
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,7 +62,14 @@ export default function ReportDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Thumbs Feedback
-  const [feedbackLoading, setFeedbackLoading] = useState<Record<string, boolean>>({});
+  const [feedbackLoading, setFeedbackLoading] = useState<
+    Record<string, boolean>
+  >({});
+
+  // Insights Tab State
+  const [activeTab, setActiveTab] = useState<
+    "needs" | "patterns" | "stakeholders" | "risks"
+  >("needs");
 
   const loadData = useCallback(async () => {
     if (!runId) return;
@@ -81,14 +90,16 @@ export default function ReportDetailPage() {
 
       const storedId = workspaceStore.getWorkspaceId();
       const current =
-        workspaceList.find((w: Workspace) => w.id === storedId) ?? workspaceList[0];
+        workspaceList.find((w: Workspace) => w.id === storedId) ??
+        workspaceList[0];
       setSelectedWorkspace(current);
       workspaceStore.setWorkspaceId(current.id);
 
       const runDetail = await runService.get(current.id, runId);
       setRun(runDetail);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load report.";
+      const message =
+        err instanceof Error ? err.message : "Failed to load report.";
       setError(message);
     } finally {
       setLoading(false);
@@ -105,7 +116,10 @@ export default function ReportDetailPage() {
     router.push("/dashboard/reports");
   }
 
-  async function handleFeedback(insightId: string, type: "thumbs_up" | "thumbs_down") {
+  async function handleFeedback(
+    insightId: string,
+    type: "thumbs_up" | "thumbs_down",
+  ) {
     if (!selectedWorkspace || !run) return;
     setFeedbackLoading((prev) => ({ ...prev, [insightId]: true }));
     try {
@@ -120,12 +134,15 @@ export default function ReportDetailPage() {
         return {
           ...prev,
           insights: prev.insights.map((item) =>
-            item.id === insightId ? { ...item, feedback: updated.feedback } : item,
+            item.id === insightId
+              ? { ...item, feedback: updated.feedback }
+              : item,
           ),
         };
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to submit feedback.";
+      const message =
+        err instanceof Error ? err.message : "Failed to submit feedback.";
       setError(message);
     } finally {
       setFeedbackLoading((prev) => ({ ...prev, [insightId]: false }));
@@ -165,7 +182,9 @@ export default function ReportDetailPage() {
 
   function handleExportJSON() {
     if (!run) return;
-    const blob = new Blob([JSON.stringify(run, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(run, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -181,7 +200,8 @@ export default function ReportDetailPage() {
       await runService.delete(selectedWorkspace.id, run.id);
       router.push("/dashboard/reports");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to delete report.";
+      const message =
+        err instanceof Error ? err.message : "Failed to delete report.";
       setError(message);
       setIsDeleting(false);
       setDeleteModalOpen(false);
@@ -247,7 +267,10 @@ export default function ReportDetailPage() {
   const patterns = run.insights.filter((i) => i.category === "pattern");
   const stakeholders = run.insights.filter((i) => i.category === "stakeholder");
   const risks = run.insights.filter((i) => i.category === "risk");
-  const showHero = run.status !== "failed" && run.status !== "running" && Boolean(run.output_json?.headline);
+  const showHero =
+    run.status !== "failed" &&
+    run.status !== "running" &&
+    Boolean(run.output_json?.headline);
 
   return (
     <DashboardTemplate
@@ -282,7 +305,11 @@ export default function ReportDetailPage() {
               variant="ghost"
               className="h-9 gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
             >
-              {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-emerald-600" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
               {copied ? "Copied Markdown" : "Copy Markdown"}
             </Button>
             <Button
@@ -304,6 +331,8 @@ export default function ReportDetailPage() {
           </div>
         </div>
 
+        {showHero && <ReportHero run={run} clientName={run.client_name} />}
+
         {/* Hero Header */}
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-5">
@@ -313,8 +342,8 @@ export default function ReportDetailPage() {
                   run.status === "completed"
                     ? "bg-emerald-100 text-emerald-700"
                     : run.status === "failed"
-                    ? "bg-rose-100 text-rose-700"
-                    : "bg-amber-100 text-amber-700"
+                      ? "bg-rose-100 text-rose-700"
+                      : "bg-amber-100 text-amber-700"
                 }`}
               >
                 {run.status === "completed" ? (
@@ -330,8 +359,8 @@ export default function ReportDetailPage() {
                   {run.skill_name || "Client Needs Analyzer"}
                 </h1>
                 <p className="mt-1 text-xs text-zinc-400">
-                  Target: <strong>{run.client_name || "All Clients"}</strong> • Executed on{" "}
-                  {new Date(run.created_at).toLocaleString()}
+                  Target: <strong>{run.client_name || "All Clients"}</strong> •
+                  Executed on {new Date(run.created_at).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -357,9 +386,12 @@ export default function ReportDetailPage() {
               <div className="flex items-start gap-2.5">
                 <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-sm font-semibold text-rose-900">Execution Error</h4>
+                  <h4 className="text-sm font-semibold text-rose-900">
+                    Execution Error
+                  </h4>
                   <p className="mt-1 text-xs text-rose-700 leading-relaxed">
-                    {run.error || "The analysis run timed out or was interrupted. Please retry from the Reports dashboard."}
+                    {run.error ||
+                      "The analysis run timed out or was interrupted. Please retry from the Reports dashboard."}
                   </p>
                 </div>
               </div>
@@ -373,7 +405,9 @@ export default function ReportDetailPage() {
                 <Coins className="h-3.5 w-3.5" />
                 Cost (USD)
               </span>
-              <p className="mt-1 text-base font-bold text-zinc-900">${run.cost_usd.toFixed(6)}</p>
+              <p className="mt-1 text-base font-bold text-zinc-900">
+                ${run.cost_usd.toFixed(6)}
+              </p>
             </div>
 
             <div className="rounded-xl bg-zinc-50 p-3.5">
@@ -401,7 +435,9 @@ export default function ReportDetailPage() {
                 <Clock className="h-3.5 w-3.5" />
                 Trigger Mode
               </span>
-              <p className="mt-1 text-base font-bold capitalize text-zinc-900">{run.trigger}</p>
+              <p className="mt-1 text-base font-bold capitalize text-zinc-900">
+                {run.trigger}
+              </p>
             </div>
           </div>
 
@@ -417,94 +453,207 @@ export default function ReportDetailPage() {
           )}
         </div>
 
-        {showHero && <ReportHero run={run} clientName={run.client_name} />}
+        {/* Insights Category Navigation Tabs */}
+        <div className="flex border-b border-[#E2E8F0] dark:border-[#253745] overflow-x-auto scrollbar-none">
+          <button
+            onClick={() => setActiveTab("needs")}
+            className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === "needs"
+                ? "border-[#253745] text-[#06141B] dark:border-[#88E5BE] dark:text-[#F1F5F9]"
+                : "border-transparent text-[#4A5C6A] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:text-[#F1F5F9]"
+            }`}
+          >
+            <Sparkles
+              className={`h-4 w-4 ${
+                activeTab === "needs"
+                  ? "text-blue-600 dark:text-[#88E5BE]"
+                  : "text-zinc-400 dark:text-[#4A5C6A]"
+              }`}
+            />
+            <span>Extracted Needs</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-bold transition-colors ${
+                activeTab === "needs"
+                  ? "bg-[#253745] text-white dark:bg-[#162736] dark:text-[#88E5BE]"
+                  : "bg-zinc-100 text-zinc-600 dark:bg-[#162736] dark:text-[#9BA8AB]"
+              }`}
+            >
+              {needs.length}
+            </span>
+          </button>
 
-        {/* Section: Needs */}
-        {needs.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-blue-600" />
-              <h3 className="text-base font-bold text-zinc-900">Extracted Needs ({needs.length})</h3>
-            </div>
-            <div className="grid gap-4">
-              {needs.map((ins) => (
-                <ReportInsightCard
-                  key={ins.id}
-                  insight={ins}
-                  onFeedback={handleFeedback}
-                  isLoadingFeedback={feedbackLoading[ins.id] || false}
-                />
-              ))}
-            </div>
+          <button
+            onClick={() => setActiveTab("patterns")}
+            className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === "patterns"
+                ? "border-[#253745] text-[#06141B] dark:border-[#88E5BE] dark:text-[#F1F5F9]"
+                : "border-transparent text-[#4A5C6A] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:text-[#F1F5F9]"
+            }`}
+          >
+            <TrendingUp
+              className={`h-4 w-4 ${
+                activeTab === "patterns"
+                  ? "text-purple-600 dark:text-[#88E5BE]"
+                  : "text-zinc-400 dark:text-[#4A5C6A]"
+              }`}
+            />
+            <span>Recurring Patterns</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-bold transition-colors ${
+                activeTab === "patterns"
+                  ? "bg-[#253745] text-white dark:bg-[#162736] dark:text-[#88E5BE]"
+                  : "bg-zinc-100 text-zinc-600 dark:bg-[#162736] dark:text-[#9BA8AB]"
+              }`}
+            >
+              {patterns.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("stakeholders")}
+            className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === "stakeholders"
+                ? "border-[#253745] text-[#06141B] dark:border-[#88E5BE] dark:text-[#F1F5F9]"
+                : "border-transparent text-[#4A5C6A] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:text-[#F1F5F9]"
+            }`}
+          >
+            <Users
+              className={`h-4 w-4 ${
+                activeTab === "stakeholders"
+                  ? "text-indigo-600 dark:text-[#88E5BE]"
+                  : "text-zinc-400 dark:text-[#4A5C6A]"
+              }`}
+            />
+            <span>Identified Stakeholders</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-bold transition-colors ${
+                activeTab === "stakeholders"
+                  ? "bg-[#253745] text-white dark:bg-[#162736] dark:text-[#88E5BE]"
+                  : "bg-zinc-100 text-zinc-600 dark:bg-[#162736] dark:text-[#9BA8AB]"
+              }`}
+            >
+              {stakeholders.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("risks")}
+            className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === "risks"
+                ? "border-[#253745] text-[#06141B] dark:border-[#88E5BE] dark:text-[#F1F5F9]"
+                : "border-transparent text-[#4A5C6A] hover:text-[#06141B] dark:text-[#9BA8AB] dark:hover:text-[#F1F5F9]"
+            }`}
+          >
+            <ShieldAlert
+              className={`h-4 w-4 ${
+                activeTab === "risks"
+                  ? "text-rose-600 dark:text-[#88E5BE]"
+                  : "text-zinc-400 dark:text-[#4A5C6A]"
+              }`}
+            />
+            <span>Delivery & Scope Risks</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-bold transition-colors ${
+                activeTab === "risks"
+                  ? "bg-[#253745] text-white dark:bg-[#162736] dark:text-[#88E5BE]"
+                  : "bg-zinc-100 text-zinc-600 dark:bg-[#162736] dark:text-[#9BA8AB]"
+              }`}
+            >
+              {risks.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Tab 1: Needs */}
+        {activeTab === "needs" && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {needs.length > 0 ? (
+              <div className="grid gap-4">
+                {needs.map((ins) => (
+                  <ReportInsightCard
+                    key={ins.id}
+                    insight={ins}
+                    onFeedback={handleFeedback}
+                    isLoadingFeedback={feedbackLoading[ins.id] || false}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-12 text-center text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
+                No extracted needs identified in this run.
+              </div>
+            )}
           </div>
         )}
 
-        {/* Section: Patterns */}
-        {patterns.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-purple-600" />
-              <h3 className="text-base font-bold text-zinc-900">Recurring Patterns ({patterns.length})</h3>
-            </div>
-            <div className="grid gap-4">
-              {patterns.map((ins) => (
-                <ReportInsightCard
-                  key={ins.id}
-                  insight={ins}
-                  onFeedback={handleFeedback}
-                  isLoadingFeedback={feedbackLoading[ins.id] || false}
-                />
-              ))}
-            </div>
+        {/* Tab 2: Patterns */}
+        {activeTab === "patterns" && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {patterns.length > 0 ? (
+              <div className="grid gap-4">
+                {patterns.map((ins) => (
+                  <ReportInsightCard
+                    key={ins.id}
+                    insight={ins}
+                    onFeedback={handleFeedback}
+                    isLoadingFeedback={feedbackLoading[ins.id] || false}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-12 text-center text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
+                No recurring patterns identified in this run.
+              </div>
+            )}
           </div>
         )}
 
-        {/* Section: Stakeholders */}
-        {stakeholders.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-indigo-600" />
-              <h3 className="text-base font-bold text-zinc-900">
-                Identified Stakeholders ({stakeholders.length})
-              </h3>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {stakeholders.map((ins) => (
-                <ReportInsightCard
-                  key={ins.id}
-                  insight={ins}
-                  onFeedback={handleFeedback}
-                  isLoadingFeedback={feedbackLoading[ins.id] || false}
-                />
-              ))}
-            </div>
+        {/* Tab 3: Stakeholders */}
+        {activeTab === "stakeholders" && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {stakeholders.length > 0 ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {stakeholders.map((ins) => (
+                  <ReportInsightCard
+                    key={ins.id}
+                    insight={ins}
+                    onFeedback={handleFeedback}
+                    isLoadingFeedback={feedbackLoading[ins.id] || false}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-12 text-center text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
+                No identified stakeholders in this run.
+              </div>
+            )}
           </div>
         )}
 
-        {/* Section: Risks */}
-        {risks.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-rose-600" />
-              <h3 className="text-base font-bold text-zinc-900">
-                Delivery & Scope Risks ({risks.length})
-              </h3>
-            </div>
-            <div className="grid gap-4">
-              {risks.map((ins) => (
-                <ReportInsightCard
-                  key={ins.id}
-                  insight={ins}
-                  onFeedback={handleFeedback}
-                  isLoadingFeedback={feedbackLoading[ins.id] || false}
-                />
-              ))}
-            </div>
+        {/* Tab 4: Risks */}
+        {activeTab === "risks" && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {risks.length > 0 ? (
+              <div className="grid gap-4">
+                {risks.map((ins) => (
+                  <ReportInsightCard
+                    key={ins.id}
+                    insight={ins}
+                    onFeedback={handleFeedback}
+                    isLoadingFeedback={feedbackLoading[ins.id] || false}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-12 text-center text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
+                No delivery & scope risks identified in this run.
+              </div>
+            )}
           </div>
         )}
 
         {run.insights.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-12 text-center text-zinc-500">
+          <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-12 text-center text-zinc-500 dark:border-[#253745] dark:bg-[#11212D] dark:text-[#9BA8AB]">
             No individual insights were extracted in this run.
           </div>
         )}
@@ -519,8 +668,10 @@ export default function ReportDetailPage() {
           title="Delete Intelligence Report"
           description="Are you sure you want to delete this report? This action cannot be undone and will permanently remove all extracted insights and citations."
           itemDetails={{
-            title: run ? (run.skill_name || "Client Needs Analyzer") : undefined,
-            subtitle: run ? `Client: ${run.client_name || "All Clients"} • ${new Date(run.created_at).toLocaleString()}` : undefined,
+            title: run ? run.skill_name || "Client Needs Analyzer" : undefined,
+            subtitle: run
+              ? `Client: ${run.client_name || "All Clients"} • ${new Date(run.created_at).toLocaleString()}`
+              : undefined,
           }}
         />
       </div>
@@ -538,43 +689,45 @@ function ReportInsightCard({
   isLoadingFeedback: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition-all hover:border-zinc-300">
+    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition-all hover:border-zinc-300 dark:border-[#253745] dark:bg-[#11212D] dark:hover:border-[#4A5C6A]">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span
               className={`rounded-md px-2 py-0.5 text-xs font-semibold uppercase tracking-wider ${
                 insight.category === "need"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                  ? "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-900/50"
                   : insight.category === "risk"
-                  ? "bg-rose-50 text-rose-700 border border-rose-200"
-                  : insight.category === "stakeholder"
-                  ? "bg-purple-50 text-purple-700 border border-purple-200"
-                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    ? "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/50"
+                    : insight.category === "stakeholder"
+                      ? "bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-900/50"
+                      : "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/50"
               }`}
             >
               {insight.category}
             </span>
 
             {insight.severity_or_priority && (
-              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 capitalize">
+              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 capitalize dark:bg-[#162736] dark:text-[#9BA8AB]">
                 {insight.severity_or_priority} priority
               </span>
             )}
           </div>
 
-          <h4 className="pt-1 text-base font-semibold text-zinc-900">{insight.title}</h4>
+          <h4 className="pt-1 text-base font-semibold text-zinc-900 dark:text-[#F1F5F9]">
+            {insight.title}
+          </h4>
         </div>
 
         {/* Quality Feedback */}
-        <div className="flex items-center gap-1 rounded-lg border border-zinc-200 p-1">
+        <div className="flex items-center gap-1 rounded-lg border border-zinc-200 p-1 dark:border-[#253745]">
           <button
             onClick={() => onFeedback(insight.id, "thumbs_up")}
             disabled={isLoadingFeedback}
             className={`rounded-md p-1.5 transition-colors ${
               insight.feedback === "thumbs_up"
-                ? "bg-emerald-100 text-emerald-700"
-                : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
+                : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-[#9BA8AB] dark:hover:bg-[#162736] dark:hover:text-[#F1F5F9]"
             }`}
             title="Mark insight accurate"
           >
@@ -585,8 +738,8 @@ function ReportInsightCard({
             disabled={isLoadingFeedback}
             className={`rounded-md p-1.5 transition-colors ${
               insight.feedback === "thumbs_down"
-                ? "bg-rose-100 text-rose-700"
-                : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400"
+                : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:text-[#9BA8AB] dark:hover:bg-[#162736] dark:hover:text-[#F1F5F9]"
             }`}
             title="Mark insight inaccurate"
           >
@@ -595,15 +748,15 @@ function ReportInsightCard({
         </div>
       </div>
 
-      <div className="mt-2 text-sm leading-relaxed">
+      <div className="mt-2 text-sm leading-relaxed text-[#06141B] dark:text-[#CCD0CF]">
         <MarkdownContent content={insight.detail} />
       </div>
 
       {/* Clickable Citations Grounding */}
       {insight.source_refs && insight.source_refs.length > 0 && (
-        <div className="mt-4 border-t border-zinc-100 pt-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+        <div className="mt-4 border-t border-zinc-100 pt-3 dark:border-[#253745]">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider dark:text-[#9BA8AB]">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-[#88E5BE]" />
             Clickable Grounded Sources:
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -613,11 +766,15 @@ function ReportInsightCard({
                 href={ref.url || "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 transition-colors dark:border-[#253745] dark:bg-[#162736] dark:text-[#CCD0CF] dark:hover:border-[#4A5C6A] dark:hover:bg-[#253745]"
               >
-                <span className="capitalize text-zinc-400">[{ref.source_type}]:</span>
-                <span className="font-semibold">{ref.title || ref.source_id}</span>
-                <ExternalLink className="h-3 w-3 text-zinc-400" />
+                <span className="capitalize text-zinc-400 dark:text-[#9BA8AB]">
+                  [{ref.source_type}]:
+                </span>
+                <span className="font-semibold text-zinc-800 dark:text-[#F1F5F9]">
+                  {ref.title || ref.source_id}
+                </span>
+                <ExternalLink className="h-3 w-3 text-zinc-400 dark:text-[#9BA8AB]" />
               </a>
             ))}
           </div>
