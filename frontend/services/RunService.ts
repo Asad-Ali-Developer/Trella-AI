@@ -59,6 +59,12 @@ class RunService {
     );
     return data;
   }
+
+  async delete(workspaceId: string, runId: string): Promise<void> {
+    await http.delete(`/runs/${runId}`, {
+      headers: { "X-Workspace-Id": workspaceId },
+    });
+  }
 }
 
 export const runService = new RunService();

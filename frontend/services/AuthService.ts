@@ -20,6 +20,16 @@ class AuthService {
     return data;
   }
 
+  async googleAuth(payload?: {
+    email?: string;
+    name?: string;
+    credential?: string;
+    code?: string;
+  }): Promise<AuthResponse> {
+    const { data } = await http.post<AuthResponse>("/auth/google", payload ?? {});
+    return data;
+  }
+
   async requestPasswordReset(email: string): Promise<void> {
     await http.post("/auth/password-reset/request", { email });
   }
@@ -31,6 +41,18 @@ class AuthService {
   async me(): Promise<User> {
     const { data } = await http.get<User>("/auth/me");
     return data;
+  }
+
+  async updateProfile(payload: { name: string }): Promise<User> {
+    const { data } = await http.patch<User>("/auth/me", payload);
+    return data;
+  }
+
+  async changePassword(payload: {
+    current_password: string;
+    new_password: string;
+  }): Promise<void> {
+    await http.post("/auth/change-password", payload);
   }
 
   async logout(): Promise<void> {

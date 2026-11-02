@@ -1,6 +1,7 @@
 """OpenAI LLM provider adapter (interface stub for Phase 4 extension)."""
 
 from typing import TypeVar
+
 from fastapi import HTTPException, status
 from pydantic import BaseModel
 

@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.email import build_email, is_email_configured, send_email
 from app.core.logging import get_logger
 from app.core.mailgun import MailgunError
-from app.db.session import async_session_maker
+from app.db.session import worker_session_maker
 from app.modules.auth.models import User
 from app.modules.connections.models import WorkspaceConnection
 from app.modules.github.client import GithubAPIError
@@ -172,7 +172,7 @@ async def notify_app_connected(
 
 
 async def _sync_trello_source(source_id: UUID) -> None:
-    async with async_session_maker() as db:
+    async with worker_session_maker() as db:
         source = await db.get(TrelloSource, source_id)
         if source is None or source.excluded:
             return
@@ -226,7 +226,7 @@ def sync_trello_source(source_id: str) -> None:
 
 
 async def _sync_github_repository(repository_id: UUID) -> None:
-    async with async_session_maker() as db:
+    async with worker_session_maker() as db:
         repository = await db.get(GithubRepository, repository_id)
         if repository is None or not repository.included:
             return
@@ -264,7 +264,7 @@ def sync_github_repository_task(repository_id: str) -> None:
 async def _execute_skill_run(run_id: UUID) -> None:
     from app.modules.runs.service import RunService
 
-    async with async_session_maker() as db:
+    async with worker_session_maker() as db:
         service = RunService(db)
         await service.execute_run(run_id)
 
@@ -277,4 +277,64 @@ async def _execute_skill_run(run_id: UUID) -> None:
 )
 def execute_skill_run_task(run_id: str) -> None:
     asyncio.run(_execute_skill_run(UUID(run_id)))
+
+
+async def _check_due_schedules() -> None:
+    from app.modules.scheduler.service import ScheduleService
+
+    async with worker_session_maker() as db:
+        service = ScheduleService(db)
+        due_schedules = await service.find_due_schedules()
+        for sched in due_schedules:
+            logger.info("enqueuing_due_schedule", schedule_id=str(sched.id), name=sched.name)
+            dispatch_task(execute_scheduled_run_task, str(sched.id))
+
+
+@celery_app.task(
+    name="app.workers.tasks.check_due_schedules_task",
+    autoretry_for=(OSError,),
+    retry_backoff=False,
+)
+def check_due_schedules_task() -> None:
+    """Periodic Celery beat task to scan for due report schedules every minute."""
+    asyncio.run(_check_due_schedules())
+
+
+async def _execute_scheduled_run(schedule_id: UUID) -> None:
+    from app.modules.scheduler.service import ScheduleService
+
+    async with worker_session_maker() as db:
+        service = ScheduleService(db)
+        await service.execute_scheduled_run(schedule_id)
+
+
+@celery_app.task(
+    name="app.workers.tasks.execute_scheduled_run_task",
+    autoretry_for=(OSError,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+)
+def execute_scheduled_run_task(schedule_id: str) -> None:
+    """Execute an automated report run for a scheduled job."""
+    asyncio.run(_execute_scheduled_run(UUID(schedule_id)))
+
+
+async def _deliver_report(delivery_id: UUID) -> None:
+    from app.modules.scheduler.service import ScheduleService
+
+    async with worker_session_maker() as db:
+        service = ScheduleService(db)
+        await service.dispatch_delivery(delivery_id)
+
+
+@celery_app.task(
+    name="app.workers.tasks.deliver_report_task",
+    autoretry_for=EMAIL_RETRY_ERRORS,
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def deliver_report_task(delivery_id: str) -> None:
+    """Deliver a generated report to its configured channel (Slack or Email)."""
+    asyncio.run(_deliver_report(UUID(delivery_id)))
+
 

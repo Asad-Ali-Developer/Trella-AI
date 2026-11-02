@@ -191,11 +191,14 @@ class WorkspaceContextService:
                         text=commit.message,
                         url=commit.url,
                         occurred_at=commit.committed_at,
+                        author_name=commit.author_name,
+                        author_role="internal",
                         metadata={
                             "provider": "github",
                             "repository": repository.full_name,
                             "author": commit.author_name,
                             "author_login": commit.author_login,
+                            "author_role": "internal",
                         },
                     )
                 )
@@ -251,6 +254,14 @@ class WorkspaceContextService:
             )
             for comment in comments_by_card.get(card.id, []):
                 author = members_by_id.get(comment.author_id)
+                role_tag: Literal["client", "internal", "unknown"] = (
+                    author.role_tag  # type: ignore[assignment]
+                    if author and author.role_tag in ("client", "internal")
+                    else "unknown"
+                )
+                author_name = (
+                    author.full_name or author.username if author else "Unknown member"
+                )
                 items.append(
                     ContextItem(
                         item_type="comment",
@@ -264,11 +275,12 @@ class WorkspaceContextService:
                         text=comment.text,
                         url=card.url,
                         occurred_at=comment.created_at_trello,
+                        author_name=author_name,
+                        author_role=role_tag,
                         metadata={
                             "author_id": comment.author_id,
-                            "author_name": (
-                                author.full_name or author.username if author else "Unknown member"
-                            ),
+                            "author_name": author_name,
+                            "author_role": role_tag,
                         },
                     )
                 )
@@ -365,7 +377,7 @@ class WorkspaceContextService:
             external_id=member.trello_member_id,
             name=member.full_name or member.username,
             username=member.username,
-            role_tag=cast(MemberRoleTag, member.role_tag),
+            role_tag=role_tag,
         )
 
     async def summarize_cards(

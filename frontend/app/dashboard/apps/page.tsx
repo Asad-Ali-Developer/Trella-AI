@@ -15,15 +15,19 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo, type IntegrationId } from "@/components/atoms/IntegrationLogo";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { Portal } from "@/components/atoms/Portal";
+import { AppsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { clearSession, setAuthenticatedUser } from "@/lib/authSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { workspaceStore } from "@/lib/storage";
-import type { GithubConnectionStatus, JiraConnectionStatus, TrelloConnectionStatus, Workspace } from "@/lib/types";
+import type { GithubConnectionStatus, JiraConnectionStatus, SlackConnectionStatus, TrelloConnectionStatus, Workspace } from "@/lib/types";
 import { authService } from "@/services/AuthService";
 import { githubService } from "@/services/GithubService";
 import { jiraService } from "@/services/JiraService";
+import { slackService } from "@/services/SlackService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
 
@@ -61,10 +65,10 @@ const apps = [
     id: "slack" as const,
     name: "Slack",
     category: "Report delivery",
-    summary: "Send useful client reports and updates to your team.",
-    detail: "Slack notifications and sharing are in our roadmap. Coming soon.",
+    summary: "Deliver rich Block Kit report digests to your team channels.",
+    detail: "Connect Slack to post formatted client summaries, needs, risks, and trends directly into your team channels on schedule.",
     iconClass: "bg-violet-50 text-violet-700",
-    available: false,
+    available: true,
   },
 ];
 
@@ -90,6 +94,7 @@ export default function ConnectedAppsPage() {
   const [trelloConnection, setTrelloConnection] = useState<TrelloConnectionStatus | null>(null);
   const [githubConnection, setGithubConnection] = useState<GithubConnectionStatus | null>(null);
   const [jiraConnection, setJiraConnection] = useState<JiraConnectionStatus | null>(null);
+  const [slackConnection, setSlackConnection] = useState<SlackConnectionStatus | null>(null);
   const [selectedApp, setSelectedApp] = useState<AppId | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -99,21 +104,47 @@ export default function ConnectedAppsPage() {
     setSelectedWorkspace(workspace);
     setError("");
     try {
-      const [trello, github, jira] = await Promise.all([
+      const [trello, github, jira, slack] = await Promise.all([
         trelloService.status(workspace.id),
         githubService.status(workspace.id),
         jiraService.status(workspace.id),
+        slackService.getStatus(workspace.id),
       ]);
       setTrelloConnection(trello);
       setGithubConnection(github);
       setJiraConnection(jira);
+      setSlackConnection(slack);
     } catch {
       setTrelloConnection(null);
       setGithubConnection(null);
       setJiraConnection(null);
+      setSlackConnection(null);
       setError("Could not check app connections. Please try again.");
     }
   }, []);
+
+  async function handleConnectSlack() {
+    if (!selectedWorkspace) return;
+    try {
+      setError("");
+      const url = await slackService.getAuthorizationUrl(selectedWorkspace.id);
+      window.location.href = url;
+    } catch {
+      setError("Failed to initiate Slack authorization. Please try again.");
+    }
+  }
+
+  async function handleDisconnectSlack() {
+    if (!selectedWorkspace) return;
+    try {
+      setError("");
+      await slackService.disconnect(selectedWorkspace.id);
+      await loadConnectionStatus(selectedWorkspace);
+      setSelectedApp(null);
+    } catch {
+      setError("Failed to disconnect Slack. Please try again.");
+    }
+  }
 
 
   const load = useCallback(async () => {
@@ -165,6 +196,7 @@ export default function ConnectedAppsPage() {
   const trelloIsConnected = trelloConnection?.connected ?? false;
   const githubIsConnected = githubConnection?.connected ?? false;
   const jiraIsConnected = jiraConnection?.connected ?? false;
+  const slackIsConnected = slackConnection?.connected ?? false;
 
   return (
     <DashboardTemplate
@@ -178,28 +210,27 @@ export default function ConnectedAppsPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-8 pb-10">
-        <header className="border-b border-zinc-200 pb-6">
-          <p className="text-sm font-medium text-indigo-600">
-            {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300">/</span> Workspace
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">Connected Apps</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-            Make this workspace the home for a client’s work. Connect project tools to build shared context, then deliver useful reports to your team.
-          </p>
-        </header>
+      {loading ? (
+        <AppsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-6xl space-y-8 pb-10">
+          <header className="border-b border-zinc-200 pb-6 dark:border-[#253745]">
+            <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">
+              {selectedWorkspace?.name ?? "Workspace"} <span className="px-1 text-zinc-300 dark:text-[#4A5C6A]">/</span> Workspace
+            </p>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">Connected Apps</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+              Make this workspace the home for a client’s work. Connect project tools to build shared context, then deliver useful reports to your team.
+            </p>
+          </header>
 
-        {error ? (
-          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-            {error}
-          </div>
-        ) : null}
+          {error ? (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+              {error}
+            </div>
+          ) : null}
 
-        {loading ? (
-          <div role="status" className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-            Loading your connected apps…
-          </div>
-        ) : !selectedWorkspace ? (
+          {!selectedWorkspace ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center">
             <h2 className="text-lg font-semibold text-zinc-900">Create a workspace to connect apps</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
@@ -229,7 +260,8 @@ export default function ConnectedAppsPage() {
                     {group.apps.map(({ id, name, summary, iconClass, available }) => {
                   const connected = (id === "trello" && trelloIsConnected) ||
                     (id === "github" && githubIsConnected) ||
-                    (id === "jira" && jiraIsConnected);
+                    (id === "jira" && jiraIsConnected) ||
+                    (id === "slack" && slackIsConnected);
                   const clickable = available && !loading;
 
 
@@ -240,36 +272,36 @@ export default function ConnectedAppsPage() {
                       disabled={!clickable}
                       aria-label={`${name}${connected ? ", connected" : available ? ", connect app" : ", coming soon"}`}
                       onClick={() => clickable && setSelectedApp(id)}
-                      className={`group relative flex min-h-56 flex-col rounded-2xl border bg-white p-5 text-left shadow-sm transition ${
+                      className={`group relative flex min-h-56 flex-col rounded-2xl border bg-white p-5 text-left shadow-sm transition dark:border-[#253745] dark:bg-[#11212D] ${
                         available
-                          ? "border-zinc-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"
+                          ? "border-zinc-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100 dark:hover:border-[#4A5C6A]"
                           : "cursor-default border-zinc-200/80"
                       }`}
                     >
                       <div className="flex w-full items-start justify-between gap-3">
-                        <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${iconClass}`}>
+                        <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${iconClass} dark:bg-[#162736]`}>
                           <IntegrationLogo app={id} className="h-6 w-6" />
                         </span>
                         {connected ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60">
                             <Check className="h-3.5 w-3.5" />
                             Connected
                           </span>
                         ) : available ? (
-                          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 border border-indigo-200 dark:bg-[#162736] dark:text-[#CCD0CF] dark:border-[#253745]">
                             Available
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/60">
                             <Clock3 className="h-3.5 w-3.5" />
                             Coming soon
                           </span>
                         )}
                       </div>
-                      <h3 className="mt-5 text-base font-semibold text-zinc-950">{name}</h3>
-                      <p className="mt-1 text-sm leading-5 text-zinc-500">{summary}</p>
+                      <h3 className="mt-5 text-base font-bold text-zinc-950 dark:text-[#F1F5F9]">{name}</h3>
+                      <p className="mt-1 text-sm leading-5 text-zinc-500 dark:text-[#9BA8AB]">{summary}</p>
                       <span className={`mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold ${
-                        available ? "text-indigo-700" : "text-zinc-400"
+                        available ? "text-indigo-700 dark:text-[#CCD0CF]" : "text-zinc-400 dark:text-[#64748B]"
                       }`}>
                         {connected ? "View settings" : available ? "View details" : "Not available yet"}
                         {available ? (
@@ -284,109 +316,148 @@ export default function ConnectedAppsPage() {
               ))}
             </div>
 
-            <aside className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+            <aside className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-[#253745] dark:bg-[#11212D]">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-[#253745] dark:text-[#CCD0CF]">
                 <GitBranch className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-zinc-900">One workspace. A clearer picture of every client.</h2>
-                <p className="mt-1 text-sm leading-5 text-zinc-500">
-                  DeepClient is designed to relate project plans to development activity, turn that shared context into traceable insights, and deliver reports through your team’s tools. Jira and Slack integrations are coming soon.
+                <h2 className="text-sm font-semibold text-zinc-900 dark:text-[#F1F5F9]">One workspace. A clearer picture of every client.</h2>
+                <p className="mt-1 text-sm leading-5 text-zinc-500 dark:text-[#9BA8AB]">
+                  DeepClient relates project plans to development activity, turns that shared context into traceable insights, and delivers scheduled reports through Slack and email.
                 </p>
               </div>
             </aside>
           </>
         )}
-      </div>
+        </PageTransition>
+      )}
 
       {selectedAppDetails ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-[2px]"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedApp(null);
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="app-dialog-title"
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+        <Portal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-[2px]"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setSelectedApp(null);
+            }}
           >
-            <div className="flex items-start justify-between border-b border-zinc-100 p-5">
-              <div className="flex items-center gap-3">
-                <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                  selectedAppDetails.iconClass
-                }`}>
-                  <IntegrationLogo app={selectedAppDetails.id} className="h-6 w-6" />
-                </span>
-                <div>
-                  <h2 id="app-dialog-title" className="text-lg font-semibold text-zinc-950">
-                    {selectedAppDetails.name}
-                  </h2>
-                  <p className="text-sm text-zinc-500">
-                    {selectedApp === "github" && githubIsConnected
-                      ? `Connected as @${githubConnection?.username}`
-                      : selectedApp === "trello" && trelloIsConnected
-                        ? `Connected as ${trelloConnection?.username}`
-                        : selectedApp === "jira" && jiraIsConnected
-                          ? `Connected as ${jiraConnection?.username}${jiraConnection?.site_name ? ` (${jiraConnection.site_name})` : ""}`
-                          : "Workspace integration"}
-                  </p>
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="app-dialog-title"
+              className="w-full max-w-md overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+            >
+              <div className="flex items-start justify-between border-b border-zinc-100 p-5">
+                <div className="flex items-center gap-3">
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                    selectedAppDetails.iconClass
+                  }`}>
+                    <IntegrationLogo app={selectedAppDetails.id} className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h2 id="app-dialog-title" className="text-lg font-semibold text-zinc-950">
+                      {selectedAppDetails.name}
+                    </h2>
+                    <p className="text-sm text-zinc-500">
+                      {selectedApp === "github" && githubIsConnected
+                        ? `Connected as @${githubConnection?.username}`
+                        : selectedApp === "trello" && trelloIsConnected
+                          ? `Connected as ${trelloConnection?.username}`
+                          : selectedApp === "jira" && jiraIsConnected
+                            ? `Connected as ${jiraConnection?.username}${jiraConnection?.site_name ? ` (${jiraConnection.site_name})` : ""}`
+                            : selectedApp === "slack" && slackIsConnected
+                              ? `Connected to ${slackConnection?.team_name ?? "Slack"}`
+                              : "Workspace integration"}
+                    </p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  aria-label="Close app details"
+                  onClick={() => setSelectedApp(null)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                aria-label="Close app details"
-                onClick={() => setSelectedApp(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-5">
-              <p className="text-sm leading-6 text-zinc-600">{selectedAppDetails.detail}</p>
-              {selectedAppDetails.id === "trello" || selectedAppDetails.id === "github" || selectedAppDetails.id === "jira" ? (
-                <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-zinc-50 p-3 text-xs leading-5 text-zinc-500">
-                  <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
-                  <p>
-                    {selectedAppDetails.id === "trello"
-                      ? "Choose which boards to sync and manage client mappings from Trello settings."
-                      : selectedAppDetails.id === "github"
-                        ? "Choose repositories, connect them to workspace clients, and sync commit history from GitHub settings."
-                        : "Choose Jira projects, connect them to workspace clients, and track issue updates from Jira settings."}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-zinc-100 bg-zinc-50 p-4 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-lg"
-                onClick={() => setSelectedApp(null)}
-              >
-                Close
-              </Button>
-              <Button
-                type="button"
-                className="gap-2 rounded-lg px-4"
-                onClick={() => {
-                  if (selectedAppDetails.id === "github") router.push("/dashboard/github");
-                  else if (selectedAppDetails.id === "jira") router.push("/dashboard/jira");
-                  else router.push("/dashboard/trello");
-                }}
-              >
-                {selectedAppDetails.id === "github"
-                  ? githubIsConnected ? "Open GitHub settings" : "Connect GitHub"
-                  : selectedAppDetails.id === "jira"
-                    ? jiraIsConnected ? "Open Jira settings" : "Connect Jira"
-                    : trelloIsConnected ? "Open Trello settings" : "Connect Trello"}
-                <ExternalLink className="h-4 w-4" />
-              </Button>
-            </div>
+              <div className="p-5">
+                <p className="text-sm leading-6 text-zinc-600">{selectedAppDetails.detail}</p>
+                {selectedAppDetails.id === "trello" || selectedAppDetails.id === "github" || selectedAppDetails.id === "jira" || selectedAppDetails.id === "slack" ? (
+                  <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-zinc-50 p-3 text-xs leading-5 text-zinc-500">
+                    <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                    <p>
+                      {selectedAppDetails.id === "trello"
+                        ? "Choose which boards to sync and manage client mappings from Trello settings."
+                        : selectedAppDetails.id === "github"
+                          ? "Choose repositories, connect them to workspace clients, and sync commit history from GitHub settings."
+                          : selectedAppDetails.id === "jira"
+                            ? "Choose Jira projects, connect them to workspace clients, and track issue updates from Jira settings."
+                            : "Deliver scheduled Block Kit report digests and client updates directly to your team's Slack channels."}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex flex-col-reverse gap-2 border-t border-zinc-100 bg-zinc-50 p-4 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-lg"
+                  onClick={() => setSelectedApp(null)}
+                >
+                  Close
+                </Button>
+                {selectedAppDetails.id === "slack" ? (
+                  slackIsConnected ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        onClick={() => void handleDisconnectSlack()}
+                      >
+                        Disconnect
+                      </Button>
+                      <Button
+                        type="button"
+                        className="gap-2 rounded-lg px-4"
+                        onClick={() => router.push("/dashboard/schedules")}
+                      >
+                        Configure Schedules
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      className="gap-2 rounded-lg px-4"
+                      onClick={() => void handleConnectSlack()}
+                    >
+                      Connect Slack
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  )
+                ) : (
+                  <Button
+                    type="button"
+                    className="gap-2 rounded-lg px-4"
+                    onClick={() => {
+                      if (selectedAppDetails.id === "github") router.push("/dashboard/github");
+                      else if (selectedAppDetails.id === "jira") router.push("/dashboard/jira");
+                      else router.push("/dashboard/trello");
+                    }}
+                  >
+                    {selectedAppDetails.id === "github"
+                      ? githubIsConnected ? "Open GitHub settings" : "Connect GitHub"
+                      : selectedAppDetails.id === "jira"
+                        ? jiraIsConnected ? "Open Jira settings" : "Connect Jira"
+                        : trelloIsConnected ? "Open Trello settings" : "Connect Trello"}
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
 
-          </section>
-        </div>
+            </section>
+          </div>
+        </Portal>
       ) : null}
     </DashboardTemplate>
   );

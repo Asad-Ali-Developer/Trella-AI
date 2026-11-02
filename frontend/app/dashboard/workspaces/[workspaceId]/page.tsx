@@ -18,6 +18,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo, type IntegrationId } from "@/components/atoms/IntegrationLogo";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { Portal } from "@/components/atoms/Portal";
+import { WorkspacesPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { WorkspaceCreateDrawer } from "@/components/organisms/WorkspaceCreateDrawer";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -221,24 +224,23 @@ export default function WorkspaceDetailsPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-7 pb-10">
-        <Link
-          href="/dashboard/workspaces"
-          className="inline-flex items-center gap-2 text-sm font-medium text-zinc-500 transition hover:text-indigo-700"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          All workspaces
-        </Link>
+      {loading ? (
+        <WorkspacesPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-6xl space-y-7 pb-10">
+          <Link
+            href="/dashboard/workspaces"
+            className="inline-flex items-center gap-2 text-sm font-medium text-zinc-500 transition hover:text-indigo-700 dark:text-[#CCD0CF] dark:hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            All workspaces
+          </Link>
 
-        {loading ? (
-          <div role="status" className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-            Loading workspace details…
-          </div>
-        ) : error || !workspace ? (
-          <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">
-            {error || "Workspace not found."}
-          </div>
-        ) : (
+          {error || !workspace ? (
+            <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+              {error || "Workspace not found."}
+            </div>
+          ) : (
           <>
             <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -394,7 +396,8 @@ export default function WorkspaceDetailsPage() {
             </section>
           </>
         )}
-      </div>
+        </PageTransition>
+      )}
 
       {editOpen && workspace ? (
         <WorkspaceCreateDrawer
@@ -406,55 +409,57 @@ export default function WorkspaceDetailsPage() {
       ) : null}
 
       {disconnectTarget ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-[2px]"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !disconnecting) setDisconnectTarget(null);
-          }}
-        >
-          <section
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="disconnect-title"
-            className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl"
+        <Portal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-[2px]"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !disconnecting) setDisconnectTarget(null);
+            }}
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-700">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-            <h2 id="disconnect-title" className="mt-4 text-lg font-semibold text-zinc-950">
-              Disconnect {disconnectTarget === "trello" ? "Trello" : disconnectTarget === "github" ? "GitHub" : "Jira"}?
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">
-              {disconnectTarget === "trello"
-                ? "This removes Trello and its synced boards, cards, comments, and client mappings from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."
-                : disconnectTarget === "github"
-                  ? "This removes GitHub and its selected repositories and synced commits from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."
-                  : "This removes Jira and its selected projects and synced issues from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."}
-            </p>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button
+            <section
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="disconnect-title"
+              className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl"
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-700">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <h2 id="disconnect-title" className="mt-4 text-lg font-semibold text-zinc-950">
+                Disconnect {disconnectTarget === "trello" ? "Trello" : disconnectTarget === "github" ? "GitHub" : "Jira"}?
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-600">
+                {disconnectTarget === "trello"
+                  ? "This removes Trello and its synced boards, cards, comments, and client mappings from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."
+                  : disconnectTarget === "github"
+                    ? "This removes GitHub and its selected repositories and synced commits from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."
+                    : "This removes Jira and its selected projects and synced issues from this workspace only. Other workspaces linked to the same account stay connected. The authorization is removed after its final workspace link is disconnected."}
+              </p>
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button
 
-                type="button"
-                variant="secondary"
-                className="gap-2 rounded-lg"
-                onClick={() => setDisconnectTarget(null)}
-                disabled={disconnecting}
-              >
-                <X className="h-4 w-4" />
-                Keep connected
-              </Button>
-              <Button
-                type="button"
-                className="gap-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700"
-                onClick={() => void disconnectApp()}
-                disabled={disconnecting}
-              >
-                <Unplug className="h-4 w-4" />
-                {disconnecting ? "Disconnecting…" : "Disconnect and remove data"}
-              </Button>
-            </div>
-          </section>
-        </div>
+                  type="button"
+                  variant="secondary"
+                  className="gap-2 rounded-lg"
+                  onClick={() => setDisconnectTarget(null)}
+                  disabled={disconnecting}
+                >
+                  <X className="h-4 w-4" />
+                  Keep connected
+                </Button>
+                <Button
+                  type="button"
+                  className="gap-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700"
+                  onClick={() => void disconnectApp()}
+                  disabled={disconnecting}
+                >
+                  <Unplug className="h-4 w-4" />
+                  {disconnecting ? "Disconnecting…" : "Disconnect and remove data"}
+                </Button>
+              </div>
+            </section>
+          </div>
+        </Portal>
       ) : null}
     </DashboardTemplate>
   );

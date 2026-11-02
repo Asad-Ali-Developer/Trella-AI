@@ -5,6 +5,7 @@ in the workspace context graph, and enriches citations with real titles and URLs
 """
 
 from typing import Any
+
 from app.modules.context.schemas import WorkspaceContextResponse
 from app.modules.skills.schemas import CitedSource, ClientNeedsReport
 

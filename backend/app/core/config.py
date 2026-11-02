@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,7 +21,30 @@ class Settings(BaseSettings):
     PORT: int = Field(default=8000)
     HOST: str = Field(default="0.0.0.0")
     API_V1_PREFIX: str = Field(default="/api/v1")
-    CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    CORS_ORIGINS: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "https://trella-ai-x8sb.vercel.app",
+        ]
+    )
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            stripped = v.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return [str(origin).strip() for origin in parsed if str(origin).strip()]
+                except Exception:
+                    pass
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        if isinstance(v, (list, tuple, set)):
+            return [str(origin).strip() for origin in v if str(origin).strip()]
+        return []
 
     # Database
     DATABASE_URL: str = Field(
@@ -109,6 +132,22 @@ class Settings(BaseSettings):
     JIRA_SCOPES: str = Field(default="read:jira-work read:jira-user offline_access")
     JIRA_API_BASE_URL: str = Field(default="https://api.atlassian.com")
     JIRA_AUTH_URL: str = Field(default="https://auth.atlassian.com")
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = Field(default="")
+    GOOGLE_CLIENT_SECRET: str = Field(default="")
+
+    # Slack OAuth App
+    SLACK_CLIENT_ID: str = Field(default="")
+    SLACK_CLIENT_SECRET: str = Field(default="")
+    SLACK_SIGNING_SECRET: str = Field(default="")
+    SLACK_CALLBACK_URL: str = Field(default="http://localhost:3000/dashboard/slack/callback")
+    SLACK_SCOPES: str = Field(
+        default="chat:write,chat:write.public,channels:read,groups:read,im:read,mpim:read,users:read"
+    )
+
+    # Resend Email Service
+    RESEND_API_KEY: str = Field(default="")
 
     @property
     def encryption_fallback_keys(self) -> list[str]:

@@ -218,12 +218,12 @@ Tasks
 
 Tasks
 
-- [ ] Slack OAuth app, channel or DM picker, Block Kit digest with a "View full report" link.
-- [ ] Email through Resend or Postmark; SPF, DKIM, DMARC configured; unsubscribe handling.
-- [ ] Scheduler: schedules in Postgres (cron, timezone, `next_run_at`); one Celery beat task every minute finds due schedules and enqueues runs; use `croniter` with the user's timezone.
-- [ ] Delta reports (only changed cards since the last run); skip the LLM call entirely when nothing changed.
-- [ ] Retries with backoff, failure alert to the workspace owner, deliveries log.
-- [ ] Warning in the UI when choosing a Slack channel (others in the channel will see client data).
+- [X] Slack OAuth app, channel or DM picker, Block Kit digest with a "View full report" link.
+- [X] Email through Resend or Postmark; SPF, DKIM, DMARC configured; unsubscribe handling.
+- [X] Scheduler: schedules in Postgres (cron, timezone, `next_run_at`); one Celery beat task every minute finds due schedules and enqueues runs; use `croniter` with the user's timezone.
+- [X] Delta reports (only changed cards since the last run); skip the LLM call entirely when nothing changed.
+- [X] Retries with backoff, failure alert to the workspace owner, deliveries log.
+- [X] Warning in the UI when choosing a Slack channel (others in the channel will see client data).
 
 **Done when:** a weekly digest arrives on time in the right timezone for a test workspace, and a simulated LLM failure is retried and reported.
 

@@ -209,6 +209,25 @@ export interface RiskInsight {
   sources: CitedSource[];
 }
 
+export interface ReportHeadline {
+  status_word?: string | null;
+  status_word_tone?: "positive" | "neutral" | "negative" | string | null;
+  rest?: string | null;
+  summary?: string | null;
+}
+
+export interface ReportHealth {
+  status?: "green" | "amber" | "red" | "insufficient_data" | string | null;
+  confidence?: "high" | "medium" | "low" | "insufficient_data" | string | null;
+}
+
+export interface ReportStats {
+  scope_changes?: number | null;
+  deadlines_moved?: number | null;
+  our_reply_gap_days?: number | null;
+  client_comments?: number | null;
+}
+
 export interface ClientNeedsReport {
   client_name: string;
   executive_summary: string;
@@ -216,6 +235,9 @@ export interface ClientNeedsReport {
   patterns: PatternInsight[];
   stakeholders: StakeholderInsight[];
   risks: RiskInsight[];
+  headline?: ReportHeadline | null;
+  health?: ReportHealth | null;
+  stats?: ReportStats | null;
 }
 
 export interface Skill {
@@ -311,5 +333,93 @@ export interface ClientProfile {
   timeline: TimelineEvent[];
   recent_runs: Run[];
 }
+
+export interface Schedule {
+  id: string;
+  workspace_id: string;
+  skill_id: string;
+  client_id: string | null;
+  name: string;
+  cron: string;
+  timezone: string;
+  channel: "slack" | "email" | "both";
+  recipients: string[];
+  slack_channel_id: string | null;
+  slack_channel_name: string | null;
+  is_delta_only: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleCreateRequest {
+  skill_id: string;
+  client_id?: string | null;
+  name: string;
+  cron: string;
+  timezone?: string;
+  channel?: "slack" | "email" | "both";
+  recipients?: string[];
+  slack_channel_id?: string | null;
+  slack_channel_name?: string | null;
+  is_delta_only?: boolean;
+  active?: boolean;
+}
+
+export interface ScheduleUpdateRequest {
+  name?: string;
+  cron?: string;
+  timezone?: string;
+  channel?: "slack" | "email" | "both";
+  recipients?: string[];
+  slack_channel_id?: string | null;
+  slack_channel_name?: string | null;
+  is_delta_only?: boolean;
+  active?: boolean;
+}
+
+export interface Delivery {
+  id: string;
+  workspace_id: string;
+  run_id: string;
+  schedule_id: string | null;
+  channel: "slack" | "email";
+  recipient: string;
+  status: "pending" | "sent" | "failed" | "skipped";
+  attempts: number;
+  error: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeliveryListResponse {
+  deliveries: Delivery[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface SlackConnectionStatus {
+  connected: boolean;
+  workspace_id?: string;
+  team_id?: string;
+  team_name?: string;
+  bot_user_id?: string;
+  status: string;
+  updated_at?: string;
+}
+
+export interface SlackChannel {
+  id: string;
+  name: string;
+  is_private: boolean;
+  is_channel: boolean;
+  num_members: number;
+  topic: string;
+}
+
 
 

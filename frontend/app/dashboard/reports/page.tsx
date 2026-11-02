@@ -19,11 +19,24 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { Portal } from "@/components/atoms/Portal";
+import { ConfirmDeleteModal } from "@/components/molecules/ConfirmDeleteModal";
+import { Pagination } from "@/components/molecules/Pagination";
+import { ReportsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { workspaceStore } from "@/lib/storage";
 import type { ClientSummary, Run, Skill, User, Workspace } from "@/lib/types";
 import { authService } from "@/services/AuthService";
@@ -48,6 +61,15 @@ export default function ReportsAndRunsPage() {
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 5;
+
+  // Delete Report Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [runToDelete, setRunToDelete] = useState<Run | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // New Run Trigger Drawer
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -171,6 +193,25 @@ export default function ReportsAndRunsPage() {
     }
   }
 
+  async function handleConfirmDelete() {
+    if (!selectedWorkspace || !runToDelete) return;
+    setIsDeleting(true);
+    setError("");
+    setNotice("");
+    try {
+      await runService.delete(selectedWorkspace.id, runToDelete.id);
+      setRuns((prev) => prev.filter((r) => r.id !== runToDelete.id));
+      setNotice("Report successfully deleted.");
+      setDeleteModalOpen(false);
+      setRunToDelete(null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete report.";
+      setError(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   async function handleLogout() {
     await authService.logout();
     router.replace("/login");
@@ -181,6 +222,18 @@ export default function ReportsAndRunsPage() {
     if (clientFilter !== "all" && r.client_id !== clientFilter) return false;
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredRuns.length / pageSize));
+  const paginatedRuns = filteredRuns.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const totalTokens = runs.reduce((acc, r) => acc + r.tokens_in + r.tokens_out, 0);
   const totalCost = runs.reduce((acc, r) => acc + r.cost_usd, 0);
@@ -198,18 +251,21 @@ export default function ReportsAndRunsPage() {
         />
       }
     >
-      <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
-        {/* Header */}
+      {loading ? (
+        <ReportsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
+          {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+            <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 border border-indigo-200 dark:bg-[#162736] dark:text-[#CCD0CF] dark:border-[#253745]">
               <FileText className="h-3.5 w-3.5" />
-              Phase 5: Reports & Execution History
+              Reports & Execution History
             </div>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl">
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl dark:text-[#F1F5F9]">
               Reports & Run History
             </h1>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-1 text-sm text-zinc-500 dark:text-[#9BA8AB]">
               Inspect intelligence reports generated from your connected project boards. Every claim
               is grounded against verified Trello cards, GitHub commits, and Jira issues.
             </p>
@@ -217,7 +273,7 @@ export default function ReportsAndRunsPage() {
 
           <Button
             onClick={() => setIsModalOpen(true)}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-6 font-semibold text-white shadow-sm hover:bg-indigo-700"
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-6 font-semibold text-white shadow-sm hover:bg-indigo-700 dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A]"
           >
             <Play className="h-4 w-4 fill-white" />
             Run New Analysis
@@ -225,78 +281,96 @@ export default function ReportsAndRunsPage() {
         </div>
 
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
             {error}
           </div>
         )}
         {notice && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
             {notice}
           </div>
         )}
 
         {/* Aggregated KPI Strip */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-              <FileText className="h-4 w-4 text-zinc-400" />
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-[#253745] dark:bg-[#11212D]">
+            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-[#9BA8AB]">
+              <FileText className="h-4 w-4 text-zinc-400 dark:text-[#9BA8AB]" />
               Total Runs
             </div>
-            <p className="mt-2 text-2xl font-bold text-zinc-900">{runs.length}</p>
+            <p className="mt-2 text-2xl font-bold text-zinc-900 dark:text-[#F1F5F9]">{runs.length}</p>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-[#253745] dark:bg-[#11212D]">
+            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-[#9BA8AB]">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-[#34D399]" />
               Completed Reports
             </div>
-            <p className="mt-2 text-2xl font-bold text-emerald-600">{completedRunsCount}</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-[#34D399]">{completedRunsCount}</p>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-              <Layers className="h-4 w-4 text-indigo-500" />
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-[#253745] dark:bg-[#11212D]">
+            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-[#9BA8AB]">
+              <Layers className="h-4 w-4 text-indigo-500 dark:text-[#CCD0CF]" />
               Processed Tokens
             </div>
-            <p className="mt-2 text-2xl font-bold text-zinc-900">{totalTokens.toLocaleString()}</p>
+            <p className="mt-2 text-2xl font-bold text-zinc-900 dark:text-[#F1F5F9]">{totalTokens.toLocaleString()}</p>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-              <Coins className="h-4 w-4 text-zinc-400" />
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-[#253745] dark:bg-[#11212D]">
+            <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-[#9BA8AB]">
+              <Coins className="h-4 w-4 text-zinc-400 dark:text-[#9BA8AB]" />
               Estimated LLM Cost
             </div>
-            <p className="mt-2 text-2xl font-bold text-zinc-900">${totalCost.toFixed(5)}</p>
+            <p className="mt-2 text-2xl font-bold text-zinc-900 dark:text-[#F1F5F9]">${totalCost.toFixed(5)}</p>
           </div>
         </div>
 
         {/* Filters Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-200 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-200 pb-4 dark:border-[#253745]">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Filter:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="all">All Statuses</option>
-              <option value="completed">Completed</option>
-              <option value="running">Running</option>
-              <option value="failed">Failed</option>
-            </select>
+            <div className="w-36">
+              <Select
+                value={statusFilter}
+                onValueChange={(val) => {
+                  setStatusFilter(val);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="running">Running</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-            <select
-              value={clientFilter}
-              onChange={(e) => setClientFilter(e.target.value)}
-              className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="all">All Clients</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <div className="w-40">
+              <Select
+                value={clientFilter}
+                onValueChange={(val) => {
+                  setClientFilter(val);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="All Clients" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Clients</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <span className="text-xs text-zinc-400">
@@ -305,14 +379,7 @@ export default function ReportsAndRunsPage() {
         </div>
 
         {/* Runs History Table */}
-        {loading ? (
-          <div className="flex h-64 items-center justify-center rounded-2xl border border-zinc-200 bg-white">
-            <div className="flex items-center gap-2 text-zinc-500">
-              <LoaderCircle className="h-5 w-5 animate-spin" />
-              Loading run history…
-            </div>
-          </div>
-        ) : filteredRuns.length === 0 ? (
+        {filteredRuns.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-12 text-center">
             <FileText className="mx-auto h-12 w-12 text-zinc-300" />
             <h3 className="mt-4 text-base font-semibold text-zinc-900">No reports generated yet</h3>
@@ -328,171 +395,226 @@ export default function ReportsAndRunsPage() {
             </Button>
           </div>
         ) : (
-          <div className="divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-            {filteredRuns.map((run) => {
-              const client = clients.find((c) => c.id === run.client_id);
-              const skill = skills.find((s) => s.id === run.skill_id);
-              const isRunning = run.status === "running" || run.status === "pending";
+          <div className="space-y-4">
+            <div className="divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden dark:divide-zinc-800 dark:border-zinc-800 dark:bg-[#11212D]">
+              {paginatedRuns.map((run) => {
+                const client = clients.find((c) => c.id === run.client_id);
+                const skill = skills.find((s) => s.id === run.skill_id);
+                const isRunning = run.status === "running" || run.status === "pending";
 
-              return (
-                <div
-                  key={run.id}
-                  className="flex flex-col justify-between gap-4 p-5 hover:bg-zinc-50/70 transition-colors sm:flex-row sm:items-center"
-                >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold ${
-                        run.status === "completed"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : run.status === "failed"
-                          ? "bg-rose-100 text-rose-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {run.status === "completed" ? (
-                        <CheckCircle2 className="h-5 w-5" />
-                      ) : run.status === "failed" ? (
-                        <AlertTriangle className="h-5 w-5" />
-                      ) : (
-                        <LoaderCircle className="h-5 w-5 animate-spin" />
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2.5">
-                        <h4 className="font-bold text-zinc-900">
-                          {run.skill_name || skill?.name || "Client Needs Analyzer"}
-                        </h4>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                            run.status === "completed"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : run.status === "failed"
-                              ? "bg-rose-50 text-rose-700 border border-rose-200"
-                              : "bg-amber-50 text-amber-700 border border-amber-200"
-                          }`}
-                        >
-                          {run.status}
-                        </span>
-                        {run.status === "completed" && run.citations_valid && (
-                          <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 border border-indigo-200">
-                            <ShieldCheck className="h-3 w-3 text-indigo-600" />
-                            Grounded
-                          </span>
+                return (
+                  <div
+                    key={run.id}
+                    className="flex flex-col justify-between gap-4 p-5 hover:bg-zinc-50/70 transition-colors sm:flex-row sm:items-center dark:hover:bg-zinc-800/50"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold ${
+                          run.status === "completed"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                            : run.status === "failed"
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                        }`}
+                      >
+                        {run.status === "completed" ? (
+                          <CheckCircle2 className="h-5 w-5" />
+                        ) : run.status === "failed" ? (
+                          <AlertTriangle className="h-5 w-5" />
+                        ) : (
+                          <LoaderCircle className="h-5 w-5 animate-spin" />
                         )}
                       </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
-                        <span>
-                          Client: <strong>{run.client_name || client?.name || "All Clients"}</strong>
-                        </span>
-                        <span>•</span>
-                        <span>Trigger: <strong className="capitalize">{run.trigger}</strong></span>
-                        <span>•</span>
-                        <span>{new Date(run.created_at).toLocaleString()}</span>
+                      <div>
+                        <div className="flex items-center gap-2.5">
+                          <h4 className="font-bold text-zinc-900 dark:text-zinc-100">
+                            {run.skill_name || skill?.name || "Client Needs Analyzer"}
+                          </h4>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                              run.status === "completed"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800/60"
+                                : run.status === "failed"
+                                ? "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-400 dark:border-rose-800/60"
+                                : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800/60"
+                            }`}
+                          >
+                            {run.status}
+                          </span>
+                          {run.status === "completed" && run.citations_valid && (
+                            <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800/60">
+                              <ShieldCheck className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                              Grounded
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-zinc-400 dark:text-zinc-500">
+                          <span>
+                            Client: <strong className="text-zinc-700 dark:text-zinc-200">{run.client_name || client?.name || "All Clients"}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>Trigger: <strong className="capitalize text-zinc-700 dark:text-zinc-200">{run.trigger}</strong></span>
+                          <span>•</span>
+                          <span>{new Date(run.created_at).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Metrics & Action Link */}
+                    <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 dark:border-zinc-800">
+                      <div className="text-right text-xs">
+                        <p className="font-semibold text-zinc-800 dark:text-zinc-200">
+                          {(run.tokens_in + run.tokens_out).toLocaleString()} tokens
+                        </p>
+                        <p className="text-zinc-400 dark:text-zinc-500">${run.cost_usd.toFixed(6)}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/dashboard/reports/${run.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-600 hover:text-white transition-colors dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white"
+                        >
+                          View Report
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRunToDelete(run);
+                            setDeleteModalOpen(true);
+                          }}
+                          title="Delete report"
+                          aria-label={`Delete report for ${run.client_name || "client"}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 transition-colors dark:border-[#253745] dark:bg-[#162736] dark:text-[#9BA8AB] dark:hover:border-rose-900/60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
 
-                  {/* Metrics & Action Link */}
-                  <div className="flex items-center justify-between sm:justify-end gap-6 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100">
-                    <div className="text-right text-xs">
-                      <p className="font-semibold text-zinc-800">
-                        {(run.tokens_in + run.tokens_out).toLocaleString()} tokens
-                      </p>
-                      <p className="text-zinc-400">${run.cost_usd.toFixed(6)}</p>
-                    </div>
-
-                    <Link
-                      href={`/dashboard/reports/${run.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-600 hover:text-white transition-colors"
-                    >
-                      View Report
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredRuns.length}
+              pageSize={pageSize}
+              onPageChange={(p) => setCurrentPage(p)}
+              itemName="reports"
+            />
           </div>
         )}
 
         {/* Run Analysis Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
-              <h3 className="text-lg font-bold text-zinc-900">Run Intelligence Skill</h3>
-              <p className="mt-1 text-xs text-zinc-500">
-                Execute an AI skill across your workspace context graph to generate an executive report
-                and extract verified citations.
-              </p>
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
+                <h3 className="text-lg font-bold text-zinc-900">Run Intelligence Skill</h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Execute an AI skill across your workspace context graph to generate an executive report
+                  and extract verified citations.
+                </p>
 
-              <form onSubmit={handleStartRun} className="mt-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700">Choose Skill</label>
-                  <select
-                    value={selectedSkillId}
-                    onChange={(e) => setSelectedSkillId(e.target.value)}
-                    className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-sm focus:border-indigo-500 focus:outline-none"
-                  >
-                    {skills.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} (v{s.version})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <form onSubmit={handleStartRun} className="mt-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 dark:text-[#CCD0CF]">Choose Skill</label>
+                    <div className="mt-1">
+                      <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a skill" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {skills.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name} (v{s.version})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700">
-                    Target Client (Optional)
-                  </label>
-                  <select
-                    value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-sm focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="">All Clients (Whole Workspace)</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 dark:text-[#CCD0CF]">
+                      Target Client (Optional)
+                    </label>
+                    <div className="mt-1">
+                      <Select value={selectedClientId || "all_clients"} onValueChange={(val) => setSelectedClientId(val === "all_clients" ? "" : val)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Clients (Whole Workspace)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all_clients">All Clients (Whole Workspace)</SelectItem>
+                          {clients.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setIsModalOpen(false)}
-                    className="text-xs"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={running}
-                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {running ? (
-                      <>
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                        Running…
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3.5 w-3.5 fill-white" />
-                        Execute Now
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
+                  <div className="flex items-center justify-end gap-2 pt-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsModalOpen(false)}
+                      className="text-xs"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={running}
+                      className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {running ? (
+                        <>
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          Running…
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3.5 w-3.5 fill-white" />
+                          Execute Now
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </div>
+          </Portal>
         )}
-      </div>
+        {/* Confirm Delete Report Modal */}
+        <ConfirmDeleteModal
+          isOpen={deleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) {
+              setDeleteModalOpen(false);
+              setRunToDelete(null);
+            }
+          }}
+          onConfirm={handleConfirmDelete}
+          isLoading={isDeleting}
+          title="Delete Intelligence Report"
+          description="Are you sure you want to delete this report? This action cannot be undone and will permanently remove all extracted insights and citation data."
+          itemDetails={{
+            title: runToDelete ? (runToDelete.skill_name || "Client Needs Analyzer") : undefined,
+            subtitle: runToDelete
+              ? `Client: ${runToDelete.client_name || "All Clients"} • ${new Date(runToDelete.created_at).toLocaleString()}`
+              : undefined,
+          }}
+        />
+        </PageTransition>
+      )}
     </DashboardTemplate>
   );
 }

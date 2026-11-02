@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
+
 from pydantic import BaseModel, Field
 
 T = TypeVar("T", bound=BaseModel)

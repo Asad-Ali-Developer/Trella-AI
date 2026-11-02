@@ -24,6 +24,8 @@ dependencies = [
     "email-validator>=2.2.0",
     "sentry-sdk[fastapi]>=2.13.0",
     "tenacity>=8.2.3",
+    "croniter>=2.0.0",
+    "slack-sdk>=3.30.0",
 ]
 
 [project.optional-dependencies]
@@ -81,9 +83,9 @@ no_implicit_optional = true
 module = [
     "redis.*",
     "celery.*",
-    "respx.*",
     "structlog.*",
     "sentry_sdk.*",
+    "croniter.*",
 ]
 ignore_missing_imports = true
 

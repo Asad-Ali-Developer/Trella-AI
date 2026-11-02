@@ -1,7 +1,6 @@
 """Tests for Client Profile, Timeline, and Management APIs."""
 
 import uuid
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,8 +11,7 @@ from app.modules.connections.repository import ConnectionRepository
 from app.modules.llm.base import LLMResult
 from app.modules.skills.schemas import ClientNeedsReport, NeedInsight, RiskInsight
 from app.modules.skills.service import SkillService
-from app.modules.trello.models import TrelloCard, TrelloClientRecord, TrelloSource
-from app.modules.workspaces.models import Membership, Workspace
+from app.modules.trello.models import TrelloCard, TrelloSource
 
 
 async def _create_user_and_workspace(async_client: AsyncClient, name: str = "Client WS") -> tuple[str, str]:

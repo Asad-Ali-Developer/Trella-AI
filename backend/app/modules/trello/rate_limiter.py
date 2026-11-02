@@ -18,12 +18,51 @@ class TrelloRateLimiter:
     """Enforces Trello's documented key, token, and member-route limits in Redis."""
 
     def __init__(self, redis: Redis | None = None) -> None:
-        self.redis = redis or Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self._custom_redis = redis
         self._owns_redis = redis is None
+        self._clients: dict[int, tuple[asyncio.AbstractEventLoop, Redis]] = {}
+
+    def _get_redis(self) -> Redis:
+        if self._custom_redis is not None:
+            return self._custom_redis
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        loop_id = id(loop) if loop is not None else 0
+        existing = self._clients.get(loop_id)
+        if existing is not None:
+            loop_ref, client = existing
+            if not loop_ref.is_closed():
+                return client
+
+        self._clients = {
+            lid: (l_ref, c)
+            for lid, (l_ref, c) in self._clients.items()
+            if not l_ref.is_closed()
+        }
+
+        client = cast(Redis, Redis.from_url(settings.REDIS_URL, decode_responses=True))
+        if loop is not None:
+            self._clients[loop_id] = (loop, client)
+        return client
+
+    @property
+    def redis(self) -> Redis:
+        return self._get_redis()
 
     async def close(self) -> None:
-        if self._owns_redis:
-            await self.redis.aclose()
+        if self._custom_redis is not None:
+            await self._custom_redis.aclose()
+            return
+        for _, (loop_ref, client) in list(self._clients.items()):
+            if not loop_ref.is_closed():
+                try:
+                    await client.aclose()
+                except Exception:
+                    pass
+        self._clients.clear()
 
     async def acquire(self, api_key: str, token: str, path: str) -> None:
         """Wait for available rate-limit capacity; Redis errors are surfaced to callers."""

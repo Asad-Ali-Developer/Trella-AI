@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/atoms/Button";
 import { IntegrationLogo } from "@/components/atoms/IntegrationLogo";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { WorkspacesPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { WorkspaceCreateDrawer } from "@/components/organisms/WorkspaceCreateDrawer";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
@@ -131,39 +133,38 @@ export default function WorkspacesPage() {
         />
       }
     >
-      <div className="mx-auto w-full max-w-6xl space-y-8 pb-10">
-        <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-indigo-600">Your organization</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">Workspaces</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              Each workspace brings one client’s projects, connected tools, and insights together.
-            </p>
-          </div>
-          <Button className="h-11 gap-2 self-start rounded-lg px-4 sm:self-auto" onClick={() => setDrawerOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Create workspace
-          </Button>
-        </header>
+      {loading ? (
+        <WorkspacesPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto w-full max-w-6xl space-y-8 pb-10">
+          <header className="flex flex-col gap-5 border-b border-zinc-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-[#253745]">
+            <div>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-[#CCD0CF]">Your organization</p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-[#F1F5F9]">Workspaces</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-[#9BA8AB]">
+                Each workspace brings one client’s projects, connected tools, and insights together.
+              </p>
+            </div>
+            <Button className="h-11 gap-2 self-start rounded-xl px-4 bg-[#253745] text-white hover:bg-[#11212D] dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A] sm:self-auto" onClick={() => setDrawerOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create workspace
+            </Button>
+          </header>
 
-        {error ? (
-          <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <span>{error}</span>
-            <button
-              type="button"
-              className="shrink-0 font-semibold underline underline-offset-2"
-              onClick={() => void refreshWorkspaceStatuses(workspaces)}
-            >
-              Retry
-            </button>
-          </div>
-        ) : null}
+          {error ? (
+            <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+              <span>{error}</span>
+              <button
+                type="button"
+                className="shrink-0 font-semibold underline underline-offset-2"
+                onClick={() => void refreshWorkspaceStatuses(workspaces)}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
 
-        {loading ? (
-          <div role="status" className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-            Loading workspaces…
-          </div>
-        ) : workspaces.length ? (
+          {workspaces.length ? (
           <section aria-label="Your workspaces" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {workspaces.map((workspace) => {
               const appStatus = appsByWorkspace[workspace.id];
@@ -178,8 +179,8 @@ export default function WorkspacesPage() {
               return (
                 <article
                   key={workspace.id}
-                  className={`group flex min-h-64 flex-col rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100 ${
-                    active ? "border-indigo-200 ring-1 ring-indigo-100" : "border-zinc-200"
+                  className={`group flex min-h-64 flex-col rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100 dark:bg-[#11212D] ${
+                    active ? "border-indigo-200 ring-1 ring-indigo-100 dark:border-[#4A5C6A] dark:ring-[#253745]" : "border-zinc-200 dark:border-[#253745]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -215,38 +216,38 @@ export default function WorkspacesPage() {
                   <p className="mt-3 line-clamp-2 min-h-10 text-sm leading-5 text-zinc-500">
                     {workspace.description || "No workspace description added yet."}
                   </p>
-                  <div className="mt-auto flex items-center justify-between border-t border-zinc-100 pt-4">
+                  <div className="mt-auto flex items-center justify-between border-t border-zinc-100 pt-4 dark:border-[#253745]">
                     <div className="flex items-center gap-2">
                       {connectedCount > 0 ? (
                         <>
                           {trelloConnected ? (
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50" title="Trello connected">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-[#162736]" title="Trello connected">
                               <IntegrationLogo app="trello" className="h-4 w-4" />
                             </span>
                           ) : null}
                           {githubConnected ? (
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100" title="GitHub connected">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 dark:bg-[#162736]" title="GitHub connected">
                               <IntegrationLogo app="github" className="h-4 w-4" />
                             </span>
                           ) : null}
                           {jiraConnected ? (
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50" title="Jira connected">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 dark:bg-[#162736]" title="Jira connected">
                               <IntegrationLogo app="jira" className="h-4 w-4" />
                             </span>
                           ) : null}
                         </>
                       ) : (
-                        <span className="text-xs text-zinc-400">Connect apps to build context</span>
+                        <span className="text-xs text-zinc-400 dark:text-[#9BA8AB]">Connect apps to build context</span>
                       )}
                     </div>
 
                     <Link
                       href={`/dashboard/workspaces/${workspace.id}`}
                       onClick={() => selectWorkspace(workspace)}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white"
                     >
                       Workspace details
-                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                     </Link>
                   </div>
                 </article>
@@ -268,7 +269,8 @@ export default function WorkspacesPage() {
             </Button>
           </section>
         )}
-      </div>
+        </PageTransition>
+      )}
 
       {drawerOpen ? (
         <WorkspaceCreateDrawer

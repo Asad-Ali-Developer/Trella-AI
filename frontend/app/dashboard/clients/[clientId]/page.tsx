@@ -23,12 +23,16 @@ import {
   Sparkles,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   TrendingUp,
   UserCheck,
   Users,
 } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button";
+import { MarkdownContent } from "@/components/atoms/MarkdownContent";
+import { ConfirmDeleteModal } from "@/components/molecules/ConfirmDeleteModal";
+import { Pagination } from "@/components/molecules/Pagination";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { workspaceStore } from "@/lib/storage";
@@ -64,6 +68,15 @@ export default function ClientProfilePage() {
 
   // Thumbs Feedback State
   const [feedbackLoading, setFeedbackLoading] = useState<Record<string, boolean>>({});
+
+  // Delete Report State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [runToDelete, setRunToDelete] = useState<Run | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Runs Pagination
+  const [runsPage, setRunsPage] = useState(1);
+  const runsPageSize = 4;
 
   const loadData = useCallback(async () => {
     if (!clientId) return;
@@ -144,6 +157,32 @@ export default function ClientProfilePage() {
       setError(message);
     } finally {
       setRunningSkill(false);
+    }
+  }
+
+  async function handleConfirmDeleteRun() {
+    if (!selectedWorkspace || !runToDelete) return;
+    setIsDeleting(true);
+    setError("");
+    setNotice("");
+    try {
+      await runService.delete(selectedWorkspace.id, runToDelete.id);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              recent_runs: prev.recent_runs.filter((r) => r.id !== runToDelete.id),
+            }
+          : null,
+      );
+      setNotice("Report successfully deleted.");
+      setDeleteModalOpen(false);
+      setRunToDelete(null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete report.";
+      setError(message);
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -571,9 +610,9 @@ export default function ClientProfilePage() {
                         </div>
 
                         {event.detail && (
-                          <p className="mt-1.5 text-xs text-zinc-600 leading-relaxed">
-                            {event.detail}
-                          </p>
+                          <div className="mt-1.5 text-xs leading-relaxed text-zinc-600 dark:text-[#CCD0CF]">
+                            <MarkdownContent content={event.detail} />
+                          </div>
                         )}
 
                         {event.source_url && (
@@ -599,57 +638,116 @@ export default function ClientProfilePage() {
         )}
 
         {/* Recent Analysis Runs */}
-        {profile.recent_runs.length > 0 && (
-          <div className="space-y-4 border-t border-zinc-200 pt-8">
-            <h3 className="text-base font-bold text-zinc-900">Recent Analysis Runs</h3>
-            <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              {profile.recent_runs.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex flex-wrap items-center justify-between gap-4 p-4 hover:bg-zinc-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold ${
-                        r.status === "completed"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : r.status === "failed"
-                          ? "bg-rose-100 text-rose-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {r.status === "completed" ? "✓" : "!"}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-zinc-900">
-                        {r.skill_name || "Client Needs Analyzer"}
-                      </p>
-                      <p className="text-xs text-zinc-400">
-                        Executed on {new Date(r.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
+        {profile.recent_runs.length > 0 && (() => {
+          const totalRuns = profile.recent_runs.length;
+          const totalPages = Math.max(1, Math.ceil(totalRuns / runsPageSize));
+          const paginatedRuns = profile.recent_runs.slice(
+            (runsPage - 1) * runsPageSize,
+            runsPage * runsPageSize,
+          );
 
-                  <div className="flex items-center gap-6 text-xs text-zinc-500">
-                    <div>
-                      Tokens: <strong>{(r.tokens_in + r.tokens_out).toLocaleString()}</strong>
+          return (
+            <div className="space-y-4 border-t border-zinc-200 pt-8 dark:border-[#253745]">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-[#F1F5F9]">Recent Analysis Runs</h3>
+                <span className="text-xs text-zinc-400 dark:text-[#9BA8AB]">
+                  {totalRuns} total report{totalRuns === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden dark:divide-zinc-800 dark:border-[#253745] dark:bg-[#11212D]">
+                {paginatedRuns.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex flex-wrap items-center justify-between gap-4 p-4 hover:bg-zinc-50 transition-colors dark:hover:bg-zinc-800/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold ${
+                          r.status === "completed"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                            : r.status === "failed"
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                        }`}
+                      >
+                        {r.status === "completed" ? "✓" : "!"}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-[#F1F5F9]">
+                          {r.skill_name || "Client Needs Analyzer"}
+                        </p>
+                        <p className="text-xs text-zinc-400 dark:text-[#9BA8AB]">
+                          Executed on {new Date(r.created_at).toLocaleString()}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      Cost: <strong>${r.cost_usd.toFixed(6)}</strong>
+
+                    <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-[#9BA8AB]">
+                      <div>
+                        Tokens: <strong className="text-zinc-800 dark:text-[#F1F5F9]">{(r.tokens_in + r.tokens_out).toLocaleString()}</strong>
+                      </div>
+                      <div>
+                        Cost: <strong className="text-zinc-800 dark:text-[#F1F5F9]">${r.cost_usd.toFixed(6)}</strong>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/dashboard/reports/${r.id}`}
+                          className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                        >
+                          View Report
+                          <ExternalLink className="h-3 w-3" />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRunToDelete(r);
+                            setDeleteModalOpen(true);
+                          }}
+                          title="Delete report"
+                          aria-label="Delete report"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 transition-colors dark:border-[#253745] dark:bg-[#162736] dark:text-[#9BA8AB] dark:hover:border-rose-900/60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <Link
-                      href={`/dashboard/reports/${r.id}`}
-                      className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:underline"
-                    >
-                      View Report
-                      <ExternalLink className="h-3 w-3" />
-                    </Link>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
+              <Pagination
+                currentPage={runsPage}
+                totalPages={totalPages}
+                totalItems={totalRuns}
+                pageSize={runsPageSize}
+                onPageChange={(p) => setRunsPage(p)}
+                itemName="reports"
+              />
             </div>
-          </div>
-        )}
+          );
+        })()}
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmDeleteModal
+          isOpen={deleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) {
+              setDeleteModalOpen(false);
+              setRunToDelete(null);
+            }
+          }}
+          onConfirm={handleConfirmDeleteRun}
+          isLoading={isDeleting}
+          title="Delete Intelligence Report"
+          description="Are you sure you want to delete this report? This action cannot be undone and will permanently remove all associated insights."
+          itemDetails={{
+            title: runToDelete ? (runToDelete.skill_name || "Client Needs Analyzer") : undefined,
+            subtitle: runToDelete
+              ? `Client: ${runToDelete.client_name || profile.client.name} • ${new Date(runToDelete.created_at).toLocaleString()}`
+              : undefined,
+          }}
+        />
       </div>
     </DashboardTemplate>
   );
@@ -722,7 +820,9 @@ function InsightCard({
         </div>
       </div>
 
-      <p className="mt-2 text-sm leading-relaxed text-zinc-600">{insight.detail}</p>
+      <div className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-[#CCD0CF]">
+        <MarkdownContent content={insight.detail} />
+      </div>
 
       {/* Clickable Citations Grounding */}
       {insight.source_refs && insight.source_refs.length > 0 && (

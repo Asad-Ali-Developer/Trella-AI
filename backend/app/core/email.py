@@ -20,10 +20,11 @@ templates = Environment(
 
 
 def is_email_configured() -> bool:
-    """Return True if any email delivery channel (Mailgun API or SMTP) is configured."""
+    """Return True if any email delivery channel (Resend, Mailgun API, or SMTP) is configured."""
+    has_resend = bool(settings.RESEND_API_KEY)
     has_mailgun = bool(settings.MAILGUN_API_KEY and settings.MAILGUN_DOMAIN)
     has_smtp = bool(settings.SMTP_HOST)
-    return has_mailgun or has_smtp
+    return has_resend or has_mailgun or has_smtp
 
 
 def get_from_email() -> str:
@@ -57,12 +58,16 @@ def build_email(
     template_name: str,
     context: dict[str, Any],
     text: str,
+    headers: dict[str, str] | None = None,
 ) -> EmailMessage:
-    """Build a multi-part EmailMessage with plain text and rendered HTML."""
+    """Build a multi-part EmailMessage with plain text, rendered HTML, and optional custom headers."""
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = get_from_email()
     message["To"] = recipient
+    if headers:
+        for k, v in headers.items():
+            message[k] = v
     message.set_content(text)
     html_content = render_email_template(template_name, context)
     message.add_alternative(html_content, subtype="html")
@@ -70,8 +75,50 @@ def build_email(
 
 
 def send_email(message: EmailMessage) -> None:
-    """Send an email using Mailgun API when configured, falling back to SMTP."""
-    # 1. Prefer Mailgun API if API key and domain are provided
+    """Send an email using Resend or Mailgun API when configured, falling back to SMTP."""
+    # 1. Resend API if configured
+    if settings.RESEND_API_KEY:
+        import httpx
+
+        plain_body = message.get_body(preferencelist=("plain",))
+        plain_text = plain_body.get_content() if plain_body else ""
+        html_part = next(
+            (part for part in message.walk() if part.get_content_type() == "text/html"),
+            None,
+        )
+        html_content = html_part.get_content() if html_part else ""
+
+        headers = {
+            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        custom_headers = {k: v for k, v in message.items() if k.lower().startswith("list-")}
+        payload: dict[str, Any] = {
+            "from": message["From"],
+            "to": [message["To"]],
+            "subject": message["Subject"],
+            "html": html_content,
+            "text": plain_text,
+        }
+        if custom_headers:
+            payload["headers"] = custom_headers
+
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                res = client.post("https://api.resend.com/emails", json=payload, headers=headers)
+                res.raise_for_status()
+                return
+        except Exception as exc:
+            logger.warning(
+                "resend_delivery_failed",
+                to=message["To"],
+                subject=message["Subject"],
+                error=str(exc),
+            )
+            if not (settings.MAILGUN_API_KEY or settings.SMTP_HOST):
+                raise
+
+    # 2. Mailgun API if API key and domain are provided
     if settings.MAILGUN_API_KEY and settings.MAILGUN_DOMAIN:
         plain_body = message.get_body(preferencelist=("plain",))
         plain_text = plain_body.get_content() if plain_body else ""
@@ -108,7 +155,7 @@ def send_email(message: EmailMessage) -> None:
                 return
             raise
 
-    # 2. SMTP fallback (e.g. Mailpit locally, or SMTP relay)
+    # 3. SMTP fallback (e.g. Mailpit locally, or SMTP relay)
     if settings.SMTP_HOST:
         send_smtp_email(message)
         return

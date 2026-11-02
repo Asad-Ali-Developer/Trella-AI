@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -114,12 +115,14 @@ async def test_token_refresh(async_client: AsyncClient) -> None:
     )
     # Successful refresh
     csrf_token = async_client.cookies.get("csrf_token")
+    assert csrf_token is not None
+    headers: dict[str, str] = {
+        "Origin": "http://localhost:3000",
+        "X-CSRF-Token": csrf_token,
+    }
     res_refresh = await async_client.post(
         "/api/v1/auth/refresh",
-        headers={
-            "Origin": "http://localhost:3000",
-            "X-CSRF-Token": csrf_token,
-        },
+        headers=headers,
     )
     assert res_refresh.status_code == 204
     assert res_refresh.content == b""
@@ -128,12 +131,10 @@ async def test_token_refresh(async_client: AsyncClient) -> None:
 
     # Invalid refresh token
     async_client.cookies.set("refresh_token", "invalid_jwt_token_123")
+    headers["X-CSRF-Token"] = async_client.cookies.get("csrf_token") or ""
     res_bad = await async_client.post(
         "/api/v1/auth/refresh",
-        headers={
-            "Origin": "http://localhost:3000",
-            "X-CSRF-Token": async_client.cookies.get("csrf_token"),
-        },
+        headers=headers,
     )
     assert res_bad.status_code == 401
 
@@ -178,12 +179,15 @@ async def test_logout_clears_session_cookies(async_client: AsyncClient) -> None:
         },
     )
     csrf_token = async_client.cookies.get("csrf_token")
+    logout_headers: dict[str, str] = {
+        "Origin": "http://localhost:3000",
+    }
+    if csrf_token:
+        logout_headers["X-CSRF-Token"] = csrf_token
+
     response = await async_client.post(
         "/api/v1/auth/logout",
-        headers={
-            "Origin": "http://localhost:3000",
-            "X-CSRF-Token": csrf_token,
-        },
+        headers=logout_headers,
     )
     assert response.status_code == 204
     set_cookie_headers = response.headers.get_list("set-cookie")
@@ -203,16 +207,26 @@ async def test_password_reset_request_is_generic_and_reset_token_is_single_use(
     monkeypatch.setattr(settings, "SMTP_HOST", "localhost")
     monkeypatch.setattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000")
     welcome_emails: list[tuple[str, str]] = []
+
+    def mock_send_welcome(*args: Any) -> None:
+        if len(args) >= 2:
+            welcome_emails.append((str(args[0]), str(args[1])))
+
     monkeypatch.setattr(
         auth_router.send_welcome_email,
         "delay",
-        lambda *args: welcome_emails.append(args),
+        mock_send_welcome,
     )
     email_tasks: list[tuple[str, str]] = []
+
+    def mock_send_reset(*args: Any) -> None:
+        if len(args) >= 2:
+            email_tasks.append((str(args[0]), str(args[1])))
+
     monkeypatch.setattr(
         auth_router.send_password_reset_email,
         "delay",
-        lambda *args: email_tasks.append(args),
+        mock_send_reset,
     )
     email = f"reset_{uuid.uuid4().hex[:8]}@example.com"
     old_password = "OldPassword123!"
@@ -259,3 +273,85 @@ async def test_password_reset_request_is_generic_and_reset_token_is_single_use(
             json={"email": email, "password": "NewPassword123!"},
         )
     ).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_update_profile(async_client: AsyncClient) -> None:
+    async_client.headers["Origin"] = "http://localhost:3000"
+    email = f"profile_{uuid.uuid4().hex[:8]}@example.com"
+    await async_client.post(
+        "/api/v1/auth/signup",
+        json={"email": email, "name": "Initial Name", "password": "Password123!"},
+    )
+
+    csrf = async_client.cookies.get("csrf_token")
+    headers: dict[str, str] = {"X-CSRF-Token": csrf} if csrf else {}
+
+    # Update name successfully
+    update_res = await async_client.patch(
+        "/api/v1/auth/me",
+        json={"name": "Updated Name"},
+        headers=headers,
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["name"] == "Updated Name"
+
+    # Verify GET /me returns updated name
+    me_res = await async_client.get("/api/v1/auth/me")
+    assert me_res.status_code == 200
+    assert me_res.json()["name"] == "Updated Name"
+
+    # Validation: empty name
+    bad_res = await async_client.patch(
+        "/api/v1/auth/me",
+        json={"name": ""},
+        headers=headers,
+    )
+    assert bad_res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_change_password(async_client: AsyncClient) -> None:
+    async_client.headers["Origin"] = "http://localhost:3000"
+    email = f"changepw_{uuid.uuid4().hex[:8]}@example.com"
+    old_pw = "OriginalPass123!"
+    new_pw = "BrandNewPass456!"
+
+    await async_client.post(
+        "/api/v1/auth/signup",
+        json={"email": email, "name": "Change PW User", "password": old_pw},
+    )
+
+    csrf = async_client.cookies.get("csrf_token")
+    headers: dict[str, str] = {"X-CSRF-Token": csrf} if csrf else {}
+
+    # Wrong current password
+    fail_res = await async_client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "WrongCurrentPassword123!", "new_password": new_pw},
+        headers=headers,
+    )
+    assert fail_res.status_code == 400
+    assert "incorrect" in fail_res.json()["detail"].lower()
+
+    # Success change password
+    success_res = await async_client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": old_pw, "new_password": new_pw},
+        headers=headers,
+    )
+    assert success_res.status_code == 204
+
+    # Verify old password cannot log in
+    old_login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": old_pw},
+    )
+    assert old_login.status_code == 401
+
+    # Verify new password logs in successfully
+    new_login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": new_pw},
+    )
+    assert new_login.status_code == 200

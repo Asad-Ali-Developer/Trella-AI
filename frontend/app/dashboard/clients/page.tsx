@@ -22,6 +22,9 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button";
+import { PageTransition } from "@/components/atoms/PageTransition";
+import { Portal } from "@/components/atoms/Portal";
+import { ClientsPageSkeleton } from "@/components/molecules/PageSkeleton";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import { workspaceStore } from "@/lib/storage";
@@ -141,13 +144,16 @@ export default function ClientsPage() {
         />
       }
     >
-      <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
-        {/* Header */}
+      {loading ? (
+        <ClientsPageSkeleton />
+      ) : (
+        <PageTransition className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
+          {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
               <Users className="h-3.5 w-3.5" />
-              Phase 5: Client Intelligence Profiles
+              Client Intelligence Profiles
             </div>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl">
               Client Dossiers & Overview
@@ -227,14 +233,7 @@ export default function ClientsPage() {
         </div>
 
         {/* Clients Grid */}
-        {loading ? (
-          <div className="flex h-64 items-center justify-center rounded-2xl border border-zinc-200 bg-white">
-            <div className="flex items-center gap-2 text-zinc-500">
-              <LoaderCircle className="h-5 w-5 animate-spin" />
-              Loading client dossiers…
-            </div>
-          </div>
-        ) : filteredClients.length === 0 ? (
+        {filteredClients.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-12 text-center">
             <Building2 className="mx-auto h-12 w-12 text-zinc-300" />
             <h3 className="mt-4 text-base font-semibold text-zinc-900">
@@ -262,62 +261,62 @@ export default function ClientsPage() {
               return (
                 <div
                   key={client.id}
-                  className="group relative flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-indigo-300 hover:shadow-md"
+                  className="group relative flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-[#4A5C6A] hover:shadow-md dark:border-[#253745] dark:bg-[#11212D]"
                 >
                   <div>
                     {/* Header: Name & Risk Badge */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 font-bold text-white shadow-sm">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#253745] font-bold text-white shadow-sm border border-[#4A5C6A]">
                           {client.name.trim().charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <h3 className="font-bold text-zinc-900 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                          <h3 className="font-bold text-zinc-900 group-hover:text-indigo-600 transition-colors line-clamp-1 dark:text-[#F1F5F9] dark:group-hover:text-[#CCD0CF]">
                             {client.name}
                           </h3>
-                          <p className="text-xs text-zinc-400">
+                          <p className="text-xs text-zinc-400 dark:text-[#9BA8AB]">
                             Added {new Date(client.created_at).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
 
                       {hasHighRisks ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 border border-rose-200">
-                          <AlertTriangle className="h-3 w-3 text-rose-600" />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60">
+                          <AlertTriangle className="h-3 w-3 text-rose-600 dark:text-rose-400" />
                           {client.risks_count} {client.risks_count === 1 ? "Risk" : "Risks"}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                           Healthy
                         </span>
                       )}
                     </div>
 
                     {/* Metrics Row */}
-                    <div className="mt-5 grid grid-cols-3 gap-2 border-y border-zinc-100 py-3.5 text-center">
+                    <div className="mt-5 grid grid-cols-3 gap-2 border-y border-zinc-100 py-3.5 text-center dark:border-[#253745]">
                       <div>
-                        <span className="block text-xs text-zinc-400">Cards</span>
-                        <span className="mt-0.5 block text-base font-bold text-zinc-800">
+                        <span className="block text-xs text-zinc-400 dark:text-[#9BA8AB]">Cards</span>
+                        <span className="mt-0.5 block text-base font-bold text-zinc-800 dark:text-[#F1F5F9]">
                           {client.cards_count}
                         </span>
                       </div>
                       <div>
-                        <span className="block text-xs text-zinc-400">Needs</span>
-                        <span className="mt-0.5 block text-base font-bold text-indigo-600">
+                        <span className="block text-xs text-zinc-400 dark:text-[#9BA8AB]">Needs</span>
+                        <span className="mt-0.5 block text-base font-bold text-indigo-600 dark:text-[#CCD0CF]">
                           {client.needs_count}
                         </span>
                       </div>
                       <div>
-                        <span className="block text-xs text-zinc-400">Insights</span>
-                        <span className="mt-0.5 block text-base font-bold text-zinc-800">
+                        <span className="block text-xs text-zinc-400 dark:text-[#9BA8AB]">Insights</span>
+                        <span className="mt-0.5 block text-base font-bold text-zinc-800 dark:text-[#F1F5F9]">
                           {client.insights_count}
                         </span>
                       </div>
                     </div>
 
                     {/* Last Run Date */}
-                    <p className="mt-3 text-xs text-zinc-400">
+                    <p className="mt-3 text-xs text-zinc-400 dark:text-[#9BA8AB]">
                       {client.last_run_at ? (
                         <>Last Analysis: {new Date(client.last_run_at).toLocaleDateString()}</>
                       ) : (
@@ -330,7 +329,7 @@ export default function ClientsPage() {
                   <div className="mt-5 pt-2">
                     <Link
                       href={`/dashboard/clients/${client.id}`}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-50 py-2.5 text-xs font-semibold text-zinc-700 transition-colors hover:bg-indigo-600 hover:text-white"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-50 py-2.5 text-xs font-semibold text-zinc-700 transition-colors hover:bg-indigo-600 hover:text-white dark:bg-[#162736] dark:text-[#CCD0CF] dark:border dark:border-[#253745] dark:hover:bg-[#253745] dark:hover:text-white"
                     >
                       View Profile & Dossier
                       <ArrowRight className="h-3.5 w-3.5" />
@@ -344,49 +343,52 @@ export default function ClientsPage() {
 
         {/* Create Client Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
-              <h3 className="text-lg font-bold text-zinc-900">Add New Client</h3>
-              <p className="mt-1 text-xs text-zinc-500">
-                Create a client dossier in this workspace to aggregate project cards, git commits,
-                and intelligence reports.
-              </p>
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-100">
+                <h3 className="text-lg font-bold text-zinc-900">Add New Client</h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Create a client dossier in this workspace to aggregate project cards, git commits,
+                  and intelligence reports.
+                </p>
 
-              <form onSubmit={handleCreateClient} className="mt-4 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700">Client Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={newClientName}
-                    onChange={(e) => setNewClientName(e.target.value)}
-                    placeholder="e.g. Acme Corp, Northwind Traders"
-                    className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
+                <form onSubmit={handleCreateClient} className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700">Client Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      placeholder="e.g. Acme Corp, Northwind Traders"
+                      className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setIsModalOpen(false)}
-                    className="text-xs"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={creating || !newClientName.trim()}
-                    className="rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {creating ? "Creating…" : "Create Client"}
-                  </Button>
-                </div>
-              </form>
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsModalOpen(false)}
+                      className="text-xs"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={creating || !newClientName.trim()}
+                      className="rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {creating ? "Creating…" : "Create Client"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </div>
+          </Portal>
         )}
-      </div>
+        </PageTransition>
+      )}
     </DashboardTemplate>
   );
 }

@@ -2,11 +2,462 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==============================================================================
+   Curated Executive Palette System:
+   #06141B (Darkest Obsidian Navy)
+   #11212D (Dark Surface / Card Surface)
+   #253745 (Deep Slate / Buttons & Active States)
+   #4A5C6A (Medium Steel Slate / Subtle Accents)
+   #9BA8AB (Muted Silver-Blue / Secondary Text)
+   #CCD0CF (Pale Mist / Highlight Accents)
+   #F8FAFC (Bright Clean Canvas for Light Mode)
+   ============================================================================== */
+
+:root {
+  --background: #F8FAFC;
+  --foreground: #06141B;
+  --card: #FFFFFF;
+  --muted: #F1F5F9;
+  --muted-foreground: #4A5C6A;
+  --border: #E2E8F0;
+  --accent: #253745;
+  --accent-foreground: #FFFFFF;
+}
+
+.dark {
+  --background: #06141B;
+  --foreground: #F1F5F9;
+  --card: #11212D;
+  --muted: #1A2C3B;
+  --muted-foreground: #9BA8AB;
+  --border: #253745;
+  --accent: #253745;
+  --accent-foreground: #F1F5F9;
+}
+
 html,
 body {
   min-height: 100%;
 }
 
 body {
-  @apply bg-zinc-50 text-foreground antialiased;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ==============================================================================
+   Border Radius Enhancements for Boxes, Containers, and Elements
+   ============================================================================== */
+.rounded-lg {
+  border-radius: 0.75rem !important;
+}
+
+.rounded-xl {
+  border-radius: 1rem !important;
+}
+
+.rounded-2xl {
+  border-radius: 1.25rem !important;
+}
+
+.rounded-3xl {
+  border-radius: 1.75rem !important;
+}
+
+/* ==============================================================================
+   Shimmer Animation for Skeleton Loaders
+   ============================================================================== */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.7) 0%,
+    rgba(241, 245, 249, 1) 50%,
+    rgba(226, 232, 240, 0.7) 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.6s infinite ease-in-out !important;
+}
+
+.dark .animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(22, 39, 54, 0.6) 0%,
+    rgba(37, 55, 69, 0.95) 50%,
+    rgba(22, 39, 54, 0.6) 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.6s infinite ease-in-out !important;
+}
+
+/* ==============================================================================
+   LIGHT MODE: Crisp, Clean, Bright Canvas (Lightened)
+   ============================================================================== */
+:root body {
+  background-color: #F8FAFC !important;
+  color: #06141B !important;
+}
+
+.bg-zinc-50,
+.bg-zinc-100 {
+  background-color: #F1F5F9 !important;
+}
+
+.bg-white {
+  background-color: #FFFFFF !important;
+}
+
+.bg-zinc-200 {
+  background-color: #E2E8F0 !important;
+}
+
+.border-border,
+.border-zinc-100,
+.border-zinc-200 {
+  border-color: #E2E8F0 !important;
+}
+
+.border-zinc-300 {
+  border-color: #CBD5E1 !important;
+}
+
+.text-foreground,
+.text-zinc-950,
+.text-zinc-900 {
+  color: #06141B !important;
+}
+
+.text-zinc-800,
+.text-zinc-700 {
+  color: #1E293B !important;
+}
+
+.text-muted-foreground,
+.text-zinc-600,
+.text-zinc-500 {
+  color: #4A5C6A !important;
+}
+
+.text-zinc-400 {
+  color: #64748B !important;
+}
+
+/* Light Mode Action Buttons & Hover States */
+.bg-accent,
+.bg-indigo-600 {
+  background-color: #253745 !important;
+  color: #FFFFFF !important;
+}
+
+.hover\:bg-indigo-600:hover,
+.hover\:bg-indigo-700:hover {
+  background-color: #11212D !important;
+  color: #FFFFFF !important;
+}
+
+.hover\:bg-indigo-600:hover *,
+.hover\:bg-indigo-700:hover * {
+  color: #FFFFFF !important;
+}
+
+.hover\:text-white:hover,
+.hover\:text-white:hover * {
+  color: #FFFFFF !important;
+}
+
+.hover\:text-rose-600:hover,
+.hover\:text-rose-600:hover svg {
+  color: #E11D48 !important;
+}
+
+.bg-indigo-50 {
+  background-color: #EFF6FF !important;
+  color: #1E3A8A !important;
+}
+
+.text-indigo-600,
+.text-indigo-700 {
+  color: #253745 !important;
+}
+
+/* ==============================================================================
+   DARK MODE: Flawless, High-Contrast Executive Navy/Obsidian
+   ============================================================================== */
+.dark body,
+.dark main,
+.dark .bg-zinc-950,
+.dark [class*="dark:bg-zinc-950"] {
+  background-color: #06141B !important;
+  color: #F1F5F9 !important;
+}
+
+/* Dark Mode Card, Panel, Drawer, Dialog, Details & Box Surfaces */
+.dark .bg-white,
+.dark .bg-zinc-900,
+.dark article,
+.dark details,
+.dark [class*="dark:bg-zinc-900"] {
+  background-color: #11212D !important;
+}
+
+/* Eliminate ANY white/light card leaks in dark mode */
+.dark .bg-zinc-50,
+.dark .bg-zinc-100,
+.dark [class*="bg-zinc-50"],
+.dark [class*="bg-zinc-100"],
+.dark [class*="bg-indigo-50"],
+.dark [class*="bg-indigo-100"],
+.dark [class*="bg-white\/"] {
+  background-color: #162736 !important;
+}
+
+.dark details summary {
+  color: #F1F5F9 !important;
+}
+
+.dark span.bg-white,
+.dark .rounded-full.bg-white {
+  background-color: #253745 !important;
+  color: #CCD0CF !important;
+  border: 1px solid #4A5C6A !important;
+}
+
+/* Dark Mode Borders & Dividers */
+.dark .border-border,
+.dark .border-zinc-100,
+.dark .border-zinc-200,
+.dark .border-zinc-300,
+.dark .border-zinc-700,
+.dark .border-zinc-800,
+.dark .border-indigo-100,
+.dark .border-indigo-200,
+.dark [class*="dark:border-zinc-800"],
+.dark [class*="dark:border-zinc-700"],
+.dark [class*="border-zinc-"],
+.dark [class*="border-indigo-"] {
+  border-color: #253745 !important;
+}
+
+.dark [class*="divide-zinc-"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #253745 !important;
+}
+
+/* Dark Mode Headings & High-Contrast Primary Text */
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6,
+.dark strong,
+.dark b,
+.dark .text-foreground,
+.dark .text-white,
+.dark .text-zinc-950,
+.dark .text-zinc-900,
+.dark .text-zinc-800,
+.dark .text-zinc-700,
+.dark .text-zinc-100,
+.dark .text-zinc-200,
+.dark .text-indigo-950,
+.dark .text-indigo-900,
+.dark [class*="dark:text-zinc-100"],
+.dark [class*="dark:text-zinc-200"] {
+  color: #F1F5F9 !important;
+}
+
+/* Dark Mode Secondary & Muted Text (Clear & Legible) */
+.dark p,
+.dark .text-muted-foreground,
+.dark .text-zinc-600,
+.dark .text-zinc-500,
+.dark .text-zinc-400,
+.dark [class*="text-zinc-500"],
+.dark [class*="text-zinc-400"],
+.dark [class*="text-indigo-900\/"],
+.dark [class*="dark:text-zinc-400"],
+.dark [class*="dark:text-zinc-500"] {
+  color: #9BA8AB !important;
+}
+
+/* Dark Mode Hover States on Rows & Cards */
+.dark [class*="hover:bg-zinc-50"]:hover,
+.dark [class*="hover:bg-zinc-100"]:hover,
+.dark [class*="hover:bg-zinc-200"]:hover,
+.dark [class*="hover:bg-zinc-800"]:hover,
+.dark [class*="hover:bg-zinc-750"]:hover,
+.dark .hover\:bg-zinc-800:hover,
+.dark .hover\:bg-zinc-900:hover {
+  background-color: #1A2D3C !important;
+  color: #FFFFFF !important;
+}
+
+.dark .hover\:text-zinc-900:hover,
+.dark .hover\:text-zinc-800:hover,
+.dark .hover\:text-white:hover,
+.dark .dark\:hover\:text-white:hover,
+.dark .dark\:hover\:text-white:hover * {
+  color: #FFFFFF !important;
+}
+
+/* Dark Mode Buttons */
+.dark .bg-accent,
+.dark .bg-indigo-600,
+.dark .bg-indigo-500 {
+  background-color: #253745 !important;
+  color: #F1F5F9 !important;
+  border: 1px solid #4A5C6A !important;
+}
+
+.dark .hover\:bg-indigo-600:hover,
+.dark .hover\:bg-indigo-700:hover {
+  background-color: #354D60 !important;
+  color: #FFFFFF !important;
+}
+
+.dark .hover\:bg-indigo-600:hover *,
+.dark .hover\:bg-indigo-700:hover * {
+  color: #FFFFFF !important;
+}
+
+/* Secondary Action Buttons in Dark Mode (e.g. "Client Dossiers", "Reports & Runs") */
+.dark a.bg-white,
+.dark button.bg-white,
+.dark a.border-zinc-200,
+.dark a.bg-zinc-50,
+.dark button.bg-zinc-50 {
+  background-color: #162736 !important;
+  color: #CCD0CF !important;
+  border-color: #253745 !important;
+}
+
+.dark a.bg-white:hover,
+.dark button.bg-white:hover,
+.dark a.bg-zinc-50:hover,
+.dark button.bg-zinc-50:hover {
+  background-color: #253745 !important;
+  color: #FFFFFF !important;
+  border-color: #4A5C6A !important;
+}
+
+.dark .text-accent,
+.dark .text-indigo-700,
+.dark .text-indigo-600,
+.dark .text-indigo-500,
+.dark .text-indigo-400,
+.dark .text-indigo-300 {
+  color: #CCD0CF !important;
+}
+
+/* ==============================================================================
+   Dark Mode Status Badges (Refined, Harmonious Pinhole Accents)
+   ============================================================================== */
+/* Connected / Healthy / Completed / Grounded */
+.dark [class*="bg-emerald-50"],
+.dark [class*="bg-emerald-100"],
+.dark [class*="dark:bg-emerald-950"] {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #34D399 !important;
+  border: 1px solid rgba(52, 211, 153, 0.3) !important;
+}
+
+.dark [class*="text-emerald-700"],
+.dark [class*="text-emerald-600"],
+.dark [class*="text-emerald-500"],
+.dark [class*="dark:text-emerald-400"] {
+  color: #34D399 !important;
+}
+
+/* Failed / Risk / Errors */
+.dark [class*="bg-rose-50"],
+.dark [class*="bg-rose-100"],
+.dark [class*="bg-red-50"],
+.dark [class*="bg-red-100"],
+.dark [class*="dark:bg-rose-950"] {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: #F87171 !important;
+  border: 1px solid rgba(248, 113, 113, 0.3) !important;
+}
+
+.dark [class*="text-rose-700"],
+.dark [class*="text-rose-600"],
+.dark [class*="text-red-700"],
+.dark [class*="text-red-600"],
+.dark [class*="dark:text-rose-400"] {
+  color: #F87171 !important;
+}
+
+/* Pending / Coming Soon / Available */
+.dark [class*="bg-amber-50"],
+.dark [class*="bg-amber-100"],
+.dark [class*="dark:bg-amber-950"] {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #FBBF24 !important;
+  border: 1px solid rgba(251, 191, 36, 0.3) !important;
+}
+
+.dark [class*="text-amber-800"],
+.dark [class*="text-amber-700"],
+.dark [class*="dark:text-amber-400"] {
+  color: #FBBF24 !important;
+}
+
+/* Neutral Pills / Phase tags */
+.dark [class*="bg-indigo-50"]:not(section):not(aside) {
+  background-color: #1A2D3C !important;
+  color: #CCD0CF !important;
+  border: 1px solid #253745 !important;
+}
+
+/* ==============================================================================
+   Forms, Inputs, and Textareas
+   ============================================================================== */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-radius: 0.75rem !important;
+  border-color: #E2E8F0 !important;
+  background-color: #FFFFFF !important;
+  color: #06141B !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748B !important;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+  color-scheme: dark;
+  background-color: #11212D !important;
+  color: #F1F5F9 !important;
+  border-color: #253745 !important;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #4A5C6A !important;
+  box-shadow: 0 0 0 2px rgba(74, 92, 106, 0.4) !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #9BA8AB !important;
+}
+
+.dark select option {
+  background-color: #11212D;
+  color: #F1F5F9;
 }

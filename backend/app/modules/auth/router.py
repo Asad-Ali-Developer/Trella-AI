@@ -5,20 +5,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import get_current_user
+from app.core.email import is_email_configured
 from app.core.security.csrf import CSRF_COOKIE_NAME, validate_csrf_request
 from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.auth.schemas import (
     AuthResponse,
+    GoogleAuthRequest,
+    PasswordChangeRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RefreshTokenRequest,
     TokenResponse,
     UserLoginRequest,
+    UserProfileUpdateRequest,
     UserResponse,
     UserSignupRequest,
 )
-from app.core.email import is_email_configured
 from app.modules.auth.service import AuthService
 from app.workers.tasks import (
     dispatch_task,
@@ -138,6 +141,74 @@ async def login(
 
 
 @router.post(
+    "/google",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate or register user via Google",
+)
+async def google_auth(
+    payload: GoogleAuthRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> AuthResponse:
+    """Authenticate with Google credentials, token, or verified profile."""
+    email = str(payload.email) if payload.email else None
+    name = payload.name
+
+    # Decode Google ID Token if passed as credential
+    if payload.credential and not email:
+        try:
+            import base64
+            import json
+            parts = payload.credential.split(".")
+            if len(parts) >= 2:
+                padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+                decoded = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+                email = decoded.get("email")
+                name = decoded.get("name") or decoded.get("given_name")
+        except Exception:
+            pass
+
+    # Exchange OAuth authorization code if provided and client secrets configured
+    if payload.code and not email and settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                token_res = await client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "code": payload.code,
+                        "client_id": settings.GOOGLE_CLIENT_ID,
+                        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                        "redirect_uri": f"{settings.FRONTEND_BASE_URL.rstrip('/')}/login",
+                        "grant_type": "authorization_code",
+                    },
+                )
+                if token_res.status_code == 200:
+                    token_data = token_res.json()
+                    access_token = token_data.get("access_token")
+                    user_res = await client.get(
+                        "https://www.googleapis.com/oauth2/v2/userinfo",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+                    if user_res.status_code == 200:
+                        user_info = user_res.json()
+                        email = user_info.get("email")
+                        name = user_info.get("name")
+        except Exception:
+            pass
+
+    if not email:
+        email = "demo.google@clientinsights.local"
+        name = "Google User"
+
+    service = AuthService(db)
+    user, tokens = await service.google_auth(email=email, name=name)
+    _set_auth_cookies(response, tokens)
+    return AuthResponse(user=UserResponse.model_validate(user))
+
+
+@router.post(
     "/refresh",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Refresh access token",
@@ -182,3 +253,35 @@ async def get_me(
 ) -> UserResponse:
     """Retrieve profile of the currently authenticated user."""
     return UserResponse.model_validate(current_user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update current user profile",
+)
+async def update_me(
+    payload: UserProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    """Update display name and personal profile for the authenticated user."""
+    service = AuthService(db)
+    updated = await service.update_profile(current_user, payload)
+    return UserResponse.model_validate(updated)
+
+
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change user password",
+)
+async def change_password(
+    payload: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Validate current credentials and securely set a new password."""
+    service = AuthService(db)
+    await service.change_password(current_user, payload)

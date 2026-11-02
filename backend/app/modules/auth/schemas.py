@@ -19,6 +19,15 @@ class UserLoginRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    """Payload for Google authentication."""
+
+    email: EmailStr | None = None
+    name: str | None = None
+    credential: str | None = None
+    code: str | None = None
+
+
 class RefreshTokenRequest(BaseModel):
     """Payload for token refresh."""
 
@@ -60,3 +69,16 @@ class AuthResponse(BaseModel):
     """Authenticated user profile; tokens are sent only as HttpOnly cookies."""
 
     user: UserResponse
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Payload for updating user profile fields."""
+
+    name: str = Field(min_length=1, max_length=100, description="User full or display name")
+
+
+class PasswordChangeRequest(BaseModel):
+    """Payload for authenticated password change."""
+
+    current_password: str = Field(min_length=1, description="Current user password")
+    new_password: str = Field(min_length=8, description="New password must be at least 8 characters")
