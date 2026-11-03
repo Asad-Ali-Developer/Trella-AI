@@ -109,7 +109,7 @@ class Settings(BaseSettings):
 
     # LLM Settings
     GEMINI_API_KEY: str = Field(default="")
-    GEMINI_CONTEXT_MODEL: str = Field(default="gemini-3.5-flash")
+    GEMINI_CONTEXT_MODEL: str = Field(default="gemini-3-flash-preview")
     GEMINI_EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
 
     # Trello

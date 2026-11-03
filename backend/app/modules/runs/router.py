@@ -40,6 +40,7 @@ async def create_run(
     )
 
     if execute_async:
+        await db.commit()
         dispatch_task(execute_skill_run_task, str(run.id))
     else:
         run = await service.execute_run(run.id)
@@ -99,6 +100,7 @@ async def execute_run(
     run = await service.get_run(run_id=run_id, workspace_id=workspace.id)
 
     if execute_async:
+        await db.commit()
         dispatch_task(execute_skill_run_task, str(run.id))
         return RunResponse.model_validate(run)
     else:

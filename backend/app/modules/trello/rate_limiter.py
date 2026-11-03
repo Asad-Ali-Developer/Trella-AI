@@ -4,8 +4,12 @@ from collections.abc import Awaitable
 from typing import cast
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from app.core.config import settings
+from app.core.logging import get_logger
+
+logger = get_logger("app.modules.trello.rate_limiter")
 
 _INCREMENT_WITH_TTL = """
 local count = redis.call('INCR', KEYS[1])
@@ -65,7 +69,7 @@ class TrelloRateLimiter:
         self._clients.clear()
 
     async def acquire(self, api_key: str, token: str, path: str) -> None:
-        """Wait for available rate-limit capacity; Redis errors are surfaced to callers."""
+        """Wait for available rate-limit capacity; falls back to pass-through if Redis is unreachable."""
         limits = [
             (f"trello:rate:key:{self._digest(api_key)}", 300, 10_000),
             (f"trello:rate:token:{self._digest(token)}", 100, 10_000),
@@ -78,12 +82,16 @@ class TrelloRateLimiter:
 
         while True:
             waits: list[int] = []
-            for key, threshold, window_ms in limits:
-                response = self.redis.eval(_INCREMENT_WITH_TTL, 1, key, str(window_ms))
-                result = await cast(Awaitable[list[int]], response)
-                count, remaining_ms = int(result[0]), int(result[1])
-                if count > threshold:
-                    waits.append(max(remaining_ms, 1))
+            try:
+                for key, threshold, window_ms in limits:
+                    response = self.redis.eval(_INCREMENT_WITH_TTL, 1, key, str(window_ms))
+                    result = await cast(Awaitable[list[int]], response)
+                    count, remaining_ms = int(result[0]), int(result[1])
+                    if count > threshold:
+                        waits.append(max(remaining_ms, 1))
+            except (RedisError, OSError) as exc:
+                logger.warning("trello_rate_limiter_redis_unavailable", error=str(exc))
+                return
             if not waits:
                 return
             await asyncio.sleep(max(waits) / 1000)

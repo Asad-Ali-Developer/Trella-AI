@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CitedSource(BaseModel):
@@ -15,6 +15,15 @@ class CitedSource(BaseModel):
     title: str | None = None
     url: str | None = None
     valid: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_string_or_dict(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return {"source_id": v}
+        if isinstance(v, dict) and "source_id" not in v and "id" in v:
+            return {**v, "source_id": str(v["id"])}
+        return v
 
 
 class NeedInsight(BaseModel):
@@ -74,7 +83,7 @@ class SkillBase(BaseModel):
     model_config_json: dict[str, Any] = Field(
         default_factory=lambda: {
             "provider": "gemini",
-            "model": "gemini-3.5-flash",
+            "model": "gemini-3-flash-preview",
             "temperature": 0.1,
         }
     )

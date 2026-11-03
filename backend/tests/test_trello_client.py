@@ -308,3 +308,18 @@ def test_rate_limiter_multiple_event_loops() -> None:
     asyncio.run(run_once())
     asyncio.run(run_once())
 
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_graceful_fallback_when_redis_unavailable() -> None:
+    """Ensure TrelloRateLimiter does not crash when Redis is unreachable (e.g. on Render without Redis)."""
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    from app.modules.trello.rate_limiter import TrelloRateLimiter
+
+    mock_redis = AsyncMock()
+    mock_redis.eval = AsyncMock(side_effect=RedisConnectionError("Connection refused"))
+    limiter = TrelloRateLimiter(redis=mock_redis)
+
+    # Should log warning and return without raising
+    await limiter.acquire("api-key", "token", "/members/me")

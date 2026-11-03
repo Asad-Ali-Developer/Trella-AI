@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -35,6 +37,36 @@ class HealthResponse(BaseModel):
     version: str
 
 
+async def _fallback_schedule_poller() -> None:
+    """Periodically check due schedules in-process when Redis/Celery Beat is unavailable."""
+    from redis.asyncio import Redis
+
+    from app.workers.tasks import _check_due_schedules
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            redis_client = Redis.from_url(
+                settings.REDIS_URL,
+                socket_connect_timeout=1,
+                socket_timeout=1,
+            )
+            try:
+                await redis_client.ping()
+                await redis_client.aclose()
+                # Redis is up (Celery Beat handles schedules)
+                continue
+            except Exception:
+                await redis_client.aclose()
+        except Exception:
+            pass
+
+        try:
+            await _check_due_schedules()
+        except Exception as exc:
+            logger.warning("fallback_schedule_poller_error", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, Any]:
     """Lifespan event handler for startup and shutdown procedures."""
@@ -50,8 +82,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, Any]:
     except Exception as exc:
         logger.warning("builtin_skills_seed_skipped", error=str(exc))
 
-    yield
-    logger.info("application_shutdown")
+    poller_task = asyncio.create_task(_fallback_schedule_poller())
+    try:
+        yield
+    finally:
+        poller_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await poller_task
+        logger.info("application_shutdown")
 
 
 def create_application() -> FastAPI:

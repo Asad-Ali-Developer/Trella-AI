@@ -18,9 +18,24 @@ T = TypeVar("T", bound=BaseModel)
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
-# Standard pricing for Gemini 2.5 Flash / 1.5 Flash per million tokens
+# Standard pricing for Gemini Flash per million tokens
 FLASH_INPUT_PRICE_PER_M = 0.075
 FLASH_OUTPUT_PRICE_PER_M = 0.30
+
+# Map retired or overloaded model aliases to active fast Flash models
+MODEL_ALIASES: dict[str, str] = {
+    "gemini-3.5-flash": "gemini-3-flash-preview",
+    "gemini-2.5-flash": "gemini-3-flash-preview",
+    "gemini-2.5-flash-lite": "gemini-3.1-flash-lite",
+    "gemini-2.0-flash": "gemini-3-flash-preview",
+    "gemini-1.5-flash": "gemini-3-flash-preview",
+}
+
+FALLBACK_MODELS: tuple[str, ...] = (
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-lite-latest",
+)
 
 
 def _clean_json_markdown(text: str) -> str:
@@ -89,7 +104,8 @@ class GeminiProvider(LLMProvider):
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Gemini API is not configured. Set GEMINI_API_KEY in .env.",
             )
-        self.default_model = default_model or settings.GEMINI_CONTEXT_MODEL
+        raw_default = default_model or settings.GEMINI_CONTEXT_MODEL
+        self.default_model = MODEL_ALIASES.get(raw_default, raw_default)
 
     def _calculate_cost(self, prompt_tokens: int, completion_tokens: int) -> float:
         """Calculate estimated cost in USD based on Gemini Flash pricing."""
@@ -98,29 +114,37 @@ class GeminiProvider(LLMProvider):
         return round(prompt_cost + completion_cost, 6)
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
         retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
         reraise=True,
     )
-    async def _call_api(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """Execute request to Gemini API with retry and backoff."""
+    async def _call_single_model(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Execute a single model request to Gemini API with bounded retries."""
         url = f"{GEMINI_API_BASE}/{model}:generateContent"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             response = await client.post(
                 url,
-                params={"key": self.api_key},
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.api_key,
+                },
             )
-            if response.status_code == 429:
-                logger.warning("gemini_rate_limited", status_code=response.status_code)
-                response.raise_for_status()
-            if response.status_code >= 500:
-                logger.warning("gemini_server_error", status_code=response.status_code)
+            if response.status_code in (404, 429) or response.status_code >= 500:
+                logger.warning(
+                    "gemini_transient_or_model_error",
+                    model=model,
+                    status_code=response.status_code,
+                )
                 response.raise_for_status()
             if response.status_code != 200:
-                logger.error("gemini_api_error", status_code=response.status_code, body=response.text)
+                logger.error(
+                    "gemini_api_error",
+                    model=model,
+                    status_code=response.status_code,
+                    body=response.text,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Gemini API returned error ({response.status_code}): {response.text}",
@@ -138,6 +162,40 @@ class GeminiProvider(LLMProvider):
                     detail="Gemini returned a malformed response.",
                 )
             return cast(dict[str, Any], data)
+
+    async def _call_api(self, model: str, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        """Execute request against primary Gemini model, falling back on 404/429/5xx/timeout."""
+        normalized = MODEL_ALIASES.get(model, model)
+        candidates: list[str] = [normalized]
+        for fb in FALLBACK_MODELS:
+            if fb not in candidates:
+                candidates.append(fb)
+
+        last_exc: Exception | None = None
+        for idx, candidate_model in enumerate(candidates):
+            try:
+                data = await self._call_single_model(candidate_model, payload)
+                return data, candidate_model
+            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+                last_exc = exc
+                if idx + 1 < len(candidates):
+                    logger.warning(
+                        "gemini_falling_back_to_next_model",
+                        failed_model=candidate_model,
+                        next_model=candidates[idx + 1],
+                        error=str(exc),
+                    )
+                    continue
+
+        if isinstance(last_exc, httpx.TimeoutException):
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"Gemini API timed out across models {candidates}.",
+            ) from last_exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Gemini API is temporarily unavailable (503). Please retry in a moment.",
+        ) from last_exc
 
     async def generate(
         self,
@@ -160,13 +218,7 @@ class GeminiProvider(LLMProvider):
         if system_instruction:
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
-        try:
-            data = await self._call_api(target_model, payload)
-        except httpx.TimeoutException as exc:
-            raise HTTPException(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail=f"Gemini API timed out on model '{target_model}'. Google preview servers may be experiencing high latency.",
-            ) from exc
+        data, used_model = await self._call_api(target_model, payload)
 
         try:
             candidates = data.get("candidates", [])
@@ -187,7 +239,7 @@ class GeminiProvider(LLMProvider):
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             cost_usd=cost_usd,
-            model=target_model,
+            model=used_model,
             provider=self.provider_name,
             raw_response=data,
         )
@@ -221,13 +273,7 @@ class GeminiProvider(LLMProvider):
         if system_instruction:
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
-        try:
-            data = await self._call_api(target_model, payload)
-        except httpx.TimeoutException as exc:
-            raise HTTPException(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail=f"Gemini API timed out on model '{target_model}'. Google preview servers may be experiencing high latency.",
-            ) from exc
+        data, used_model = await self._call_api(target_model, payload)
 
         try:
             candidates = data.get("candidates", [])
@@ -267,9 +313,8 @@ class GeminiProvider(LLMProvider):
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             cost_usd=cost_usd,
-            model=target_model,
+            model=used_model,
             provider=self.provider_name,
             raw_response=data,
         )
         return parsed, result
-
