@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: deepclient-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: REDIS_URL
+        value: redis://127.0.0.1:6379/0
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["http://localhost:3000","https://trella-ai-x8sb.vercel.app"]'
+      - key: FRONTEND_BASE_URL
+        value: https://trella-ai-x8sb.vercel.app
+      - key: TRELLO_API_KEY
+        sync: false
+      - key: TRELLO_TOKEN_RETURN_URL
+        value: https://trella-ai-x8sb.vercel.app/dashboard/trello/callback
+      - key: AUTH_COOKIE_SAMESITE
+        value: none
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+

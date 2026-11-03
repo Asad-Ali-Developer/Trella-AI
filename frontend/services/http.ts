@@ -1,7 +1,10 @@
-import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from "axios";
 
 import { config } from "@/config";
 import { workspaceStore } from "@/lib/storage";
+
+const ACCESS_TOKEN_KEY = "ci.access_token";
+const REFRESH_TOKEN_KEY = "ci.refresh_token";
 
 const http = axios.create({
   baseURL: config.apiBaseUrl,
@@ -19,7 +22,31 @@ function readCookie(name: string): string | null {
   return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : null;
 }
 
+function saveAuthHeaders(response: AxiosResponse): void {
+  if (typeof window === "undefined") return;
+  const accessToken = response.headers["x-access-token"];
+  const refreshToken = response.headers["x-refresh-token"];
+  if (typeof accessToken === "string" && accessToken) {
+    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  }
+  if (typeof refreshToken === "string" && refreshToken) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  }
+}
+
+export function clearStoredTokens(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
 http.interceptors.request.use((request: InternalAxiosRequestConfig) => {
+  if (typeof window !== "undefined") {
+    const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (accessToken && !request.headers.Authorization) {
+      request.headers.Authorization = `Bearer ${accessToken}`;
+    }
+  }
   const method = request.method?.toUpperCase();
   if (method && !["GET", "HEAD", "OPTIONS"].includes(method)) {
     const csrfToken = readCookie("csrf_token");
@@ -33,7 +60,13 @@ http.interceptors.request.use((request: InternalAxiosRequestConfig) => {
 });
 
 http.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    saveAuthHeaders(response);
+    if (response.config.url?.endsWith("/auth/logout")) {
+      clearStoredTokens();
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const original = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
@@ -57,13 +90,22 @@ http.interceptors.response.use(
     original._retry = true;
 
     if (!refreshPromise) {
+      const storedRefresh =
+        typeof window !== "undefined" ? localStorage.getItem(REFRESH_TOKEN_KEY) : null;
       refreshPromise = axios
-        .post(`${config.apiBaseUrl}/auth/refresh`, undefined, {
-          withCredentials: true,
-          headers: { "X-CSRF-Token": readCookie("csrf_token") ?? "" },
+        .post(
+          `${config.apiBaseUrl}/auth/refresh`,
+          storedRefresh ? { refresh_token: storedRefresh } : undefined,
+          {
+            withCredentials: true,
+            headers: { "X-CSRF-Token": readCookie("csrf_token") ?? "" },
+          },
+        )
+        .then((res) => {
+          saveAuthHeaders(res);
         })
-        .then(() => undefined)
         .catch((refreshError: unknown) => {
+          clearStoredTokens();
           if (typeof window !== "undefined") {
             window.dispatchEvent(new Event("auth:session-expired"));
           }

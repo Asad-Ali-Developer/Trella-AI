@@ -1,0 +1,11 @@
+# Replace with your actual domain or subdomain (e.g. api.yourdomain.com)
+# If you don't have a domain yet, you can temporarily put ':80' for plain HTTP testing.
+{$BACKEND_DOMAIN::80} {
+    reverse_proxy api:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
