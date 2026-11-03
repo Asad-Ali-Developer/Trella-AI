@@ -1,5 +1,8 @@
 """Automated tests for Report Delivery (Slack Block Kit, Email Digest, Retries)."""
 
+from typing import Any
+
+from typing import Any
 
 import pytest
 import respx
@@ -18,7 +21,7 @@ from app.modules.delivery.slack import (
 
 
 def test_build_slack_block_kit_digest() -> None:
-    report_output = {
+    report_output: dict[str, Any] = {
         "headline": "Weekly Client Synthesis: ACME Inc",
         "needs": [
             {"text": "Needs Stripe integration", "priority": "high"},
@@ -45,7 +48,9 @@ def test_build_slack_block_kit_digest() -> None:
     assert "ACME Inc" in blocks[0]["text"]["text"]
 
     # Needs block
-    needs_block = next((b for b in blocks if "Key Client Needs" in b.get("text", {}).get("text", "")), None)
+    needs_block = next(
+        (b for b in blocks if "Key Client Needs" in b.get("text", {}).get("text", "")), None
+    )
     assert needs_block is not None
     assert "Needs Stripe integration" in needs_block["text"]["text"]
 
@@ -108,17 +113,17 @@ async def test_slack_client_list_conversations() -> None:
 
 
 def test_email_digest_headers() -> None:
-    headers = {
+    headers: dict[str, str] = {
         "List-Unsubscribe": "<http://localhost:3000/dashboard/schedules?unsubscribe=test@example.com>",
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     }
-    context = {
+    context: dict[str, Any] = {
         "headline": "Synthesis for Test",
         "target_name": "Test Client",
         "workspace_name": "Test WS",
         "needs": [{"text": "More features", "priority": "high"}],
-        "risks": [],
-        "patterns": [],
+        "risks": [{"text": "Potential delivery delays", "severity": "medium"}],
+        "patterns": [{"text": "Consistent weekly velocity"}],
         "report_url": "http://localhost:3000/dashboard/reports/abc",
         "unsubscribe_url": "http://localhost:3000/dashboard/schedules?unsubscribe=test@example.com",
     }
@@ -130,7 +135,10 @@ def test_email_digest_headers() -> None:
         text="Plain text body",
         headers=headers,
     )
-    assert msg["List-Unsubscribe"] == "<http://localhost:3000/dashboard/schedules?unsubscribe=test@example.com>"
+    assert (
+        msg["List-Unsubscribe"]
+        == "<http://localhost:3000/dashboard/schedules?unsubscribe=test@example.com>"
+    )
     assert msg["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
     assert msg["To"] == "user@example.com"
 

@@ -92,6 +92,7 @@ async def signup(
     """Create an account and establish a cookie-based session."""
     service = AuthService(db)
     user, tokens = await service.signup(payload)
+    await db.commit()  # commit before responding; get_db commits only after background tasks
     if is_email_configured():
         background_tasks.add_task(dispatch_task, send_welcome_email, user.email, user.name)
     _set_auth_cookies(response, tokens)
@@ -204,6 +205,7 @@ async def google_auth(
 
     service = AuthService(db)
     user, tokens = await service.google_auth(email=email, name=name)
+    await db.commit()
     _set_auth_cookies(response, tokens)
     return AuthResponse(user=UserResponse.model_validate(user))
 
