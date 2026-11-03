@@ -108,6 +108,7 @@ def create_application() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Access-Token", "X-Refresh-Token", "X-CSRF-Token"],
     )
 
     # Health check endpoints
