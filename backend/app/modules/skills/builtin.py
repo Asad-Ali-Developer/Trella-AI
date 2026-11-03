@@ -27,7 +27,7 @@ BUILTIN_SKILLS: list[dict[str, Any]] = [
         "output_schema_json": ClientNeedsReport.model_json_schema(),
         "model_config_json": {
             "provider": "gemini",
-            "model": "gemini-3.5-flash",
+            "model": "gemini-3-flash-preview",
             "temperature": 0.1,
             "max_tokens": 4000,
         },
@@ -54,7 +54,7 @@ BUILTIN_SKILLS: list[dict[str, Any]] = [
         "output_schema_json": ClientNeedsReport.model_json_schema(),
         "model_config_json": {
             "provider": "gemini",
-            "model": "gemini-3.5-flash",
+            "model": "gemini-3-flash-preview",
             "temperature": 0.1,
             "max_tokens": 4000,
         },

@@ -114,4 +114,6 @@ async def repositories_for_sync(
 async def enqueue_repository_sync(repository_id: UUID) -> None:
     from app.workers.tasks import sync_github_repository_task
 
-    sync_github_repository_task.delay(str(repository_id))
+    from app.workers.tasks import dispatch_task, sync_github_repository_task
+
+    dispatch_task(sync_github_repository_task, str(repository_id))

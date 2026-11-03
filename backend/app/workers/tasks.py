@@ -1,5 +1,6 @@
 import asyncio
 import smtplib
+import threading
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -39,7 +40,20 @@ def dispatch_task(task_func: Any, *args: Any, **kwargs: Any) -> None:
             error=str(exc),
         )
         try:
-            task_func(*args, **kwargs)
+            try:
+                asyncio.get_running_loop()
+                in_running_loop = True
+            except RuntimeError:
+                in_running_loop = False
+            if in_running_loop:
+                threading.Thread(
+                    target=task_func,
+                    args=args,
+                    kwargs=kwargs,
+                    daemon=True,
+                ).start()
+            else:
+                task_func(*args, **kwargs)
         except Exception as direct_exc:
             logger.exception(
                 "direct_task_execution_failed",

@@ -284,7 +284,12 @@ async def _fetch_board(
 async def enqueue_source_sync(source_id: uuid.UUID) -> None:
     from app.workers.tasks import sync_trello_source
 
-    sync_trello_source.delay(str(source_id))
+    try:
+        sync_trello_source.delay(str(source_id))
+    except Exception:
+        from app.workers.tasks import _sync_trello_source
+
+        await _sync_trello_source(source_id)
 
 
 async def list_mapping_responses(db: AsyncSession, workspace_id: uuid.UUID) -> list[dict[str, Any]]:

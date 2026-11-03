@@ -48,7 +48,7 @@ class Skill(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         JSONB,
         default=lambda: {
             "provider": "gemini",
-            "model": "gemini-3.5-flash",
+            "model": "gemini-3-flash-preview",
             "temperature": 0.1,
         },
         nullable=False,
