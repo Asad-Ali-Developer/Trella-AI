@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "http://localhost:3000",
             "https://trella-ai-x8sb.vercel.app",
+            "https://clientdeep.vercel.app",
         ]
     )
 

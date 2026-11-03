@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -37,6 +37,8 @@ REFRESH_COOKIE_NAME = "refresh_token"
 def _set_auth_cookies(response: Response, tokens: TokenResponse) -> None:
     secure = settings.auth_cookie_secure
     same_site = settings.AUTH_COOKIE_SAMESITE
+    response.headers["X-Access-Token"] = tokens.access_token
+    response.headers["X-Refresh-Token"] = tokens.refresh_token
     response.set_cookie(
         ACCESS_COOKIE_NAME,
         tokens.access_token,
@@ -218,11 +220,14 @@ async def google_auth(
 async def refresh_token(
     request: Request,
     response: Response,
+    payload: RefreshTokenRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Rotate session tokens using the HttpOnly refresh cookie."""
-    validate_csrf_request(request)
-    refresh_token_value = request.cookies.get(REFRESH_COOKIE_NAME)
+    """Rotate session tokens using the refresh token payload or HttpOnly refresh cookie."""
+    refresh_token_value = payload.refresh_token if payload and payload.refresh_token else None
+    if not refresh_token_value:
+        validate_csrf_request(request)
+        refresh_token_value = request.cookies.get(REFRESH_COOKIE_NAME)
     if not refresh_token_value:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -239,8 +244,9 @@ async def refresh_token(
     summary="End the current session",
 )
 async def logout(request: Request, response: Response) -> None:
-    """Clear session cookies after validating the CSRF token."""
-    validate_csrf_request(request)
+    """Clear session cookies after validating the CSRF token when cookie-authenticated."""
+    if not request.headers.get("Authorization"):
+        validate_csrf_request(request)
     _clear_auth_cookies(response)
 
 
