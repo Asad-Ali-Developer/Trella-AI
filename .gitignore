@@ -21,6 +21,11 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+<<<<<<< HEAD
+/backend/celerybeat-schedule*
+=======
+>>>>>>> refs/rewritten/onto
+
 # Virtual Environments
 .venv/
 venv/
