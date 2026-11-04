@@ -1,4 +1,4 @@
-import type { Insight, Run, RunDetail } from "@/lib/types";
+import type { DailyActivityResponse, Insight, Run, RunDetail } from "@/lib/types";
 import http from "@/services/http";
 
 class RunService {
@@ -57,6 +57,17 @@ class RunService {
       { feedback, feedback_notes: notes },
       { headers: { "X-Workspace-Id": workspaceId } },
     );
+    return data;
+  }
+
+  async getActivity(
+    workspaceId: string,
+    params?: { days?: number; user_only?: boolean; client_id?: string },
+  ): Promise<DailyActivityResponse> {
+    const { data } = await http.get<DailyActivityResponse>("/runs/activity", {
+      headers: { "X-Workspace-Id": workspaceId },
+      params,
+    });
     return data;
   }
 

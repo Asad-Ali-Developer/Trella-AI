@@ -2,12 +2,12 @@
 
 import hashlib
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -505,3 +505,49 @@ class RunService:
         await self.db.refresh(insight)
         logger.info("insight_feedback_submitted", insight_id=str(insight_id), feedback=feedback)
         return insight
+
+
+    async def get_daily_activity(
+        self,
+        workspace_id: UUID,
+        user_id: UUID | None = None,
+        client_id: UUID | None = None,
+        days: int = 365,
+    ) -> dict[str, Any]:
+        """Aggregate report run counts per day for the workspace/user over the last N days."""
+        now = datetime.now(UTC)
+        start_date = now - timedelta(days=days)
+
+        date_col = cast(Run.created_at, Date)
+        query = (
+            select(date_col.label("day"), func.count(Run.id).label("count"))
+            .where(
+                Run.workspace_id == workspace_id,
+                Run.created_at >= start_date,
+            )
+        )
+        if user_id is not None:
+            query = query.where(Run.user_id == user_id)
+        if client_id is not None:
+            query = query.where(Run.client_id == client_id)
+
+        query = query.group_by(date_col).order_by(date_col.asc())
+
+        result = await self.db.execute(query)
+        daily_counts = []
+        activity_map: dict[str, int] = {}
+        total_runs = 0
+
+        for row in result:
+            day_val = row.day
+            day_str = day_val.isoformat() if hasattr(day_val, "isoformat") else str(day_val)
+            c = int(row.count)
+            daily_counts.append({"date": day_str, "count": c})
+            activity_map[day_str] = c
+            total_runs += c
+
+        return {
+            "total_runs": total_runs,
+            "daily_counts": daily_counts,
+            "activity_map": activity_map,
+        }

@@ -28,6 +28,8 @@ import { Portal } from "@/components/atoms/Portal";
 import { ConfirmDeleteModal } from "@/components/molecules/ConfirmDeleteModal";
 import { Pagination } from "@/components/molecules/Pagination";
 import { ReportsPageSkeleton } from "@/components/molecules/PageSkeleton";
+import { ReportActivityHeatmap } from "@/components/molecules/ReportActivityHeatmap";
+import { ReportStatsGraph } from "@/components/molecules/ReportStatsGraph";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
 import {
@@ -52,6 +54,7 @@ export default function ReportsAndRunsPage() {
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
 
   const [runs, setRuns] = useState<Run[]>([]);
+  const [activityMap, setActivityMap] = useState<Record<string, number>>({});
   const [skills, setSkills] = useState<Skill[]>([]);
   const [clients, setClients] = useState<ClientSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,10 +117,11 @@ export default function ReportsAndRunsPage() {
 
   async function loadWorkspaceRunsAndMeta(workspaceId: string) {
     try {
-      const [runsList, skillsList, clientsList] = await Promise.all([
+      const [runsList, skillsList, clientsList, activity] = await Promise.all([
         runService.list(workspaceId),
         skillService.list(workspaceId),
         clientService.list(workspaceId),
+        runService.getActivity(workspaceId).catch(() => null),
       ]);
       setRuns(runsList);
       setSkills(skillsList);
@@ -125,6 +129,16 @@ export default function ReportsAndRunsPage() {
         setSelectedSkillId(skillsList[0].id);
       }
       setClients(clientsList);
+      if (activity?.activity_map) {
+        setActivityMap(activity.activity_map);
+      } else {
+        const fallbackMap: Record<string, number> = {};
+        for (const r of runsList) {
+          const dayStr = r.created_at.slice(0, 10);
+          fallbackMap[dayStr] = (fallbackMap[dayStr] || 0) + 1;
+        }
+        setActivityMap(fallbackMap);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load run history.";
       setError(message);
@@ -182,9 +196,15 @@ export default function ReportsAndRunsPage() {
       }
 
       setIsModalOpen(false);
-      // Refresh runs list
-      const updated = await runService.list(selectedWorkspace.id);
+      // Refresh runs list & activity
+      const [updated, updatedActivity] = await Promise.all([
+        runService.list(selectedWorkspace.id),
+        runService.getActivity(selectedWorkspace.id).catch(() => null),
+      ]);
       setRuns(updated);
+      if (updatedActivity?.activity_map) {
+        setActivityMap(updatedActivity.activity_map);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Run execution failed.";
       setError(message);
@@ -201,6 +221,9 @@ export default function ReportsAndRunsPage() {
     try {
       await runService.delete(selectedWorkspace.id, runToDelete.id);
       setRuns((prev) => prev.filter((r) => r.id !== runToDelete.id));
+      void runService.getActivity(selectedWorkspace.id).then((act) => {
+        if (act?.activity_map) setActivityMap(act.activity_map);
+      }).catch(() => null);
       setNotice("Report successfully deleted.");
       setDeleteModalOpen(false);
       setRunToDelete(null);
@@ -254,7 +277,7 @@ export default function ReportsAndRunsPage() {
       {loading ? (
         <ReportsPageSkeleton />
       ) : (
-        <PageTransition className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
+        <PageTransition className="mx-auto max-w-7xl space-y-8 p-6 md:p-8">
           {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -265,7 +288,7 @@ export default function ReportsAndRunsPage() {
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl dark:text-[#F1F5F9]">
               Reports & Run History
             </h1>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-[#9BA8AB]">
+            <p className="mt-1 max-w-[80%] text-sm text-zinc-500 dark:text-[#9BA8AB]">
               Inspect intelligence reports generated from your connected project boards. Every claim
               is grounded against verified Trello cards, GitHub commits, and Jira issues.
             </p>
@@ -273,7 +296,7 @@ export default function ReportsAndRunsPage() {
 
           <Button
             onClick={() => setIsModalOpen(true)}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-6 font-semibold text-white shadow-sm hover:bg-indigo-700 dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A]"
+            className="inline-flex w-56 h-11 items-center gap-2 rounded-xl bg-indigo-600 px-6 font-semibold text-white shadow-sm hover:bg-indigo-700 dark:bg-[#253745] dark:hover:bg-[#354D60] dark:border dark:border-[#4A5C6A]"
           >
             <Play className="h-4 w-4 fill-white" />
             Run New Analysis
@@ -323,6 +346,16 @@ export default function ReportsAndRunsPage() {
               Estimated LLM Cost
             </div>
             <p className="mt-2 text-2xl font-bold text-zinc-900 dark:text-[#F1F5F9]">${totalCost.toFixed(5)}</p>
+          </div>
+        </div>
+
+        {/* Daily Report Activity & Stats Section */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 items-stretch">
+          <div className="lg:col-span-8">
+            <ReportActivityHeatmap activityMap={activityMap} totalRuns={runs.length} />
+          </div>
+          <div className="lg:col-span-4">
+            <ReportStatsGraph activityMap={activityMap} runs={runs} />
           </div>
         </div>
 

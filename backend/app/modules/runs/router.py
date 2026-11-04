@@ -12,6 +12,7 @@ from app.modules.runs.schemas import (
     InsightFeedbackRequest,
     InsightResponse,
     RunCreateRequest,
+    DailyActivityResponse,
     RunDetailResponse,
     RunResponse,
 )
@@ -59,6 +60,29 @@ async def list_runs(
     service = RunService(db)
     runs = await service.list_runs(workspace_id=workspace.id, client_id=client_id)
     return [RunResponse.model_validate(r) for r in runs]
+
+
+
+@router.get("/activity", response_model=DailyActivityResponse)
+async def get_runs_activity(
+    days: int = Query(default=365, ge=7, le=730, description="Number of past days to aggregate activity for"),
+    user_only: bool = Query(default=False, description="Filter only to current user's generated reports"),
+    client_id: UUID | None = Query(default=None, description="Optional client filter"),
+    workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DailyActivityResponse:
+    """Retrieve daily aggregated run counts for heatmap visualization efficiently."""
+    workspace, _ = workspace_context
+    service = RunService(db)
+    user_id = current_user.id if user_only else None
+    data = await service.get_daily_activity(
+        workspace_id=workspace.id,
+        user_id=user_id,
+        client_id=client_id,
+        days=days,
+    )
+    return DailyActivityResponse.model_validate(data)
 
 
 @router.get("/{run_id}", response_model=RunDetailResponse)

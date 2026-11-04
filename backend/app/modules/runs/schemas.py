@@ -72,3 +72,18 @@ class InsightFeedbackRequest(BaseModel):
 
     feedback: Literal["thumbs_up", "thumbs_down"]
     feedback_notes: str | None = Field(default=None, max_length=1000)
+
+
+class DailyActivityStat(BaseModel):
+    """Aggregated report run count for a specific date."""
+
+    date: str
+    count: int
+
+
+class DailyActivityResponse(BaseModel):
+    """Daily aggregated run counts for heatmap visualization."""
+
+    total_runs: int
+    daily_counts: list[DailyActivityStat]
+    activity_map: dict[str, int]

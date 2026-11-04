@@ -297,6 +297,17 @@ export interface RunDetail extends Run {
   insights: Insight[];
 }
 
+export interface DailyActivityStat {
+  date: string;
+  count: number;
+}
+
+export interface DailyActivityResponse {
+  total_runs: number;
+  daily_counts: DailyActivityStat[];
+  activity_map: Record<string, number>;
+}
+
 export interface ClientSummary {
   id: string;
   workspace_id: string;
