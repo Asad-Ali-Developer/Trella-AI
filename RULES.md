@@ -1,61 +1,77 @@
 # Development Rules & Guidelines
 
-- **Python & Typing**: Python 3.12, async everywhere, full type hints, strict mypy compliance.
+- **Python & Typing**: Python 3.12, async everywhere, full type hints, strict mypy compliance, Ruff clean.
 - **Module Architecture**: Follow the standard layout per module:
   - `router.py` → `service.py` → `repository.py`
   - `schemas.py` (Pydantic v2)
   - `models.py` (SQLAlchemy 2.0 async)
 - **Multi-Tenancy & Workspace Isolation**: Every DB query must be strictly scoped by `workspace_id`.
 - **Security & Privacy**:
-  - Never log tokens, secrets, or card content.
+  - Never log tokens, secrets, or card/comment content.
   - Encryption at rest for credentials (AES-GCM or Fernet).
   - All card text is untrusted input; defend against prompt injection.
 - **Testing & Quality**:
-  - **Mandatory Endpoint Coverage**: Every backend API endpoint MUST have dedicated automated tests written at the time of creation (covering success status codes, response payloads, input validation errors, unauthorized access, and workspace isolation).
+  - **Mandatory Endpoint Coverage**: Every backend API endpoint MUST have dedicated automated tests written at the time of creation (success status codes, response payloads, input validation errors, unauthorized access, and workspace isolation).
   - Every feature must ship with automated tests (`pytest`, `pytest-asyncio`, `httpx.AsyncClient`).
   - Unit tests for domain logic; integration tests with database and third-party client fixtures (`respx`).
+  - Existing tests must pass unchanged. If an existing test must be edited, explain why before editing.
+  - Nothing is marked done in `docs/PLAN.md` unless a test verifies it. If a feature is partial or stubbed, the plan must say so.
+- **Change Safety**:
+  - **Additive only**: never change or remove an existing API route, response schema, table, or column unless the task explicitly says so. If a breaking change seems necessary, stop and ask.
+  - Response shapes of existing endpoints stay identical. New fields may be added only as optional extras.
+  - Any behavior change that affects report output must sit behind a Settings flag with the old behavior as the default, until compared and approved.
+  - Destructive migrations (drop table/column) are always a separate, standalone task.
+  - Before editing, show a short plan and the list of files to be changed. After finishing, run `ruff`, `mypy`, and `pytest` and report the results.
 - **Frontend Architecture & Conventions**:
   - **Framework & Routing**: Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui.
   - **Directory Structure**: Root `apps/web/app/` directory for routing. **Do NOT use a `src/` directory**.
   - **Component Structure (Atomic Design)**: All components must strictly follow atomic design principles:
-    - `components/atoms/`: Very small, primitive elements (e.g., buttons, inputs, badges, avatars, icons, tooltips).
-    - `components/molecules/`: Groups of atoms functioning together (e.g., form fields with label/error, search bars, stat chips, card headers).
-    - `components/organisms/`: Complex UI sections composed of molecules and atoms (e.g., sidebar, navigation bar, boards grid, skill run console, report viewer).
-    - `components/templates/`: Page-level layouts assembled from atoms, molecules, and organisms that structure full pages.
+    - `components/atoms/`: Very small, primitive elements (buttons, inputs, badges, avatars, icons, tooltips).
+    - `components/molecules/`: Groups of atoms functioning together (form fields with label/error, search bars, stat chips, card headers).
+    - `components/organisms/`: Complex UI sections (sidebar, navigation bar, boards grid, skill run console, report viewer).
+    - `components/templates/`: Page-level layouts assembled from atoms, molecules, and organisms.
   - **Design Aesthetics & Palette**:
     - **Ultra-Clean & Aesthetic**: Minimalist, modern B2B SaaS aesthetic (Linear / Vercel style).
-    - **Restrained Color Palette**: Strictly avoid a bunch of arbitrary, loud colors. Use a refined, neutral-dominant palette (zinc / slate grayscale) paired with a single elegant accent color (e.g., subtle indigo/violet or monochrome high-contrast).
-    - **Visual Hierarchy**: Rely on clean typography, generous whitespace, subtle hairline borders (`border-border`), and smooth micro-interactions instead of heavy background colors or visual noise.
+    - **Restrained Color Palette**: Neutral-dominant (zinc / slate) with a single elegant accent color.
+    - **Visual Hierarchy**: Clean typography, generous whitespace, hairline borders (`border-border`), smooth micro-interactions.
   - **Icons**: `lucide-react` along with custom SVG/component icons when needed.
-  - **Environment Configuration**:
-    - Centralized `config/index.ts` holding backend environment URLs (development, staging, and production) and environment-specific flags.
+  - **Environment Configuration**: Centralized `config/index.ts` holding backend URLs and environment flags.
   - **API Service Layer**:
-    - Centralized, class-based services for domain entities (e.g., `AuthService`, `WorkspaceService`, `TrelloService`, `SkillService`).
-    - Standardized HTTP client using **Axios** with request & response interceptors configured with base URL resolved from `config/index.ts`.
-    - Automatic JWT access token attachment and silent refresh token rotation (handling 401s, request queuing during refresh, and session revocation on terminal expiry).
+    - Centralized, class-based services per domain entity (`AuthService`, `WorkspaceService`, `TrelloService`, `SkillService`).
+    - Axios client with interceptors; base URL from `config/index.ts`.
+    - Automatic JWT access token attachment and silent refresh rotation (401 handling, request queuing, session revocation on terminal expiry).
 - **Email & Communications**:
-  - All outgoing emails (welcome/verification, password reset, scheduled reports, promotional updates) MUST be dispatched asynchronously via Celery background tasks (never blocking the HTTP request thread).
-  - Transactional emails (password reset, account verification) must use secure, time-expiring tokens.
-  - Reports and promotional emails must include proper headers (`List-Unsubscribe`) and honor workspace notification preferences.
+  - All outgoing emails MUST be dispatched asynchronously via Celery tasks (never blocking the HTTP request thread).
+  - Blocking I/O (for example `smtplib`) must never run on the event loop; use `asyncio.to_thread` or a worker.
+  - Transactional emails must use secure, time-expiring tokens.
+  - Reports and promotional emails must include `List-Unsubscribe` and honor workspace notification preferences.
 - **Scalability & Performance Guidelines**:
-  - **Queue Segregation**: Celery workers must run with dedicated queues:
-    - `critical`: High-priority tasks (auth emails, password resets, webhook acks).
-    - `sync`: Trello paginated board/card ingestion.
-    - `ai`: Map-reduce summarization, skill runs, vector embeddings.
-    - `delivery`: Slack Block Kit & email digest dispatches.
+  - **Queue Segregation**: Celery workers run with dedicated queues:
+    - `critical`: auth emails, password resets, webhook acks.
+    - `sync`: Trello/GitHub/Jira ingestion.
+    - `ai`: map-reduce summarization, skill runs, chunking and vector embeddings. Do not create a separate `embeddings` queue.
+    - `delivery`: Slack Block Kit and email digest dispatches.
   - **Connector Rate Limiting & Locking**:
     - Centralized Redis Token Bucket rate limiting per external token and API key.
-    - Distributed task deduplication via Redis locks (`SET NX EX`) to avoid parallel duplicate syncs or webhook bursts.
+    - Distributed task deduplication via Redis locks (`SET NX EX`).
+    - Redis clients use one shared connection pool per process, never a new connection per call.
   - **Database & Vectors**:
-    - Connection pooling via PgBouncer in transaction mode.
-    - Use `HNSW` (Hierarchical Navigable Small World) index for `pgvector` embeddings.
+    - Connection pooling via PgBouncer in transaction mode. asyncpg engines must set `statement_cache_size=0` when behind PgBouncer, and pool sizes come from Settings.
+    - `HNSW` index for `pgvector` embeddings, with `m` and `ef_construction` stated explicitly in migrations.
     - Composite indexes on `(workspace_id, external_id)` and partial indexes on active records (`WHERE closed = false`).
+    - Retrieval queries filter by `workspace_id` and active source IDs inside the same SQL statement as the vector search, and are verified with `EXPLAIN (ANALYZE, BUFFERS)` on seeded data.
+    - Embeddings are generated only for new or changed chunks, in batches, and never inside a request/response cycle.
+    - Every embedding row stores `embedding_model` and a `content_hash`; stale rows are deleted when content changes.
+    - Deleting or disconnecting a source must leave zero chunks, embeddings, summaries, or links (use `ON DELETE CASCADE`).
   - **LLM Engine (Gemini Exclusively for Now)**:
-    - Use the **Google Gemini API** exclusively for now (via the official `google-genai` SDK) wrapped behind our clean `LLMProvider` interface for future swappability.
-    - Leverage fast, cost-efficient Gemini models (e.g., `gemini-2.0-flash`) for card extraction, content-hash summarization, and insight synthesis.
+    - Use the Google Gemini API exclusively, wrapped behind the `LLMProvider` interface for future swappability.
+    - Model names come from Settings only, never hardcoded in services.
+    - All outbound LLM and embedding calls need timeouts, retries with backoff and jitter (honoring `Retry-After`), and a concurrency semaphore.
+    - LLM prompts have a hard input-token budget; never send an entire workspace in one prompt.
+    - Every cited ID in LLM output is validated against the input; invalid citations are stripped or retried, never silently kept.
   - **Frontend Virtualization & Query Cache**:
-    - Use `@tanstack/react-virtual` for high-volume card and insight lists to prevent DOM bloating.
-    - Use TanStack Query with optimistic UI updates and stale-while-revalidate caching.
+    - `@tanstack/react-virtual` for high-volume card and insight lists.
+    - TanStack Query with optimistic updates and stale-while-revalidate caching.
 - **Scope Discipline**:
   - Do not touch modules outside the current task/phase.
-  - Follow [PLAN.md](file:///C:/Users/Async/.gemini/antigravity-ide/scratch/client-insights/docs/PLAN.md); ask before deviating.
+  - Follow `docs/PLAN.md`; ask before deviating.
