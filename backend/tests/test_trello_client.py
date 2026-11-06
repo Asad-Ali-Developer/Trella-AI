@@ -331,6 +331,41 @@ async def test_rate_limiter_graceful_fallback_when_redis_unavailable() -> None:
     await limiter.acquire("api-key", "token", "/members/me")
 
 
+def test_redis_rate_limiter_reuses_pool_per_loop_and_rotates_across_loops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ensure RedisRateLimiter reuses one ConnectionPool per event loop and replaces it across loops."""
+    import asyncio
+
+    from redis.asyncio import ConnectionPool
+
+    from app.modules.trello.rate_limiter import RedisRateLimiter
+
+    created_pools: list[ConnectionPool] = []
+    real_from_url = ConnectionPool.from_url
+
+    def spy_from_url(url: str, **kwargs: Any) -> ConnectionPool:
+        pool = real_from_url(url, **kwargs)
+        created_pools.append(pool)
+        return pool
+
+    monkeypatch.setattr(ConnectionPool, "from_url", spy_from_url)
+
+    async def check_within_loop() -> tuple[ConnectionPool, ConnectionPool]:
+        first = RedisRateLimiter()
+        second = RedisRateLimiter()
+        return first.connection_pool, second.connection_pool
+
+    loop1_p1, loop1_p2 = asyncio.run(check_within_loop())
+    assert loop1_p1 is loop1_p2
+    assert len(created_pools) == 1
+
+    loop2_p1, loop2_p2 = asyncio.run(check_within_loop())
+    assert loop2_p1 is loop2_p2
+    assert loop2_p1 is not loop1_p1
+    assert len(created_pools) == 2
+
+
 @pytest.mark.asyncio
 async def test_sync_source_data_deletes_removed_comments_and_preserves_on_failed_fetch(
     db_session: AsyncSession,

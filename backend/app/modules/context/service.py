@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.modules.connections.models import ProviderAccount, WorkspaceConnection
-from app.modules.context.gemini import GeminiContextClient
+from app.modules.context.gemini import (
+    EmbeddingRateLimited,
+    EmbeddingUnavailable,
+    GeminiContextClient,
+)
 from app.modules.context.models import TrelloCardEmbedding, TrelloCardSummary
 from app.modules.context.schemas import (
     CardSummaryResponse,
@@ -420,10 +424,16 @@ class WorkspaceContextService:
                 summary_text: str
                 was_cached: bool
                 if summary is None:
-                    if gemini is None:
-                        gemini = await stack.enter_async_context(GeminiContextClient())
-                    source_text = self._card_source_text(card, comments_by_card.get(card.id, []))
-                    text, input_tokens, output_tokens = await gemini.summarize(source_text)
+                    try:
+                        if gemini is None:
+                            gemini = await stack.enter_async_context(GeminiContextClient())
+                        source_text = self._card_source_text(card, comments_by_card.get(card.id, []))
+                        text, input_tokens, output_tokens = await gemini.summarize(source_text)
+                    except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail=exc.detail,
+                        ) from exc
                     statement = insert(TrelloCardSummary).values(
                         workspace_id=self.workspace.id,
                         card_id=card.id,
@@ -513,24 +523,30 @@ class WorkspaceContextService:
             comments_by_card: dict[UUID, list[TrelloComment]] = {}
             for comment in comments:
                 comments_by_card.setdefault(comment.card_id, []).append(comment)
-            async with GeminiContextClient() as gemini:
-                for card in to_index:
-                    vector = await gemini.embed(
-                        self._card_source_text(card, comments_by_card.get(card.id, []))
-                    )
-                    statement = insert(TrelloCardEmbedding).values(
-                        workspace_id=self.workspace.id,
-                        card_id=card.id,
-                        content_hash=card.content_hash,
-                        model=settings.GEMINI_EMBEDDING_MODEL,
-                        embedding=vector,
-                    )
-                    await self.db.execute(
-                        statement.on_conflict_do_update(
-                            constraint="uq_card_embeddings_cache_key",
-                            set_={"embedding": statement.excluded.embedding},
+            try:
+                async with GeminiContextClient() as gemini:
+                    for card in to_index:
+                        vector = await gemini.embed(
+                            self._card_source_text(card, comments_by_card.get(card.id, []))
                         )
-                    )
+                        statement = insert(TrelloCardEmbedding).values(
+                            workspace_id=self.workspace.id,
+                            card_id=card.id,
+                            content_hash=card.content_hash,
+                            model=settings.GEMINI_EMBEDDING_MODEL,
+                            embedding=vector,
+                        )
+                        await self.db.execute(
+                            statement.on_conflict_do_update(
+                                constraint="uq_card_embeddings_cache_key",
+                                set_={"embedding": statement.excluded.embedding},
+                            )
+                        )
+            except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=exc.detail,
+                ) from exc
         return ContextIndexResponse(
             indexed=len(to_index),
             already_indexed=len(cards) - len(missing),
@@ -572,8 +588,14 @@ class WorkspaceContextService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Index this workspace's cards before searching related work.",
             )
-        async with GeminiContextClient() as gemini:
-            query_vector = await gemini.embed(query, query=True)
+        try:
+            async with GeminiContextClient() as gemini:
+                query_vector = await gemini.embed(query, query=True)
+        except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=exc.detail,
+            ) from exc
 
         distance = TrelloCardEmbedding.embedding.cosine_distance(query_vector)
         statement = (

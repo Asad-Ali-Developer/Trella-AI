@@ -117,6 +117,14 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = Field(default="")
     GEMINI_CONTEXT_MODEL: str = Field(default="gemini-3-flash-preview")
     GEMINI_EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
+    GEMINI_MAX_CONCURRENCY: int = Field(default=4, ge=1)
+    GEMINI_MAX_ATTEMPTS: int = Field(default=3, ge=1)
+    GEMINI_MAX_RETRIES: int = Field(default=3, ge=1)
+    GEMINI_TIMEOUT_SECONDS: float = Field(default=45.0, gt=0)
+    GEMINI_CONNECT_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)
+    GEMINI_RETRY_INITIAL_WAIT: float = Field(default=0.5, ge=0)
+    GEMINI_RETRY_MAX_WAIT: float = Field(default=10.0, ge=0)
+    GEMINI_RETRY_JITTER: float = Field(default=0.5, ge=0)
 
     # Trello
     TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")
@@ -183,7 +191,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return cached singleton instance of application settings."""
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
 
 
 settings = get_settings()

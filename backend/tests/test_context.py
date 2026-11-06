@@ -2,6 +2,7 @@ import hashlib
 import uuid
 
 import pytest
+import respx
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -483,3 +484,347 @@ async def test_semantic_search_is_limited_to_included_workspace_cards(
     assert first_index.status_code == second_index.status_code == search.status_code == 200
     assert first_index.json()["indexed"] == second_index.json()["indexed"] == 1
     assert [item["card_id"] for item in search.json()["results"]] == [str(included_card.id)]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_client_retries_429_honoring_retry_after(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    import httpx
+
+    from app.core.config import settings
+    from app.modules.context.gemini import (
+        GEMINI_API_BASE,
+        EmbeddingRateLimited,
+        GeminiContextClient,
+    )
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(settings, "GEMINI_MAX_ATTEMPTS", 3)
+
+    recorded_sleeps: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(delay: float) -> None:
+        recorded_sleeps.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    url = f"{GEMINI_API_BASE}/{settings.GEMINI_EMBEDDING_MODEL}:embedContent"
+    route = respx.post(url).mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "1.75"}, json={"error": "rate limited"}),
+            httpx.Response(200, json={"embedding": {"values": [0.25] + [0.0] * 767}}),
+        ]
+    )
+
+    async with GeminiContextClient() as client:
+        vector = await client.embed("retry after test")
+
+    assert route.call_count == 2
+    assert vector[0] == pytest.approx(0.25)
+    assert recorded_sleeps == [pytest.approx(1.75)]
+
+    route_exhausted = respx.post(url).mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "0.25"}, json={"error": "busy"})
+    )
+    async with GeminiContextClient() as client:
+        with pytest.raises(EmbeddingRateLimited):
+            await client.embed("exhaust retries")
+    assert route_exhausted.call_count == 2 + 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_client_retries_5xx_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from app.core.config import settings
+    from app.modules.context.gemini import (
+        GEMINI_API_BASE,
+        EmbeddingUnavailable,
+        GeminiContextClient,
+    )
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(settings, "GEMINI_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(settings, "GEMINI_RETRY_INITIAL_WAIT", 0.001)
+    monkeypatch.setattr(settings, "GEMINI_RETRY_MAX_WAIT", 0.005)
+    monkeypatch.setattr(settings, "GEMINI_RETRY_JITTER", 0.001)
+
+    url = f"{GEMINI_API_BASE}/{settings.GEMINI_EMBEDDING_MODEL}:embedContent"
+    route = respx.post(url).mock(
+        side_effect=[
+            httpx.Response(503, json={"error": "unavailable"}),
+            httpx.Response(500, json={"error": "internal"}),
+            httpx.Response(200, json={"embedding": {"values": [0.5] + [0.0] * 767}}),
+        ]
+    )
+
+    async with GeminiContextClient() as client:
+        vector = await client.embed("server error recovery")
+
+    assert route.call_count == 3
+    assert vector[0] == pytest.approx(0.5)
+
+    respx.post(url).mock(return_value=httpx.Response(502, json={"error": "bad gateway"}))
+    async with GeminiContextClient() as client:
+        with pytest.raises(EmbeddingUnavailable):
+            await client.embed("persistent 502")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_embed_batch_preserves_input_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import httpx
+
+    from app.core.config import settings
+    from app.modules.context.gemini import GEMINI_API_BASE, GeminiContextClient
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
+    url = f"{GEMINI_API_BASE}/{settings.GEMINI_EMBEDDING_MODEL}:batchEmbedContents"
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        requests_list = payload["requests"]
+        embeddings = []
+        for idx, req in enumerate(requests_list):
+            assert req["model"] == f"models/{settings.GEMINI_EMBEDDING_MODEL}"
+            assert req["outputDimensionality"] == 768
+            assert req["taskType"] == "RETRIEVAL_DOCUMENT"
+            embeddings.append({"values": [float(idx + 1)] + [0.0] * 767})
+        return httpx.Response(200, json={"embeddings": embeddings})
+
+    route = respx.post(url).mock(side_effect=_handler)
+
+    texts = ["alpha", "beta", "gamma", "delta"]
+    async with GeminiContextClient() as client:
+        vectors = await client.embed_batch(texts)
+
+    assert route.call_count == 1
+    sent_texts = [
+        item["content"]["parts"][0]["text"]
+        for item in json.loads(route.calls.last.request.content)["requests"]
+    ]
+    assert sent_texts == texts
+    assert [vec[0] for vec in vectors] == [1.0, 2.0, 3.0, 4.0]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_embed_batch_splits_into_api_sized_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    import httpx
+
+    from app.core.config import settings
+    from app.modules.context.gemini import (
+        GEMINI_API_BASE,
+        MAX_EMBED_BATCH_SIZE,
+        GeminiContextClient,
+    )
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
+    url = f"{GEMINI_API_BASE}/{settings.GEMINI_EMBEDDING_MODEL}:batchEmbedContents"
+    batch_sizes: list[int] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        requests_list = payload["requests"]
+        batch_sizes.append(len(requests_list))
+        embeddings = []
+        for req in requests_list:
+            text_val = req["content"]["parts"][0]["text"]
+            idx = int(text_val.split("-")[1])
+            embeddings.append({"values": [float(idx)] + [0.0] * 767})
+        return httpx.Response(200, json={"embeddings": embeddings})
+
+    route = respx.post(url).mock(side_effect=_handler)
+
+    total_items = 250
+    texts = [f"item-{i}" for i in range(total_items)]
+    async with GeminiContextClient() as client:
+        vectors = await client.embed_batch(texts)
+
+    assert MAX_EMBED_BATCH_SIZE == 100
+    assert route.call_count == 3
+    assert batch_sizes == [100, 100, 50]
+    assert len(vectors) == total_items
+    assert [int(vec[0]) for vec in vectors] == list(range(total_items))
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_semaphore_limits_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    import httpx
+
+    from app.core.config import settings
+    from app.modules.context.gemini import GEMINI_API_BASE, GeminiContextClient
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(settings, "GEMINI_MAX_CONCURRENCY", 2)
+
+    url = f"{GEMINI_API_BASE}/{settings.GEMINI_EMBEDDING_MODEL}:embedContent"
+    in_flight = 0
+    max_in_flight = 0
+
+    async def _slow_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.03)
+        in_flight -= 1
+        return httpx.Response(200, json={"embedding": {"values": [1.0] + [0.0] * 767}})
+
+    respx.post(url).mock(side_effect=_slow_handler)
+
+    async with GeminiContextClient() as client:
+        results = await asyncio.gather(*(client.embed(f"doc-{i}") for i in range(6)))
+
+    assert len(results) == 6
+    assert max_in_flight == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_client_reuse_within_one_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from app.core.config import settings
+    from app.modules.context.gemini import GEMINI_API_BASE, GeminiContextClient
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
+    url = f"{GEMINI_API_BASE}/{settings.GEMINI_EMBEDDING_MODEL}:embedContent"
+    respx.post(url).mock(
+        return_value=httpx.Response(200, json={"embedding": {"values": [1.0] + [0.0] * 767}})
+    )
+
+    async with GeminiContextClient() as first_client:
+        http_client_1 = first_client.client
+        await first_client.embed("first call")
+
+    assert not http_client_1.is_closed
+
+    async with GeminiContextClient() as second_client:
+        http_client_2 = second_client.client
+        await second_client.embed("second call")
+
+    assert http_client_1 is http_client_2
+    assert not http_client_2.is_closed
+
+
+def test_gemini_client_consecutive_asyncio_run_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    import httpx
+
+    from app.core.config import settings
+    from app.modules.context.gemini import GEMINI_API_BASE, GeminiContextClient
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
+    url = f"{GEMINI_API_BASE}/{settings.GEMINI_EMBEDDING_MODEL}:embedContent"
+
+    seen_clients: list[httpx.AsyncClient] = []
+
+    async def _run_once(text: str) -> list[float]:
+        with respx.mock:
+            respx.post(url).mock(
+                return_value=httpx.Response(
+                    200, json={"embedding": {"values": [0.75] + [0.0] * 767}}
+                )
+            )
+            async with GeminiContextClient() as client:
+                seen_clients.append(client.client)
+                return await client.embed(text)
+
+    vec1 = asyncio.run(_run_once("loop one"))
+    assert seen_clients[0].is_closed
+
+    vec2 = asyncio.run(_run_once("loop two"))
+    assert seen_clients[1].is_closed
+    assert seen_clients[0] is not seen_clients[1]
+    assert vec1[0] == vec2[0] == pytest.approx(0.75)
+
+
+@pytest.mark.asyncio
+async def test_context_service_translates_gemini_typed_errors_to_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fastapi import HTTPException
+
+    from app.modules.context.gemini import EmbeddingRateLimited, EmbeddingUnavailable
+    from app.modules.context.service import WorkspaceContextService
+
+    workspace = Workspace(id=uuid.uuid4(), name="Error translation workspace", slug="err-ws")
+    card = TrelloCard(
+        id=uuid.uuid4(),
+        workspace_id=workspace.id,
+        source_id=uuid.uuid4(),
+        trello_card_id="err-card-1",
+        name="Error card",
+        description="Desc",
+        list_id="list-1",
+        list_name="Todo",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/err",
+        content_hash="a" * 64,
+    )
+
+    mock_db = MagicMock(spec=AsyncSession)
+    mock_db.scalar = AsyncMock(return_value=None)
+    empty_exec = MagicMock()
+    empty_exec.__iter__.return_value = iter([])
+    mock_db.execute = AsyncMock(return_value=empty_exec)
+
+    service = WorkspaceContextService(mock_db, workspace)
+    monkeypatch.setattr(service, "_load_included_cards", AsyncMock(return_value=[card]))
+    monkeypatch.setattr(service, "_load_comments", AsyncMock(return_value=[]))
+
+    class RateLimitedGemini:
+        async def __aenter__(self) -> "RateLimitedGemini":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def summarize(self, source_text: str) -> tuple[str, int, int]:
+            raise EmbeddingRateLimited("Gemini request failed with status 429.")
+
+        async def embed(self, text: str, *, query: bool = False) -> list[float]:
+            raise EmbeddingUnavailable("Could not reach the configured Gemini service.")
+
+    monkeypatch.setattr("app.modules.context.service.GeminiContextClient", RateLimitedGemini)
+
+    with pytest.raises(HTTPException) as summary_exc:
+        await service.summarize_cards(client_id=None, max_cards=5)
+    assert summary_exc.value.status_code == 503
+    assert "429" in str(summary_exc.value.detail)
+
+    with pytest.raises(HTTPException) as index_exc:
+        await service.index_cards(client_id=None, max_cards=5)
+    assert index_exc.value.status_code == 503
+    assert "Could not reach" in str(index_exc.value.detail)

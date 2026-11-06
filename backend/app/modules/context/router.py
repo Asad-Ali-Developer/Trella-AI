@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_workspace, require_workspace_role
 from app.db.session import get_db
+from app.modules.context.gemini import EmbeddingRateLimited, EmbeddingUnavailable
 from app.modules.context.schemas import (
     ContextIndexRequest,
     ContextIndexResponse,
@@ -62,10 +63,16 @@ async def summarize_workspace_cards(
     db: AsyncSession = Depends(get_db),
 ) -> ContextSummariesResponse:
     workspace, _ = workspace_context
-    return await WorkspaceContextService(db, workspace).summarize_cards(
-        client_id=payload.client_id,
-        max_cards=payload.max_cards,
-    )
+    try:
+        return await WorkspaceContextService(db, workspace).summarize_cards(
+            client_id=payload.client_id,
+            max_cards=payload.max_cards,
+        )
+    except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=exc.detail,
+        ) from exc
 
 
 @router.post("/index", response_model=ContextIndexResponse)
@@ -75,10 +82,16 @@ async def index_workspace_cards(
     db: AsyncSession = Depends(get_db),
 ) -> ContextIndexResponse:
     workspace, _ = workspace_context
-    return await WorkspaceContextService(db, workspace).index_cards(
-        client_id=payload.client_id,
-        max_cards=payload.max_cards,
-    )
+    try:
+        return await WorkspaceContextService(db, workspace).index_cards(
+            client_id=payload.client_id,
+            max_cards=payload.max_cards,
+        )
+    except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=exc.detail,
+        ) from exc
 
 
 @router.post("/search", response_model=ContextSearchResponse)
@@ -88,8 +101,14 @@ async def search_workspace_context(
     db: AsyncSession = Depends(get_db),
 ) -> ContextSearchResponse:
     workspace, _ = workspace_context
-    return await WorkspaceContextService(db, workspace).search_similar(
-        query=payload.query,
-        client_id=payload.client_id,
-        limit=payload.limit,
-    )
+    try:
+        return await WorkspaceContextService(db, workspace).search_similar(
+            query=payload.query,
+            client_id=payload.client_id,
+            limit=payload.limit,
+        )
+    except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=exc.detail,
+        ) from exc
