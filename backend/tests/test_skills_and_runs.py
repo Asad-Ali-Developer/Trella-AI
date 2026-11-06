@@ -2,13 +2,16 @@
 
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import User
+from app.modules.connections.repository import ConnectionRepository
 from app.modules.context.schemas import (
     ContextChunk,
     ContextItem,
@@ -17,9 +20,10 @@ from app.modules.context.schemas import (
 )
 from app.modules.llm.base import LLMResult
 from app.modules.llm.gemini import GeminiProvider
+from app.modules.llm.openai import OpenAIProvider
 from app.modules.runs.citations import validate_and_enrich_citations
 from app.modules.runs.schemas import RunCreateRequest
-from app.modules.runs.service import RunService
+from app.modules.runs.service import RunService, _clean_sources
 from app.modules.skills.schemas import (
     CitedSource,
     ClientNeedsReport,
@@ -30,6 +34,7 @@ from app.modules.skills.schemas import (
     StakeholderInsight,
 )
 from app.modules.skills.service import SkillService
+from app.modules.trello.models import TrelloCard, TrelloSource
 from app.modules.workspaces.models import Workspace
 
 
@@ -76,7 +81,7 @@ def test_gemini_cost_calculation() -> None:
 
 @pytest.mark.asyncio
 async def test_citation_validator_valid_and_invalid() -> None:
-    """Test grounding validator: verifies matches and flags ungrounded source IDs."""
+    """Test grounding validator: verifies case-insensitive matches and strips items with zero valid citations."""
     source_id = uuid.uuid4()
     card_uuid = uuid.uuid4()
 
@@ -127,7 +132,7 @@ async def test_citation_validator_valid_and_invalid() -> None:
         ],
     )
 
-    # 1. Report with fully valid citations
+    # 1. Report with valid citations (including uppercase/mixed-case source_ids)
     valid_report = ClientNeedsReport(
         client_name="Acme Corp",
         executive_summary="Client needs payment processing.",
@@ -135,16 +140,22 @@ async def test_citation_validator_valid_and_invalid() -> None:
             NeedInsight(
                 text="Stripe checkout integration",
                 priority="high",
-                sources=[CitedSource(source_id="trello-card-123")],
+                sources=[CitedSource(source_id="TRELLO-CARD-123")],
             )
         ],
         patterns=[
             PatternInsight(
                 text="Regular checkout updates",
-                sources=[CitedSource(source_id="abc1234")],
+                sources=[CitedSource(source_id="ABC1234")],
             )
         ],
-        stakeholders=[],
+        stakeholders=[
+            StakeholderInsight(
+                name="Alice",
+                role="PM",
+                sources=[CitedSource(source_id=str(card_uuid).upper())],
+            )
+        ],
         risks=[
             RiskInsight(
                 text="Tight deadline for payment",
@@ -161,9 +172,10 @@ async def test_citation_validator_valid_and_invalid() -> None:
     assert enriched.needs[0].sources[0].url == "https://trello.com/c/123"
     assert enriched.patterns[0].sources[0].valid is True
     assert enriched.patterns[0].sources[0].title == "Add checkout webhook"
+    assert enriched.stakeholders[0].sources[0].valid is True
     assert enriched.risks[0].sources[0].valid is True
 
-    # 2. Report with hallucinated/invalid citation
+    # 2. Report with hallucinated/invalid citations across all 4 core sections -> stripped
     invalid_report = ClientNeedsReport(
         client_name="Acme Corp",
         executive_summary="Client needs payments.",
@@ -174,14 +186,59 @@ async def test_citation_validator_valid_and_invalid() -> None:
                 sources=[CitedSource(source_id="hallucinated-id-999")],
             )
         ],
-        patterns=[],
-        stakeholders=[],
-        risks=[],
+        patterns=[
+            PatternInsight(
+                text="Uncited pattern",
+                sources=[],
+            )
+        ],
+        stakeholders=[
+            StakeholderInsight(
+                name="Ghost User",
+                role="Unknown",
+                sources=[CitedSource(source_id="non-existent-id")],
+            )
+        ],
+        risks=[
+            RiskInsight(
+                text="Hallucinated risk",
+                severity="low",
+                sources=[CitedSource(source_id="fake-risk-id")],
+            )
+        ],
     )
 
     enriched_invalid, all_valid_false = validate_and_enrich_citations(invalid_report, context)
     assert all_valid_false is False
-    assert enriched_invalid.needs[0].sources[0].valid is False
+    assert enriched_invalid.needs == []
+    assert enriched_invalid.patterns == []
+    assert enriched_invalid.stakeholders == []
+    assert enriched_invalid.risks == []
+
+
+def test_clean_sources_case_insensitive_and_deduplicated() -> None:
+    """Regression test: _clean_sources matches IDs case-insensitively and de-duplicates."""
+    valid_ids = {"Card-Abc-123", "commit-DEF-456"}
+    cleaned = _clean_sources(
+        ["card-abc-123", "CARD-ABC-123", "unknown-id", "  COMMIT-def-456 "],
+        valid_ids,
+    )
+    assert cleaned == ["Card-Abc-123", "commit-DEF-456"]
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_is_501_stub_and_plan_reflects_it() -> None:
+    """Regression test: OpenAIProvider is a 501 stub and PLAN.md marks it as not implemented."""
+    provider = OpenAIProvider(api_key=None)
+    with pytest.raises(HTTPException) as exc_info:
+        await provider.generate("test prompt")
+    assert exc_info.value.status_code == 501
+
+    repo_root = Path(__file__).resolve().parents[2]
+    for rel_plan in ("PLAN.md", "docs/PLAN.md"):
+        plan_text = (repo_root / rel_plan).read_text(encoding="utf-8")
+        assert "- [ ] " in plan_text and "OpenAIProvider" in plan_text
+        assert "501 stub" in plan_text
 
 
 @pytest.mark.asyncio
@@ -258,6 +315,38 @@ async def test_run_service_create_and_execute(db_session: AsyncSession) -> None:
 
     user, workspace = await _create_db_workspace(db_session, "Run Test WS")
 
+    conn = await ConnectionRepository(db_session).upsert_provider_connection(
+        workspace_id=workspace.id,
+        provider="trello",
+        user_id=user.id,
+        encrypted_token="enc",
+        external_account_id=f"acc_{uuid.uuid4().hex[:6]}",
+        external_username="tester",
+    )
+    source = TrelloSource(
+        workspace_id=workspace.id,
+        connection_id=conn.id,
+        trello_board_id=f"board_{uuid.uuid4().hex[:6]}",
+        name="Board 1",
+        url="https://trello.com/b/1",
+        excluded=False,
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    card = TrelloCard(
+        workspace_id=workspace.id,
+        source_id=source.id,
+        trello_card_id=f"card_{uuid.uuid4().hex[:8]}",
+        name="SSO Login Card",
+        description="Require SSO login",
+        list_id="l1",
+        list_name="Backlog",
+        content_hash="hash1",
+    )
+    db_session.add(card)
+    await db_session.commit()
+
     run_service = RunService(db_session)
     run = await run_service.create_run(
         workspace_id=workspace.id,
@@ -266,7 +355,7 @@ async def test_run_service_create_and_execute(db_session: AsyncSession) -> None:
     )
     assert run.status == "pending"
 
-    # Mock LLM provider to return structured ClientNeedsReport
+    cited = [CitedSource(source_id=str(card.id))]
     mock_report = ClientNeedsReport(
         client_name="Test Client",
         executive_summary="Summary of findings",
@@ -274,27 +363,27 @@ async def test_run_service_create_and_execute(db_session: AsyncSession) -> None:
             NeedInsight(
                 text="Require SSO login",
                 priority="high",
-                sources=[],
+                sources=cited,
             )
         ],
         patterns=[
             PatternInsight(
                 text="Daily deployment cadence",
-                sources=[],
+                sources=cited,
             )
         ],
         stakeholders=[
             StakeholderInsight(
                 name="John Doe",
                 role="Product Owner",
-                sources=[],
+                sources=cited,
             )
         ],
         risks=[
             RiskInsight(
                 text="Database migration delay",
                 severity="medium",
-                sources=[],
+                sources=cited,
             )
         ],
     )

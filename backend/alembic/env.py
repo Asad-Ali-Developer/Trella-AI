@@ -7,9 +7,12 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.modules.auth.models  # noqa: F401
 import app.modules.connections.models  # noqa: F401
+import app.modules.context.models  # noqa: F401
+import app.modules.delivery.models  # noqa: F401
 import app.modules.github.models  # noqa: F401
 import app.modules.jira.models  # noqa: F401
 import app.modules.runs.models  # noqa: F401
+import app.modules.scheduler.models  # noqa: F401
 import app.modules.skills.models  # noqa: F401
 import app.modules.trello.models  # noqa: F401
 import app.modules.workspaces.models  # noqa: F401

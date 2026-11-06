@@ -35,74 +35,91 @@ class ClientService:
             .order_by(TrelloClientRecord.name.asc())
         )
         clients = list((await self.db.scalars(clients_query)).all())
+        if not clients:
+            return []
+
+        client_ids = [client.id for client in clients]
+
+        # 1. Total cards count per client (GROUP BY client_id)
+        cards_rows = (
+            await self.db.execute(
+                select(
+                    TrelloCard.client_id,
+                    func.count(TrelloCard.id).label("cards_count"),
+                )
+                .where(
+                    TrelloCard.workspace_id == workspace_id,
+                    TrelloCard.client_id.in_(client_ids),
+                )
+                .group_by(TrelloCard.client_id)
+            )
+        ).all()
+        cards_by_client: dict[UUID, int] = {
+            row.client_id: int(row.cards_count or 0)
+            for row in cards_rows
+            if row.client_id is not None
+        }
+
+        # 2. Total insights, needs, and risks counts per client (GROUP BY client_id)
+        insights_rows = (
+            await self.db.execute(
+                select(
+                    Insight.client_id,
+                    func.count(Insight.id).label("insights_count"),
+                    func.count(Insight.id).filter(Insight.category == "need").label("needs_count"),
+                    func.count(Insight.id).filter(Insight.category == "risk").label("risks_count"),
+                )
+                .where(
+                    Insight.workspace_id == workspace_id,
+                    Insight.client_id.in_(client_ids),
+                )
+                .group_by(Insight.client_id)
+            )
+        ).all()
+        insights_by_client: dict[UUID, tuple[int, int, int]] = {
+            row.client_id: (
+                int(row.insights_count or 0),
+                int(row.needs_count or 0),
+                int(row.risks_count or 0),
+            )
+            for row in insights_rows
+            if row.client_id is not None
+        }
+
+        # 3. Last completed run timestamp per client (GROUP BY client_id)
+        runs_rows = (
+            await self.db.execute(
+                select(
+                    Run.client_id,
+                    func.max(Run.completed_at).label("last_run_at"),
+                )
+                .where(
+                    Run.workspace_id == workspace_id,
+                    Run.client_id.in_(client_ids),
+                    Run.status == "completed",
+                )
+                .group_by(Run.client_id)
+            )
+        ).all()
+        last_run_by_client: dict[UUID, datetime | None] = {
+            row.client_id: row.last_run_at
+            for row in runs_rows
+            if row.client_id is not None
+        }
 
         results: list[ClientSummaryResponse] = []
         for client in clients:
-            # 1. Total cards count
-            cards_count = (
-                await self.db.scalar(
-                    select(func.count(TrelloCard.id)).where(
-                        TrelloCard.workspace_id == workspace_id,
-                        TrelloCard.client_id == client.id,
-                    )
-                )
-                or 0
-            )
-
-            # 2. Total insights count
-            insights_count = (
-                await self.db.scalar(
-                    select(func.count(Insight.id)).where(
-                        Insight.workspace_id == workspace_id,
-                        Insight.client_id == client.id,
-                    )
-                )
-                or 0
-            )
-
-            # 3. Needs count
-            needs_count = (
-                await self.db.scalar(
-                    select(func.count(Insight.id)).where(
-                        Insight.workspace_id == workspace_id,
-                        Insight.client_id == client.id,
-                        Insight.category == "need",
-                    )
-                )
-                or 0
-            )
-
-            # 4. Risks count
-            risks_count = (
-                await self.db.scalar(
-                    select(func.count(Insight.id)).where(
-                        Insight.workspace_id == workspace_id,
-                        Insight.client_id == client.id,
-                        Insight.category == "risk",
-                    )
-                )
-                or 0
-            )
-
-            # 5. Last run timestamp
-            last_run = await self.db.scalar(
-                select(func.max(Run.completed_at)).where(
-                    Run.workspace_id == workspace_id,
-                    Run.client_id == client.id,
-                    Run.status == "completed",
-                )
-            )
-
+            insights_count, needs_count, risks_count = insights_by_client.get(client.id, (0, 0, 0))
             results.append(
                 ClientSummaryResponse(
                     id=client.id,
                     workspace_id=client.workspace_id,
                     name=client.name,
-                    cards_count=cards_count,
+                    cards_count=cards_by_client.get(client.id, 0),
                     insights_count=insights_count,
                     needs_count=needs_count,
                     risks_count=risks_count,
-                    last_run_at=last_run,
+                    last_run_at=last_run_by_client.get(client.id),
                     created_at=client.created_at,
                     updated_at=client.updated_at,
                 )

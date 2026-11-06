@@ -42,14 +42,28 @@ def _norm(text: str) -> str:
 
 
 def _clean_sources(sources: list[str], valid_ids: set[str]) -> list[str]:
-    """Keep only source IDs that exist in the input context (order preserved, de-duplicated)."""
-    return [s for s in dict.fromkeys(str(x).strip() for x in sources) if s in valid_ids]
+    """Keep only source IDs that exist in the input context (case-insensitive, order preserved, de-duplicated)."""
+    canonical_by_lower: dict[str, str] = {}
+    for vid in valid_ids:
+        cleaned_vid = str(vid).strip()
+        canonical_by_lower.setdefault(cleaned_vid.lower(), cleaned_vid)
+
+    cleaned: list[str] = []
+    seen_lower: set[str] = set()
+    for raw in sources:
+        candidate = str(raw).strip()
+        key = candidate.lower()
+        if key in canonical_by_lower and key not in seen_lower:
+            seen_lower.add(key)
+            cleaned.append(canonical_by_lower[key])
+    return cleaned
 
 
 def _evidence_supported(evidence: str, source_ids: list[str], text_by_id: dict[str, str]) -> bool:
     """An evidence quote must appear verbatim (whitespace/case-insensitive) in a cited item."""
     needle = _norm(evidence)
-    return any(needle in text_by_id.get(sid, "") for sid in source_ids)
+    lower_text_by_id = {k.strip().lower(): v for k, v in text_by_id.items()}
+    return any(needle in lower_text_by_id.get(sid.strip().lower(), "") for sid in source_ids)
 
 
 def _filter_cited(
@@ -221,20 +235,20 @@ class RunService:
             text_by_id: dict[str, str] = {}
             ref_index: dict[str, dict[str, Any]] = {}
             for item in all_items:
-                item_id = str(item.card_id or item.external_id or item.source_id or "unknown")
-                valid_ids.add(item_id)
-                text_by_id[item_id] = text_by_id.get(item_id, "") + " " + _norm(
-                    f"{item.title or ''} {item.text}"
-                )
-                ref_index.setdefault(
-                    item_id,
-                    {
-                        "id": item_id,
-                        "type": str(item.item_type),
-                        "title": item.title,
-                        "url": getattr(item, "url", None),
-                    },
-                )
+                item_id = str(item.card_id or item.external_id or item.source_id or "unknown").strip()
+                item_text = _norm(f"{item.title or ''} {item.text}")
+                item_ref = {
+                    "id": item_id,
+                    "type": str(item.item_type),
+                    "title": item.title,
+                    "url": getattr(item, "url", None),
+                }
+                for candidate_id in (item.card_id, item.external_id, item.source_id):
+                    if candidate_id:
+                        cid = str(candidate_id).strip()
+                        valid_ids.add(cid)
+                        text_by_id[cid] = text_by_id.get(cid, "") + " " + item_text
+                        ref_index.setdefault(cid, item_ref)
                 formatted_items.append(f"{_item_header(item, item_id)}\n{item.text}\n")
 
             context_text = "\n---\n".join(formatted_items)
@@ -270,7 +284,7 @@ class RunService:
                 max_tokens=max(int(skill.model_config_json.get("max_tokens", MIN_OUTPUT_TOKENS)), MIN_OUTPUT_TOKENS),
             )
 
-            # 5a. Core sections: existing validator/enricher (unchanged behavior)
+            # 5a. Core sections: validate, enrich, and strip items with zero valid citations
             enriched_report, core_valid = validate_and_enrich_citations(parsed_report, context_response)
 
             # 5b. V2 sections: validate IDs and evidence quotes against the input context
@@ -376,8 +390,14 @@ class RunService:
         report: Any,
         ref_index: dict[str, dict[str, Any]],
     ) -> None:
+        lower_ref_index = {k.strip().lower(): v for k, v in ref_index.items()}
+
         def refs(ids: list[str]) -> list[dict[str, Any]]:
-            return [ref_index[i] for i in ids if i in ref_index]
+            return [
+                lower_ref_index[i.strip().lower()]
+                for i in ids
+                if i.strip().lower() in lower_ref_index
+            ]
 
         scope_changes = getattr(report, "scope_changes", None) or []
         for sc in scope_changes:
@@ -506,7 +526,6 @@ class RunService:
         logger.info("insight_feedback_submitted", insight_id=str(insight_id), feedback=feedback)
         return insight
 
-
     async def get_daily_activity(
         self,
         workspace_id: UUID,
@@ -534,14 +553,13 @@ class RunService:
         query = query.group_by(date_col).order_by(date_col.asc())
 
         result = await self.db.execute(query)
-        daily_counts = []
+        daily_counts: list[dict[str, Any]] = []
         activity_map: dict[str, int] = {}
         total_runs = 0
 
-        for row in result:
-            day_val = row.day
+        for day_val, run_count in result.all():
             day_str = day_val.isoformat() if hasattr(day_val, "isoformat") else str(day_val)
-            c = int(row.count)
+            c = int(run_count)
             daily_counts.append({"date": day_str, "count": c})
             activity_map[day_str] = c
             total_runs += c

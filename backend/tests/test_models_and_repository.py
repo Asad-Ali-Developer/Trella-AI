@@ -1,9 +1,15 @@
+import ast
 import uuid
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.repository import WorkspaceScopedRepository
+from app.db.base import Base
+from app.db.session import build_engine, build_worker_engine, get_connect_args
 from app.modules.auth.models import User
 from app.modules.workspaces.models import AuditLog, Membership, MembershipRole, Workspace
 
@@ -76,3 +82,57 @@ async def test_workspace_scoped_repository_isolation(db_session: AsyncSession) -
 
     count_b = await repo_b.count()
     assert count_b == 0
+
+
+def test_alembic_env_and_celery_app_import_context_models() -> None:
+    """Regression test: alembic/env.py and core/celery_app.py explicitly import app.modules.context.models."""
+    backend_root = Path(__file__).resolve().parents[1]
+    for rel_path in ("alembic/env.py", "app/core/celery_app.py"):
+        source = (backend_root / rel_path).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported_modules = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        assert "app.modules.context.models" in imported_modules, f"Missing import in {rel_path}"
+
+    assert "card_summaries" in Base.metadata.tables
+    assert "card_embeddings" in Base.metadata.tables
+
+
+def test_db_session_pool_settings_and_pgbouncer_connect_args() -> None:
+    """Regression test: db/session.py applies pool settings and DB_PGBOUNCER statement_cache_size=0."""
+    cfg_pgbouncer = Settings(
+        DATABASE_URL="postgresql+asyncpg://user:pass@localhost:6432/testdb",
+        DB_POOL_SIZE=12,
+        DB_MAX_OVERFLOW=24,
+        DB_POOL_RECYCLE=900,
+        DB_POOL_TIMEOUT=15,
+        DB_PGBOUNCER=True,
+    )
+    assert get_connect_args(cfg_pgbouncer) == {"statement_cache_size": 0}
+
+    with patch("app.db.session.create_async_engine") as mock_create_engine:
+        build_engine(cfg_pgbouncer)
+        mock_create_engine.assert_called_once_with(
+            cfg_pgbouncer.DATABASE_URL,
+            echo=cfg_pgbouncer.DEBUG,
+            pool_pre_ping=True,
+            pool_size=12,
+            max_overflow=24,
+            pool_recycle=900,
+            pool_timeout=15,
+            connect_args={"statement_cache_size": 0},
+        )
+
+    with patch("app.db.session.create_async_engine") as mock_create_worker:
+        build_worker_engine(cfg_pgbouncer)
+        assert mock_create_worker.call_args.kwargs["connect_args"] == {"statement_cache_size": 0}
+
+    cfg_direct = Settings(
+        DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/testdb",
+        DB_PGBOUNCER=False,
+    )
+    assert get_connect_args(cfg_direct) == {}

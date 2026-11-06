@@ -1,5 +1,6 @@
 """Service layer for Report Schedules and Delivery Orchestration."""
 
+import asyncio
 import zoneinfo
 from datetime import UTC, datetime
 from typing import Any
@@ -246,10 +247,25 @@ class ScheduleService:
                     schedule_id=str(schedule_id),
                     workspace_id=str(schedule.workspace_id),
                 )
-                # Create a skipped delivery log
+                now = datetime.now(UTC)
+                skipped_run = Run(
+                    skill_id=schedule.skill_id,
+                    workspace_id=schedule.workspace_id,
+                    user_id=None,
+                    client_id=schedule.client_id,
+                    status="skipped",
+                    trigger="scheduled",
+                    error="Skipped: No new cards or comment changes detected since last run.",
+                    started_at=now,
+                    completed_at=now,
+                )
+                self.db.add(skipped_run)
+                await self.db.flush()
+
+                # Create a skipped delivery log linked to the valid skipped Run row
                 delivery = Delivery(
                     workspace_id=schedule.workspace_id,
-                    run_id=schedule.id,  # Link to schedule as placeholder
+                    run_id=skipped_run.id,
                     schedule_id=schedule.id,
                     channel=schedule.channel,
                     recipient=(
@@ -258,7 +274,7 @@ class ScheduleService:
                     ),
                     status="skipped",
                     error="Skipped: No new cards or comment changes detected since last run.",
-                    delivered_at=datetime.now(UTC),
+                    delivered_at=now,
                 )
                 self.db.add(delivery)
                 await self.db.commit()
@@ -500,7 +516,7 @@ class ScheduleService:
             text=plain_text,
             headers=headers,
         )
-        send_email(message)
+        await asyncio.to_thread(send_email, message)
 
     async def _handle_execution_failure(
         self,
@@ -548,7 +564,7 @@ class ScheduleService:
             ),
         )
         try:
-            send_email(message)
+            await asyncio.to_thread(send_email, message)
         except Exception as exc:
             logger.warning("failure_alert_email_failed", error=str(exc))
 

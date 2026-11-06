@@ -1,17 +1,23 @@
 """Tests for Client Profile, Timeline, and Management APIs."""
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.auth.models import User
+from app.modules.clients.service import ClientService
 from app.modules.connections.repository import ConnectionRepository
 from app.modules.llm.base import LLMResult
-from app.modules.skills.schemas import ClientNeedsReport, NeedInsight, RiskInsight
+from app.modules.runs.models import Insight, Run
+from app.modules.skills.models import Skill
+from app.modules.skills.schemas import CitedSource, ClientNeedsReport, NeedInsight, RiskInsight
 from app.modules.skills.service import SkillService
-from app.modules.trello.models import TrelloCard, TrelloSource
+from app.modules.trello.models import TrelloCard, TrelloClientRecord, TrelloSource
+from app.modules.workspaces.models import Workspace
 
 
 async def _create_user_and_workspace(async_client: AsyncClient, name: str = "Client WS") -> tuple[str, str]:
@@ -100,6 +106,7 @@ async def test_clients_crud_and_profile_api(async_client: AsyncClient, db_sessio
     skill = await skill_service.get_skill_by_slug("client-needs-analyzer")
     assert skill is not None
 
+    cited = [CitedSource(source_id=str(card.id))]
     mock_report = ClientNeedsReport(
         client_name="Acme Corporation",
         executive_summary="Executive report for Acme",
@@ -107,7 +114,7 @@ async def test_clients_crud_and_profile_api(async_client: AsyncClient, db_sessio
             NeedInsight(
                 text="Require SSO authentication for Acme",
                 priority="high",
-                sources=[],
+                sources=cited,
             )
         ],
         patterns=[],
@@ -116,7 +123,7 @@ async def test_clients_crud_and_profile_api(async_client: AsyncClient, db_sessio
             RiskInsight(
                 text="Delivery timeline pushed back",
                 severity="high",
-                sources=[],
+                sources=cited,
             )
         ],
     )
@@ -198,3 +205,171 @@ async def test_client_workspace_isolation(async_client: AsyncClient) -> None:
     # Direct profile fetch should 404
     get_resp = await async_client.get(f"/api/v1/clients/{client_id}")
     assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_clients_uses_grouped_aggregate_queries(db_session: AsyncSession) -> None:
+    """Regression test: list_clients aggregates metrics via GROUP BY instead of 5 queries per client."""
+    user = User(
+        email=f"agg_client_{uuid.uuid4().hex[:6]}@example.com",
+        name="Agg Tester",
+        hashed_password="pw",
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    workspace = Workspace(
+        name="Aggregate WS",
+        slug=f"agg-ws-{uuid.uuid4().hex[:6]}",
+        owner_id=user.id,
+    )
+    db_session.add(workspace)
+    await db_session.flush()
+
+    c_alpha = TrelloClientRecord(workspace_id=workspace.id, name="Alpha Corp")
+    c_beta = TrelloClientRecord(workspace_id=workspace.id, name="Beta Ltd")
+    c_gamma = TrelloClientRecord(workspace_id=workspace.id, name="Gamma Inc")
+    db_session.add_all([c_alpha, c_beta, c_gamma])
+    await db_session.flush()
+
+    conn = await ConnectionRepository(db_session).upsert_provider_connection(
+        workspace_id=workspace.id,
+        provider="trello",
+        user_id=user.id,
+        encrypted_token="enc",
+        external_account_id=f"acc-{uuid.uuid4().hex[:6]}",
+        external_username="agg_user",
+    )
+    source = TrelloSource(
+        workspace_id=workspace.id,
+        connection_id=conn.id,
+        trello_board_id=f"board_{uuid.uuid4().hex[:6]}",
+        name="Agg Board",
+        url="https://trello.com/b/agg",
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            TrelloCard(
+                workspace_id=workspace.id,
+                source_id=source.id,
+                client_id=c_alpha.id,
+                trello_card_id=f"c1_{uuid.uuid4().hex[:6]}",
+                name="Alpha Card 1",
+                list_id="l1",
+                list_name="Todo",
+                content_hash="h1",
+            ),
+            TrelloCard(
+                workspace_id=workspace.id,
+                source_id=source.id,
+                client_id=c_alpha.id,
+                trello_card_id=f"c2_{uuid.uuid4().hex[:6]}",
+                name="Alpha Card 2",
+                list_id="l1",
+                list_name="Todo",
+                content_hash="h2",
+            ),
+            TrelloCard(
+                workspace_id=workspace.id,
+                source_id=source.id,
+                client_id=c_beta.id,
+                trello_card_id=f"c3_{uuid.uuid4().hex[:6]}",
+                name="Beta Card 1",
+                list_id="l1",
+                list_name="Todo",
+                content_hash="h3",
+            ),
+        ]
+    )
+
+    skill = Skill(
+        workspace_id=workspace.id,
+        name="Agg Skill",
+        slug=f"agg-skill-{uuid.uuid4().hex[:6]}",
+        version=1,
+        prompt_template="Analyze {{client_name}}",
+        scope_json={},
+        output_schema_json={},
+        model_config_json={"provider": "gemini"},
+    )
+    db_session.add(skill)
+    await db_session.flush()
+
+    completed_time = datetime(2026, 11, 5, 10, 0, 0, tzinfo=UTC)
+    run_alpha = Run(
+        skill_id=skill.id,
+        workspace_id=workspace.id,
+        client_id=c_alpha.id,
+        status="completed",
+        trigger="manual",
+        completed_at=completed_time,
+    )
+    db_session.add(run_alpha)
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            Insight(
+                run_id=run_alpha.id,
+                workspace_id=workspace.id,
+                client_id=c_alpha.id,
+                category="need",
+                title="Need 1",
+                detail="Detail",
+            ),
+            Insight(
+                run_id=run_alpha.id,
+                workspace_id=workspace.id,
+                client_id=c_alpha.id,
+                category="risk",
+                title="Risk 1",
+                detail="Detail",
+            ),
+            Insight(
+                run_id=run_alpha.id,
+                workspace_id=workspace.id,
+                client_id=c_alpha.id,
+                category="pattern",
+                title="Pattern 1",
+                detail="Detail",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    query_count = 0
+    orig_execute = db_session.execute
+
+    async def tracked_execute(*args, **kwargs):  # type: ignore[no-untyped-def]
+        nonlocal query_count
+        query_count += 1
+        return await orig_execute(*args, **kwargs)
+
+    with patch.object(db_session, "execute", side_effect=tracked_execute):
+        summaries = await ClientService(db_session).list_clients(workspace.id)
+
+    # Must execute 4 queries (1 clients + 3 grouped aggregates), never 1 + 5*N (16)
+    assert query_count == 4
+    assert [s.name for s in summaries] == ["Alpha Corp", "Beta Ltd", "Gamma Inc"]
+
+    alpha, beta, gamma = summaries
+    assert alpha.cards_count == 2
+    assert alpha.insights_count == 3
+    assert alpha.needs_count == 1
+    assert alpha.risks_count == 1
+    assert alpha.last_run_at == completed_time
+
+    assert beta.cards_count == 1
+    assert beta.insights_count == 0
+    assert beta.needs_count == 0
+    assert beta.risks_count == 0
+    assert beta.last_run_at is None
+
+    assert gamma.cards_count == 0
+    assert gamma.insights_count == 0
+    assert gamma.needs_count == 0
+    assert gamma.risks_count == 0
+    assert gamma.last_run_at is None

@@ -192,7 +192,8 @@ Tasks
 
 Tasks
 
-- [X] `LLMProvider` interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
+- [X] `LLMProvider` interface with Gemini adapter, retries, timeouts, per-run token budget.
+- [ ] `OpenAIProvider` adapter implementation (currently a 501 stub in `openai.py`; not implemented).
 - [X] Skill definition format (see section 8) with validation and versioning.
 - [X] Built-in skill 1: **Client Needs Analyzer**. Skill 2 later: **Scope Change Detector**.
 - [X] Structured output enforced with Pydantic.

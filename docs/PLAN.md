@@ -170,7 +170,8 @@ For GitHub, configure an OAuth App callback at `http://localhost:3000/dashboard/
 
 ### Phase 4: LLM layer and skill engine (Weeks 6-8)
 **Tasks**
-- [x] LLMProvider interface with Gemini and OpenAI adapters, retries, timeouts, per-run token budget.
+- [x] LLMProvider interface with Gemini adapter, retries, timeouts, per-run token budget.
+- [ ] OpenAIProvider adapter implementation (currently a 501 stub in openai.py; not implemented).
 - [x] Skill definition format (see section 8) with validation and versioning.
 - [x] Built-in skill 1: Client Needs Analyzer. Skill 2 later: Scope Change Detector.
 - [x] Structured output enforced with Pydantic.

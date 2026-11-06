@@ -13,7 +13,7 @@ from app.modules.skills.schemas import CitedSource, ClientNeedsReport
 def build_context_source_index(
     context: WorkspaceContextResponse,
 ) -> dict[str, dict[str, Any]]:
-    """Build a lookup index mapping ID strings to source metadata."""
+    """Build a lookup index mapping lowercase ID strings to source metadata."""
     index: dict[str, dict[str, Any]] = {}
 
     # Index sources/boards/repositories
@@ -23,7 +23,7 @@ def build_context_source_index(
             "url": source.url,
             "source_type": "project" if source.provider == "trello" else "source",
         }
-        index[str(source.id).lower()] = source_meta
+        index[str(source.id).strip().lower()] = source_meta
 
     # Index context items across all chunks
     for chunk in context.chunks:
@@ -36,11 +36,11 @@ def build_context_source_index(
             if item.external_id:
                 index[item.external_id.strip().lower()] = item_meta
             if item.card_id:
-                index[str(item.card_id).lower()] = item_meta
+                index[str(item.card_id).strip().lower()] = item_meta
             if item.source_id:
-                # If not already present
-                if str(item.source_id).lower() not in index:
-                    index[str(item.source_id).lower()] = item_meta
+                source_key = str(item.source_id).strip().lower()
+                if source_key not in index:
+                    index[source_key] = item_meta
 
     return index
 
@@ -50,6 +50,9 @@ def validate_and_enrich_citations(
     context: WorkspaceContextResponse,
 ) -> tuple[ClientNeedsReport, bool]:
     """Validate and enrich citations across all sections of a ClientNeedsReport.
+
+    For the 4 core sections (needs, patterns, stakeholders, risks), items with
+    zero valid citations are stripped from the report.
 
     Returns:
         tuple[ClientNeedsReport, bool]: The enriched report and a boolean indicating
@@ -76,35 +79,26 @@ def validate_and_enrich_citations(
                 )
             else:
                 all_citations_valid = False
-                enriched.append(
-                    CitedSource(
-                        source_id=src.source_id,
-                        source_type=src.source_type,
-                        title=src.title,
-                        url=src.url,
-                        valid=False,
-                    )
-                )
         return enriched
 
-    for need in report.needs:
-        if not need.sources:
-            # An insight without any sources is ungrounded
-            all_citations_valid = False
-        need.sources = _process_sources(need.sources)
+    def _filter_section(items: list[Any]) -> list[Any]:
+        nonlocal all_citations_valid
+        kept: list[Any] = []
+        for item in items:
+            if not item.sources:
+                all_citations_valid = False
+                continue
+            valid_sources = _process_sources(item.sources)
+            if not valid_sources:
+                all_citations_valid = False
+                continue
+            item.sources = valid_sources
+            kept.append(item)
+        return kept
 
-    for pattern in report.patterns:
-        if not pattern.sources:
-            all_citations_valid = False
-        pattern.sources = _process_sources(pattern.sources)
-
-    for stakeholder in report.stakeholders:
-        if stakeholder.sources:
-            stakeholder.sources = _process_sources(stakeholder.sources)
-
-    for risk in report.risks:
-        if not risk.sources:
-            all_citations_valid = False
-        risk.sources = _process_sources(risk.sources)
+    report.needs = _filter_section(report.needs)
+    report.patterns = _filter_section(report.patterns)
+    report.stakeholders = _filter_section(report.stakeholders)
+    report.risks = _filter_section(report.risks)
 
     return report, all_citations_valid

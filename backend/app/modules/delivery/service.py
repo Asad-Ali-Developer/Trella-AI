@@ -1,8 +1,10 @@
-"""Service layer for Slack connection lifecycle and channel retrieval."""
+"""Service layer for Slack connection lifecycle, channel retrieval, and async email delivery."""
 
+import asyncio
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -10,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.email import send_email, send_smtp_email
 from app.core.logging import get_logger
 from app.core.security.encryption import decrypt_secret, encrypt_secret
 from app.modules.connections.models import ProviderAccount, SlackOAuthState, WorkspaceConnection
@@ -22,6 +25,16 @@ from app.modules.delivery.slack import SlackAPIError, SlackClient
 logger = get_logger("app.modules.delivery.service")
 
 STATE_EXPIRES_MINUTES = 15
+
+
+async def send_email_async(message: EmailMessage) -> None:
+    """Dispatch an email message in a worker thread so blocking smtplib calls do not block the event loop."""
+    await asyncio.to_thread(send_email, message)
+
+
+async def send_smtp_email_async(message: EmailMessage) -> None:
+    """Run blocking smtplib delivery in asyncio.to_thread."""
+    await asyncio.to_thread(send_smtp_email, message)
 
 
 class SlackConnectionService:

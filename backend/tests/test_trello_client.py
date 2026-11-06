@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -8,19 +9,25 @@ from uuid import uuid4
 import httpx
 import pytest
 import respx
+from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security.encryption import encryption
+from app.modules.auth.models import User
 from app.modules.connections.models import ProviderAccount
 from app.modules.connections.repository import ConnectionRepository
 from app.modules.trello.client import TrelloAPIError, TrelloClient
+from app.modules.trello.models import TrelloComment, TrelloSource
 from app.modules.trello.oauth import TrelloOAuthClient, TrelloOAuthError
 from app.modules.trello.service import TrelloConnectionService
+from app.modules.trello.sync import sync_source_data
 from app.modules.trello.webhooks import (
     trello_webhook_signature,
     verify_trello_webhook_signature,
 )
+from app.modules.workspaces.models import Workspace
 
 
 @pytest.mark.asyncio
@@ -309,7 +316,6 @@ def test_rate_limiter_multiple_event_loops() -> None:
     asyncio.run(run_once())
 
 
-
 @pytest.mark.asyncio
 async def test_rate_limiter_graceful_fallback_when_redis_unavailable() -> None:
     """Ensure TrelloRateLimiter does not crash when Redis is unreachable (e.g. on Render without Redis)."""
@@ -323,3 +329,128 @@ async def test_rate_limiter_graceful_fallback_when_redis_unavailable() -> None:
 
     # Should log warning and return without raising
     await limiter.acquire("api-key", "token", "/members/me")
+
+
+@pytest.mark.asyncio
+async def test_sync_source_data_deletes_removed_comments_and_preserves_on_failed_fetch(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test: comments deleted in Trello are pruned locally, but preserved on partial/failed comment fetch."""
+    monkeypatch.setattr(settings, "TRELLO_WEBHOOK_CALLBACK_URL", "")
+    user = User(
+        email=f"trello_sync_{uuid4().hex[:6]}@example.com",
+        name="Sync Tester",
+        hashed_password="hashed_pw_test",
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    workspace = Workspace(
+        name="Trello Sync WS",
+        slug=f"ws-sync-{uuid4().hex[:6]}",
+        owner_id=user.id,
+    )
+    db_session.add(workspace)
+    await db_session.flush()
+
+    conn = await ConnectionRepository(db_session).upsert_provider_connection(
+        workspace_id=workspace.id,
+        provider="trello",
+        user_id=user.id,
+        encrypted_token="enc",
+        external_account_id=f"acc-{uuid4().hex[:6]}",
+        external_username="tester",
+    )
+    board_ext_id = f"board_{uuid4().hex[:6]}"
+    source = TrelloSource(
+        workspace_id=workspace.id,
+        connection_id=conn.id,
+        trello_board_id=board_ext_id,
+        name="Board 1",
+        url="https://trello.com/b/1",
+        excluded=False,
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    card_ext_id = f"card_{uuid4().hex[:6]}"
+    mock_client = AsyncMock(spec=TrelloClient)
+    mock_client.get_board.return_value = {"id": board_ext_id, "name": "Board 1"}
+    mock_client.list_board_lists.return_value = [{"id": "list-1", "name": "To Do", "closed": False}]
+    mock_client.list_board_cards.return_value = [
+        {"id": card_ext_id, "idList": "list-1", "name": "Card 1", "desc": "", "closed": False}
+    ]
+    empty_members: list[dict[str, Any]] = []
+    mock_client.list_board_members.return_value = empty_members
+
+    def _make_action(action_id: str, text: str) -> dict[str, Any]:
+        return {
+            "id": action_id,
+            "idMemberCreator": "member-1",
+            "date": "2026-10-01T10:00:00.000Z",
+            "data": {"text": text, "card": {"id": card_ext_id}},
+        }
+
+    # 1. Initial sync with two comments
+    act_1 = f"act_1_{uuid4().hex[:6]}"
+    act_2 = f"act_2_{uuid4().hex[:6]}"
+    mock_client.list_board_comments.return_value = [
+        _make_action(act_1, "First comment"),
+        _make_action(act_2, "Second comment"),
+    ]
+    await sync_source_data(db_session, source, mock_client)
+    await db_session.flush()
+
+    comments = list(
+        (
+            await db_session.scalars(
+                select(TrelloComment).where(TrelloComment.workspace_id == workspace.id)
+            )
+        ).all()
+    )
+    assert {c.trello_action_id for c in comments} == {act_1, act_2}
+
+    # 2. Second comment deleted in Trello -> removed locally
+    mock_client.list_board_comments.return_value = [_make_action(act_1, "First comment")]
+    await sync_source_data(db_session, source, mock_client)
+    await db_session.flush()
+
+    comments_after_delete = list(
+        (
+            await db_session.scalars(
+                select(TrelloComment).where(TrelloComment.workspace_id == workspace.id)
+            )
+        ).all()
+    )
+    assert {c.trello_action_id for c in comments_after_delete} == {act_1}
+
+    # 3. Partial / malformed comment payload for the card -> existing comment is preserved
+    mock_client.list_board_comments.return_value = [
+        {"id": None, "data": {"card": {"id": card_ext_id}, "text": "broken"}}
+    ]
+    await sync_source_data(db_session, source, mock_client)
+    await db_session.flush()
+
+    comments_after_partial = list(
+        (
+            await db_session.scalars(
+                select(TrelloComment).where(TrelloComment.workspace_id == workspace.id)
+            )
+        ).all()
+    )
+    assert {c.trello_action_id for c in comments_after_partial} == {act_1}
+
+    # 4. Failed comment fetch -> raises error and preserves existing comment
+    mock_client.list_board_comments.side_effect = TrelloAPIError(502, "Comment fetch failed")
+    with pytest.raises(TrelloAPIError):
+        await sync_source_data(db_session, source, mock_client)
+
+    comments_after_fail = list(
+        (
+            await db_session.scalars(
+                select(TrelloComment).where(TrelloComment.workspace_id == workspace.id)
+            )
+        ).all()
+    )
+    assert {c.trello_action_id for c in comments_after_fail} == {act_1}

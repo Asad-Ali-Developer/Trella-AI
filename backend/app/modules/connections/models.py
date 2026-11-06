@@ -46,6 +46,7 @@ class WorkspaceConnection(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             name="uq_connections_workspace_provider_user",
         ),
         Index("ix_connections_workspace_provider_user", "workspace_id", "provider", "user_id"),
+        Index("ix_connections_provider_account_id", "provider_account_id"),
     )
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
@@ -111,4 +112,3 @@ class SlackOAuthState(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-

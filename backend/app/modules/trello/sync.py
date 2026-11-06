@@ -214,29 +214,43 @@ async def sync_source_data(
         .scalars()
         .all()
     }
+    fetched_action_ids_by_card: dict[uuid.UUID, set[str]] = {
+        card_pk: set() for card_pk in card_ids.values()
+    }
+    cards_with_partial_comments: set[uuid.UUID] = set()
+    comment_fetch_complete = isinstance(actions, list)
+
     comment_values = []
-    for action in actions:
-        data = action.get("data")
-        action_id = action.get("id")
-        if not isinstance(data, dict) or not isinstance(action_id, str):
-            continue
-        action_card = data.get("card")
-        if not isinstance(action_card, dict) or not isinstance(action_card.get("id"), str):
-            continue
-        card_pk = card_ids.get(action_card["id"])
-        if card_pk is None:
-            continue
-        creator = action.get("idMemberCreator")
-        comment_values.append(
-            {
-                "workspace_id": workspace_id,
-                "card_id": card_pk,
-                "trello_action_id": action_id,
-                "author_id": creator if isinstance(creator, str) else "",
-                "text": str(data.get("text", "")),
-                "created_at_trello": _parse_trello_date(action.get("date")) or datetime.now(UTC),
-            }
-        )
+    if comment_fetch_complete:
+        for action in actions:
+            if not isinstance(action, dict):
+                comment_fetch_complete = False
+                continue
+            data = action.get("data")
+            action_id = action.get("id")
+            action_card = data.get("card") if isinstance(data, dict) else None
+            ext_card_id = action_card.get("id") if isinstance(action_card, dict) else None
+            card_pk = card_ids.get(ext_card_id) if isinstance(ext_card_id, str) else None
+            if not isinstance(data, dict) or not isinstance(action_id, str) or not action_id:
+                if card_pk is not None:
+                    cards_with_partial_comments.add(card_pk)
+                else:
+                    comment_fetch_complete = False
+                continue
+            if card_pk is None:
+                continue
+            fetched_action_ids_by_card[card_pk].add(action_id)
+            creator = action.get("idMemberCreator")
+            comment_values.append(
+                {
+                    "workspace_id": workspace_id,
+                    "card_id": card_pk,
+                    "trello_action_id": action_id,
+                    "author_id": creator if isinstance(creator, str) else "",
+                    "text": str(data.get("text", "")),
+                    "created_at_trello": _parse_trello_date(action.get("date")) or datetime.now(UTC),
+                }
+            )
     if comment_values:
         statement = insert(TrelloComment).values(comment_values)
         await db.execute(
@@ -250,6 +264,20 @@ async def sync_source_data(
                 },
             )
         )
+
+    if comment_fetch_complete:
+        for card_pk, fetched_action_ids in fetched_action_ids_by_card.items():
+            if card_pk in cards_with_partial_comments:
+                continue
+            stale_comments = delete(TrelloComment).where(
+                TrelloComment.workspace_id == workspace_id,
+                TrelloComment.card_id == card_pk,
+            )
+            if fetched_action_ids:
+                stale_comments = stale_comments.where(
+                    TrelloComment.trello_action_id.not_in(fetched_action_ids)
+                )
+            await db.execute(stale_comments)
 
     if settings.TRELLO_WEBHOOK_CALLBACK_URL and not source.webhook_id:
         if not settings.TRELLO_WEBHOOK_CALLBACK_URL.startswith("https://"):

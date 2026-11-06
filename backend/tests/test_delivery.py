@@ -1,8 +1,9 @@
 """Automated tests for Report Delivery (Slack Block Kit, Email Digest, Retries)."""
 
+import uuid
+from email.message import EmailMessage
 from typing import Any
-
-from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import respx
@@ -10,10 +11,13 @@ from httpx import AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.email import build_email
+from app.modules.delivery.models import Delivery
+from app.modules.delivery.service import send_email_async, send_smtp_email_async
 from app.modules.delivery.slack import (
     SlackClient,
     build_slack_block_kit_digest,
 )
+from app.modules.scheduler.service import ScheduleService
 
 # ---------------------------------------------------------------------------
 # Unit tests: Slack Block Kit generator
@@ -141,6 +145,43 @@ def test_email_digest_headers() -> None:
     )
     assert msg["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
     assert msg["To"] == "user@example.com"
+
+
+@pytest.mark.asyncio
+async def test_email_delivery_runs_smtp_in_to_thread() -> None:
+    """Regression test: blocking SMTP / email dispatch is executed in asyncio.to_thread."""
+    msg = EmailMessage()
+    msg["Subject"] = "Test"
+    msg["From"] = "no-reply@example.com"
+    msg["To"] = "recipient@example.com"
+    msg.set_content("Body")
+
+    with patch("app.modules.delivery.service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+        await send_smtp_email_async(msg)
+        mock_to_thread.assert_awaited_once()
+
+    with patch("app.modules.delivery.service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread_email:
+        await send_email_async(msg)
+        mock_to_thread_email.assert_awaited_once()
+
+    service = ScheduleService(db=None)  # type: ignore[arg-type]
+    delivery = Delivery(
+        id=uuid.uuid4(),
+        workspace_id=uuid.uuid4(),
+        run_id=uuid.uuid4(),
+        channel="email",
+        recipient="recipient@example.com",
+        status="pending",
+    )
+    with patch("app.modules.scheduler.service.asyncio.to_thread", new_callable=AsyncMock) as mock_sched_thread:
+        await service._deliver_to_email(
+            delivery=delivery,
+            workspace_name="Acme WS",
+            client_name="Acme",
+            report_output={"headline": "Weekly Summary", "needs": [], "risks": [], "patterns": []},
+            report_url="http://localhost:3000/dashboard/reports/1",
+        )
+        mock_sched_thread.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

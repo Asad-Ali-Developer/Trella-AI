@@ -7,10 +7,15 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.delivery.models import Delivery
+from app.modules.github.models import GithubCommit, GithubRepository
+from app.modules.runs.models import Run
 from app.modules.scheduler.delta import has_context_changes_since
-from app.modules.scheduler.service import calculate_next_run
+from app.modules.scheduler.schemas import ScheduleCreateRequest
+from app.modules.scheduler.service import ScheduleService, calculate_next_run
 from app.modules.skills.models import Skill
 from app.modules.trello.models import TrelloCard, TrelloSource
 from app.modules.trello.models import TrelloClientRecord as Client
@@ -114,7 +119,7 @@ async def _setup_workspace(db_session: AsyncSession) -> tuple[Workspace, Skill, 
 
 
 # ---------------------------------------------------------------------------
-# Integration tests: Delta detection
+# Integration tests: Delta detection & Skipped Scheduled Run
 # ---------------------------------------------------------------------------
 
 
@@ -146,6 +151,100 @@ async def test_delta_detection(db_session: AsyncSession) -> None:
 
     # Now delta should detect changes
     assert await has_context_changes_since(db_session, workspace.id, ten_mins_ago, client_id=client.id) is True
+
+
+@pytest.mark.asyncio
+async def test_delta_detection_includes_github_commits(db_session: AsyncSession) -> None:
+    """Regression test: has_context_changes_since detects new GitHub commits."""
+    workspace, _, client, source = await _setup_workspace(db_session)
+    ten_mins_ago = datetime.now(UTC) - timedelta(minutes=10)
+
+    # Initially no changes
+    assert await has_context_changes_since(db_session, workspace.id, ten_mins_ago, client_id=client.id) is False
+
+    other_client = Client(workspace_id=workspace.id, name="Other Client Ltd")
+    db_session.add(other_client)
+    await db_session.flush()
+
+    repo = GithubRepository(
+        workspace_id=workspace.id,
+        connection_id=source.connection_id,
+        github_repo_id=f"repo_{uuid.uuid4().hex[:6]}",
+        full_name="acme/backend",
+        url="https://github.com/acme/backend",
+        default_branch="main",
+        private=True,
+        included=True,
+        client_id=client.id,
+    )
+    db_session.add(repo)
+    await db_session.flush()
+
+    commit = GithubCommit(
+        workspace_id=workspace.id,
+        repository_id=repo.id,
+        sha=uuid.uuid4().hex + "12345678",
+        message="fix: handle webhook edge case",
+        author_name="Dev",
+        committed_at=datetime.now(UTC),
+        url="https://github.com/acme/backend/commit/1",
+    )
+    db_session.add(commit)
+    await db_session.commit()
+
+    # Commit for `client` is detected for workspace and for `client`, but not for `other_client`
+    assert await has_context_changes_since(db_session, workspace.id, ten_mins_ago) is True
+    assert await has_context_changes_since(db_session, workspace.id, ten_mins_ago, client_id=client.id) is True
+    assert await has_context_changes_since(db_session, workspace.id, ten_mins_ago, client_id=other_client.id) is False
+
+
+@pytest.mark.asyncio
+async def test_delta_skip_records_valid_run_and_delivery_fk(db_session: AsyncSession) -> None:
+    """Regression test: skipping a delta run creates a skipped Run row and valid Delivery.run_id FK."""
+    workspace, skill, client, _ = await _setup_workspace(db_session)
+    service = ScheduleService(db_session)
+
+    schedule = await service.create_schedule(
+        workspace.id,
+        ScheduleCreateRequest(
+            skill_id=skill.id,
+            client_id=client.id,
+            name="Delta Skip Test Schedule",
+            cron="0 9 * * 1",
+            timezone="UTC",
+            channel="email",
+            recipients=["alerts@example.com"],
+            is_delta_only=True,
+            active=True,
+        ),
+    )
+    schedule.last_run_at = datetime.now(UTC) + timedelta(seconds=5)
+    await db_session.commit()
+
+    # Execute when no context changes have occurred since last_run_at
+    result = await service.execute_scheduled_run(schedule.id)
+    assert result is None
+
+    deliveries = list(
+        (
+            await db_session.scalars(
+                select(Delivery).where(
+                    Delivery.workspace_id == workspace.id,
+                    Delivery.schedule_id == schedule.id,
+                )
+            )
+        ).all()
+    )
+    assert len(deliveries) == 1
+    delivery = deliveries[0]
+    assert delivery.status == "skipped"
+    assert delivery.run_id != schedule.id
+
+    skipped_run = await db_session.get(Run, delivery.run_id)
+    assert skipped_run is not None
+    assert skipped_run.status == "skipped"
+    assert skipped_run.trigger == "scheduled"
+    assert skipped_run.workspace_id == workspace.id
 
 
 # ---------------------------------------------------------------------------
@@ -238,8 +337,6 @@ async def test_schedule_crud_and_isolation(
 
     # 7.5. Run Now endpoint execution
     with patch("app.modules.runs.service.RunService.execute_run") as mock_exec:
-        from app.modules.runs.models import Run
-
         async def _fake_exec(run_id: uuid.UUID) -> Run:
             r = await db_session.get(Run, run_id)
             assert r is not None
