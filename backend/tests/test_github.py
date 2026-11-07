@@ -434,3 +434,11 @@ def test_github_client_rejects_pagination_links_to_other_hosts() -> None:
             '<https://attacker.example/steal-token?page=2>; rel="next"',
             "https://api.github.com/",
         )
+
+
+def test_sync_github_repository_task_registered_once() -> None:
+    import app.workers.tasks as _tasks  # noqa: F401
+    from app.core.celery_app import celery_app
+
+    matching_tasks = [k for k in celery_app.tasks.keys() if k == 'app.workers.tasks.sync_github_repository']
+    assert len(matching_tasks) == 1

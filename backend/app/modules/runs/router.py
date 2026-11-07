@@ -9,10 +9,10 @@ from app.core.deps import get_current_user, get_current_workspace
 from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.runs.schemas import (
+    DailyActivityResponse,
     InsightFeedbackRequest,
     InsightResponse,
     RunCreateRequest,
-    DailyActivityResponse,
     RunDetailResponse,
     RunResponse,
 )

@@ -557,7 +557,13 @@ class RunService:
         activity_map: dict[str, int] = {}
         total_runs = 0
 
-        for day_val, run_count in result.all():
+        rows = result.all() if hasattr(result, "all") else result
+        for row in rows:
+            if isinstance(row, (tuple, list)):
+                day_val, run_count = row[0], row[1]
+            else:
+                day_val = getattr(row, "day", row[0] if hasattr(row, "__getitem__") else row)
+                run_count = getattr(row, "count", row[1] if hasattr(row, "__getitem__") else 0)
             day_str = day_val.isoformat() if hasattr(day_val, "isoformat") else str(day_val)
             c = int(run_count)
             daily_counts.append({"date": day_str, "count": c})
