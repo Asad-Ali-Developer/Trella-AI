@@ -42,6 +42,24 @@ async def create_client(
     return await service.create_client(workspace_id=workspace.id, name=payload.name)
 
 
+@router.patch("/{client_id}", response_model=ClientSummaryResponse)
+@router.put("/{client_id}", response_model=ClientSummaryResponse)
+async def update_client(
+    client_id: UUID,
+    payload: ClientCreateRequest,
+    workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+) -> ClientSummaryResponse:
+    """Rename an existing client entity in the active workspace and enqueue re-indexing."""
+    workspace, _ = workspace_context
+    service = ClientService(db)
+    return await service.update_client(
+        workspace_id=workspace.id,
+        client_id=client_id,
+        name=payload.name,
+    )
+
+
 @router.get("/{client_id}", response_model=ClientProfileResponse)
 async def get_client_profile(
     client_id: UUID,

@@ -398,3 +398,72 @@ class ClientService:
             created_at=client.created_at,
             updated_at=client.updated_at,
         )
+
+
+    async def update_client(
+        self,
+        workspace_id: UUID,
+        client_id: UUID,
+        name: str,
+    ) -> ClientSummaryResponse:
+        """Rename a workspace client and enqueue re-indexing for affected sources and repositories."""
+        from app.modules.context.indexer import IndexingService
+
+        clean_name = name.strip()
+        if not clean_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client name cannot be empty.",
+            )
+
+        client = await self.db.scalar(
+            select(TrelloClientRecord).where(
+                TrelloClientRecord.id == client_id,
+                TrelloClientRecord.workspace_id == workspace_id,
+            )
+        )
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Client '{client_id}' not found in this workspace.",
+            )
+
+        if client.name != clean_name:
+            duplicate = await self.db.scalar(
+                select(TrelloClientRecord).where(
+                    TrelloClientRecord.workspace_id == workspace_id,
+                    TrelloClientRecord.name == clean_name,
+                    TrelloClientRecord.id != client_id,
+                )
+            )
+            if duplicate:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"A client named '{clean_name}' already exists in this workspace.",
+                )
+
+            await IndexingService(self.db).rename_client(
+                workspace_id=workspace_id,
+                client_id=client_id,
+                new_name=clean_name,
+            )
+            await self.db.commit()
+            await self.db.refresh(client)
+
+        summaries = await self.list_clients(workspace_id=workspace_id)
+        for summary in summaries:
+            if summary.id == client_id:
+                return summary
+
+        return ClientSummaryResponse(
+            id=client.id,
+            workspace_id=client.workspace_id,
+            name=client.name,
+            cards_count=0,
+            insights_count=0,
+            needs_count=0,
+            risks_count=0,
+            last_run_at=None,
+            created_at=client.created_at,
+            updated_at=client.updated_at,
+        )

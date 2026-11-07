@@ -125,6 +125,9 @@ class Settings(BaseSettings):
     GEMINI_RETRY_INITIAL_WAIT: float = Field(default=0.5, ge=0)
     GEMINI_RETRY_MAX_WAIT: float = Field(default=10.0, ge=0)
     GEMINI_RETRY_JITTER: float = Field(default=0.5, ge=0)
+    INDEX_MAX_SUMMARIES_PER_RUN: int = Field(default=50, ge=1)
+    INDEX_MAX_EMBED_PER_RUN: int = Field(default=500, ge=1)
+    INDEX_LOCK_TTL_SECONDS: int = Field(default=1800, ge=1)
 
     # Trello
     TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")

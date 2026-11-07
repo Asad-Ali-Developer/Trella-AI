@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,8 @@ from app.core.config import settings
 from app.core.security.encryption import encryption
 from app.modules.connections.models import GithubOAuthState, ProviderAccount, WorkspaceConnection
 from app.modules.connections.repository import ConnectionRepository
+from app.modules.context.indexer import increment_workspace_data_version
+from app.modules.context.models import ContextChunkRecord
 from app.modules.github.client import GithubAPIError, GithubClient
 from app.modules.github.models import GithubRepository
 from app.modules.github.schemas import (
@@ -357,17 +359,32 @@ class GithubConnectionService:
             )
         )
         updated_count = 0
+        remapped_chunks = 0
         for repo in repos:
             saved_selection = requested.get(repo.github_repo_id)
             if saved_selection is None:
                 continue
+            client_changed = repo.client_id != saved_selection.client_id
             repo.included = saved_selection.included
             repo.client_id = saved_selection.client_id
+            if client_changed:
+                upd_res = await self.db.execute(
+                    update(ContextChunkRecord)
+                    .where(
+                        ContextChunkRecord.workspace_id == self.workspace_id,
+                        ContextChunkRecord.repository_id == repo.id,
+                        ContextChunkRecord.client_id.is_distinct_from(saved_selection.client_id),
+                    )
+                    .values(client_id=saved_selection.client_id)
+                )
+                remapped_chunks += int(getattr(upd_res, "rowcount", 0) or 0)
             if saved_selection.included:
                 repo.sync_status = "not_started"
                 repo.sync_error = None
             updated_count += 1
         await self.db.flush()
+        if remapped_chunks > 0:
+            await increment_workspace_data_version(self.workspace_id)
         return updated_count
 
     async def selected_repositories(self) -> list[GithubRepository]:

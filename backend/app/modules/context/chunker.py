@@ -292,28 +292,24 @@ def chunk_comments(
     if not comments:
         return []
 
+    def _utc_dt(dt: datetime) -> datetime:
+        return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
+
     bucket_size = max(1, comments_per_group)
     header = _card_header(client_name, board_name, list_name, card_title)
     sorted_comments = sorted(
         comments,
-        key=lambda c: (
-            c.created_at.astimezone(UTC) if c.created_at.tzinfo else c.created_at.replace(tzinfo=UTC),
-            str(c.comment_id),
-        ),
+        key=lambda c: (_utc_dt(c.created_at), str(c.comment_id)),
     )
 
     chunks: list[Chunk] = []
-    ordinal = 0
 
     for group_idx, start_idx in enumerate(range(0, len(sorted_comments), bucket_size)):
         group = sorted_comments[start_idx : start_idx + bucket_size]
         comment_ids = [str(c.comment_id) for c in group]
-        latest_at = max(
-            (c.created_at.astimezone(UTC) if c.created_at.tzinfo else c.created_at.replace(tzinfo=UTC))
-            for c in group
-        )
+        latest_at = max(_utc_dt(c.created_at) for c in group)
         lines = [
-            f"[{c.created_at.isoformat()}] {c.author_name.strip() or 'Unknown'}: {c.text}"
+            f"[{_utc_dt(c.created_at).isoformat()}] {c.author_name.strip() or 'Unknown'}: {c.text}"
             for c in group
         ]
         group_body = "\n".join(lines)
@@ -323,7 +319,7 @@ def chunk_comments(
             chunks.append(
                 Chunk(
                     kind="comment_group",
-                    ordinal=ordinal,
+                    ordinal=group_idx * 100,
                     text=full_group_text,
                     token_estimate=counter(full_group_text),
                     occurred_at=latest_at,
@@ -337,7 +333,6 @@ def chunk_comments(
                     group_key=None,
                 )
             )
-            ordinal += 1
         else:
             # Token-split strictly within this positional group so other groups are unaffected
             sub_chunks = _split_body_with_overlap(
@@ -347,11 +342,16 @@ def chunk_comments(
                 target_tokens=target_tokens,
                 overlap_tokens=overlap_tokens,
             )
+            if len(sub_chunks) >= 100:
+                raise ValueError(
+                    f"Comment group {group_idx} requires {len(sub_chunks)} sub-chunks; "
+                    "maximum supported is 99 sub-chunks per group."
+                )
             for sub_idx, sub_text in enumerate(sub_chunks):
                 chunks.append(
                     Chunk(
                         kind="comment_group",
-                        ordinal=ordinal,
+                        ordinal=group_idx * 100 + sub_idx,
                         text=sub_text,
                         token_estimate=counter(sub_text),
                         occurred_at=latest_at,
@@ -366,7 +366,6 @@ def chunk_comments(
                         group_key=None,
                     )
                 )
-                ordinal += 1
 
     return chunks
 

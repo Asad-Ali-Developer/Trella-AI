@@ -34,7 +34,7 @@ services:
       dockerfile: Dockerfile
     container_name: trella-worker
     restart: unless-stopped
-    command: celery -A app.core.celery_app:celery_app worker --loglevel=INFO --concurrency=2
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=INFO --concurrency=2 -Q critical,sync,ai,delivery
     env_file:
       - ./backend/.env
     environment:

@@ -4,11 +4,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.modules.context.indexer import increment_workspace_data_version, resolve_card_client_id
+from app.modules.context.models import ContextChunkRecord
 from app.modules.trello.client import TrelloClient
 from app.modules.trello.models import (
     TrelloCard,
@@ -176,7 +178,22 @@ async def sync_source_data(
     stale_cards = delete(TrelloCard).where(TrelloCard.source_id == source.id)
     if synced_card_ids:
         stale_cards = stale_cards.where(TrelloCard.trello_card_id.not_in(synced_card_ids))
-    await db.execute(stale_cards)
+    stale_cards_res = await db.execute(stale_cards)
+    deleted_cards_count = int(getattr(stale_cards_res, "rowcount", 0) or 0)
+
+    chunk_remap_res = await db.execute(
+        update(ContextChunkRecord)
+        .where(
+            ContextChunkRecord.workspace_id == workspace_id,
+            ContextChunkRecord.source_id == source.id,
+            ContextChunkRecord.card_id == TrelloCard.id,
+            ContextChunkRecord.client_id.is_distinct_from(TrelloCard.client_id),
+        )
+        .values(client_id=TrelloCard.client_id)
+    )
+    remapped_chunks_count = int(getattr(chunk_remap_res, "rowcount", 0) or 0)
+    if deleted_cards_count > 0 or remapped_chunks_count > 0:
+        await increment_workspace_data_version(workspace_id)
 
     if members:
         member_values = [
@@ -423,6 +440,52 @@ async def replace_client_mappings(
             ]
         )
     await db.flush()
+
+    if source_ids:
+        mapping_lookup_by_source: dict[uuid.UUID, dict[tuple[str, str], uuid.UUID]] = {
+            s.id: {} for s in sources
+        }
+        for source, mapping_type, external_ref, client_name in normalized_items:
+            mapping_lookup_by_source.setdefault(source.id, {})[
+                (mapping_type, external_ref.strip().casefold())
+            ] = client_ids[client_name.casefold()]
+
+        board_id_by_source = {s.id: s.trello_board_id for s in sources}
+        cards_in_sources = list(
+            (
+                await db.scalars(
+                    select(TrelloCard).where(
+                        TrelloCard.workspace_id == workspace_id,
+                        TrelloCard.source_id.in_(source_ids),
+                    )
+                )
+            ).all()
+        )
+        for card in cards_in_sources:
+            new_cid = resolve_card_client_id(
+                card.labels or [],
+                card.list_name,
+                board_id_by_source.get(card.source_id, ""),
+                mapping_lookup_by_source.get(card.source_id, {}),
+            )
+            if card.client_id != new_cid:
+                card.client_id = new_cid
+        await db.flush()
+
+        chunk_upd = await db.execute(
+            update(ContextChunkRecord)
+            .where(
+                ContextChunkRecord.workspace_id == workspace_id,
+                ContextChunkRecord.source_id.in_(source_ids),
+                ContextChunkRecord.card_id == TrelloCard.id,
+                ContextChunkRecord.client_id.is_distinct_from(TrelloCard.client_id),
+            )
+            .values(client_id=TrelloCard.client_id)
+        )
+        await db.flush()
+        if int(getattr(chunk_upd, "rowcount", 0) or 0) > 0:
+            await increment_workspace_data_version(workspace_id)
+
     return len(normalized_items)
 
 

@@ -113,7 +113,7 @@ services:
       dockerfile: Dockerfile
     container_name: client-insights-worker
     restart: unless-stopped
-    command: celery -A app.core.celery_app:celery_app worker --loglevel=INFO
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=INFO -Q critical,sync,ai,delivery
     env_file:
       - .env
     environment:

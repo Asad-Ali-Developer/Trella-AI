@@ -1487,3 +1487,1501 @@ async def test_chunks_and_links_constraints_and_cascades(
     ).scalars().all()
     assert ws_chunks == []
     assert ws_links == []
+
+
+def test_comment_group_ordinals_stable_when_earlier_group_grows_and_errors_at_100() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.modules.context.chunker import CommentInput, chunk_comments
+
+    base_time = datetime(2026, 4, 1, 9, 0, tzinfo=UTC)
+    comments = [
+        CommentInput(
+            comment_id=str(uuid.UUID(int=2000 + i)),
+            author_name=f"Author{i}",
+            text=f"Short comment {i}.",
+            created_at=base_time + timedelta(minutes=i),
+        )
+        for i in range(25)
+    ]
+
+    baseline = chunk_comments(
+        comments,
+        client_name="Acme",
+        board_name="Board",
+        list_name="List",
+        card_title="Card",
+        comments_per_group=10,
+        target_tokens=400,
+    )
+    assert [c.ordinal for c in baseline] == [0, 100, 200]
+
+    # Grow group 0 so it splits into multiple sub-chunks; groups 1 and 2 must keep ordinals 100 and 200
+    grown_comments = list(comments)
+    grown_comments[3] = CommentInput(
+        comment_id=comments[3].comment_id,
+        author_name=comments[3].author_name,
+        text=("Expanded architecture discussion with many paragraphs of detail. " * 60),
+        created_at=comments[3].created_at,
+    )
+    grown = chunk_comments(
+        grown_comments,
+        client_name="Acme",
+        board_name="Board",
+        list_name="List",
+        card_title="Card",
+        comments_per_group=10,
+        target_tokens=400,
+    )
+    group0_ordinals = [c.ordinal for c in grown if c.metadata["group_index"] == 0]
+    group1_chunks = [c for c in grown if c.metadata["group_index"] == 1]
+    group2_chunks = [c for c in grown if c.metadata["group_index"] == 2]
+
+    assert len(group0_ordinals) > 1
+    assert group0_ordinals == list(range(len(group0_ordinals)))
+    assert [c.ordinal for c in group1_chunks] == [100]
+    assert [c.ordinal for c in group2_chunks] == [200]
+    assert group1_chunks[0].content_hash == baseline[1].content_hash
+    assert group2_chunks[0].content_hash == baseline[2].content_hash
+
+    # A group requiring >= 100 sub-chunks must raise ValueError
+    huge_comment = [
+        CommentInput(
+            comment_id=str(uuid.UUID(int=9999)),
+            author_name="Author",
+            text="word " * 8000,
+            created_at=base_time,
+        )
+    ]
+    with pytest.raises(ValueError, match="99"):
+        chunk_comments(
+            huge_comment,
+            client_name="Acme",
+            board_name="Board",
+            list_name="List",
+            card_title="Card",
+            comments_per_group=10,
+            target_tokens=20,
+            overlap_tokens=0,
+        )
+
+
+def test_comment_timestamps_normalized_to_utc_produce_identical_text_and_hash() -> None:
+    from datetime import UTC, datetime, timedelta, timezone
+
+    from app.modules.context.chunker import CommentInput, chunk_comments
+
+    naive_dt = datetime(2026, 5, 10, 14, 30, 0)
+    utc_dt = datetime(2026, 5, 10, 14, 30, 0, tzinfo=UTC)
+    plus5_dt = datetime(2026, 5, 10, 19, 30, 0, tzinfo=timezone(timedelta(hours=5)))
+
+    cid = str(uuid.UUID(int=42))
+    naive_chunks = chunk_comments(
+        [CommentInput(comment_id=cid, author_name="Alice", created_at=naive_dt, text="Same instant")],
+        client_name="Acme",
+        board_name="Board",
+        list_name="List",
+        card_title="Card",
+    )
+    utc_chunks = chunk_comments(
+        [CommentInput(comment_id=cid, author_name="Alice", created_at=utc_dt, text="Same instant")],
+        client_name="Acme",
+        board_name="Board",
+        list_name="List",
+        card_title="Card",
+    )
+    plus5_chunks = chunk_comments(
+        [CommentInput(comment_id=cid, author_name="Alice", created_at=plus5_dt, text="Same instant")],
+        client_name="Acme",
+        board_name="Board",
+        list_name="List",
+        card_title="Card",
+    )
+
+    assert len(naive_chunks) == len(utc_chunks) == len(plus5_chunks) == 1
+    assert naive_chunks[0].text == utc_chunks[0].text == plus5_chunks[0].text
+    assert (
+        naive_chunks[0].content_hash
+        == utc_chunks[0].content_hash
+        == plus5_chunks[0].content_hash
+    )
+    assert "[2026-05-10T14:30:00+00:00]" in naive_chunks[0].text
+
+
+def test_every_registered_celery_task_has_a_queue_route() -> None:
+    import app.workers.tasks as _tasks  # noqa: F401
+    from app.core.celery_app import celery_app
+
+    valid_queues = {"critical", "sync", "ai", "delivery"}
+    configured_queues = {q.name for q in celery_app.conf.task_queues}
+    assert configured_queues == valid_queues
+    assert celery_app.conf.task_default_queue == "sync"
+
+    routes = celery_app.conf.task_routes
+    assert isinstance(routes, dict)
+
+    app_tasks = [name for name in celery_app.tasks if not name.startswith("celery.")]
+    assert len(app_tasks) >= 9
+    for task_name in app_tasks:
+        assert task_name in routes, f"Task {task_name} is missing an explicit route in task_routes"
+        route_queue = routes[task_name].get("queue")
+        assert route_queue in valid_queues, f"Task {task_name} routes to invalid queue {route_queue}"
+
+    assert routes["app.workers.tasks.send_welcome_email"]["queue"] == "critical"
+    assert routes["app.workers.tasks.send_password_reset_email"]["queue"] == "critical"
+    assert routes["app.workers.tasks.sync_trello_source"]["queue"] == "sync"
+    assert routes["app.workers.tasks.sync_github_repository"]["queue"] == "sync"
+    assert routes["app.workers.tasks.index_source_task"]["queue"] == "ai"
+    assert routes["app.workers.tasks.index_repository_task"]["queue"] == "ai"
+    assert routes["app.workers.tasks.execute_skill_run"]["queue"] == "ai"
+    assert routes["app.workers.tasks.deliver_report_task"]["queue"] == "delivery"
+    assert routes["app.workers.tasks.send_app_connected_email"]["queue"] == "delivery"
+
+
+@pytest.mark.asyncio
+async def test_indexer_comment_edit_unchanged_sync_and_card_delete(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.modules.context.gemini import GeminiContextClient
+    from app.modules.context.indexer import IndexingService, data_version_key
+    from app.modules.context.models import ContextChunkRecord, TrelloCardSummary
+    from app.modules.trello.models import TrelloComment, TrelloMember
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Indexer Diff WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card1 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Card One",
+        board_id="idx-board-1",
+    )
+    card2 = TrelloCard(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        trello_card_id="idx-board-1-card-2",
+        name="Card Two",
+        description="Second card on the same board",
+        list_id="list-1",
+        list_name="In progress",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/idx2",
+        content_hash=hashlib.sha256(b"card-two").hexdigest(),
+    )
+    db_session.add(card2)
+    member = TrelloMember(
+        workspace_id=workspace_id,
+        trello_member_id="mem-1",
+        username="alice",
+        full_name="Alice Smith",
+    )
+    db_session.add(member)
+    await db_session.flush()
+
+    base_time = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+    comments: list[TrelloComment] = []
+    for i in range(25):
+        c = TrelloComment(
+            workspace_id=workspace_id,
+            card_id=card1.id,
+            trello_action_id=f"act-{i:03d}",
+            author_id="mem-1",
+            text=f"Comment {i} on Card One",
+            created_at_trello=base_time + timedelta(minutes=i),
+        )
+        comments.append(c)
+    db_session.add_all(comments)
+    await db_session.commit()
+
+    embedded_batches: list[list[str]] = []
+    summarized_inputs: list[str] = []
+
+    async def fake_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        embedded_batches.append(list(texts))
+        return [[0.1 * (idx + 1)] + [0.0] * 767 for idx in range(len(texts))]
+
+    async def fake_summarize(
+        self: GeminiContextClient,
+        source_text: str,
+    ) -> tuple[str, int, int]:
+        summarized_inputs.append(source_text)
+        return f"Summary ({len(summarized_inputs)})", 20, 8
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fake_embed_batch)
+    monkeypatch.setattr(GeminiContextClient, "summarize", fake_summarize)
+
+    fake_redis_store: dict[str, int] = {}
+
+    class FakeRedis:
+        async def incr(self, key: str) -> int:
+            fake_redis_store[key] = fake_redis_store.get(key, 0) + 1
+            return fake_redis_store[key]
+
+    fake_redis = FakeRedis()
+    indexer = IndexingService(db_session, redis=fake_redis)  # type: ignore[arg-type]
+
+    # 1. Initial index: card1 has 1 body + 3 comment groups = 4 chunks; card2 has 1 body chunk -> 5 chunks total
+    res1 = await indexer.index_source(card1.source_id)
+    await db_session.commit()
+
+    assert res1.inserted == 5
+    assert res1.embedded == 5
+    assert res1.summaries_generated == 2
+    assert len(embedded_batches) == 1
+    assert len(embedded_batches[0]) == 5
+    assert fake_redis_store[data_version_key(workspace_id)] == 1
+
+    # 2. Unchanged sync / re-index -> zero embedding calls and zero summary calls
+    embedded_batches.clear()
+    summarized_inputs.clear()
+    res2 = await indexer.index_source(card1.source_id)
+    await db_session.commit()
+
+    assert res2.inserted == 0
+    assert res2.updated == 0
+    assert res2.deleted == 0
+    assert res2.unchanged == 5
+    assert res2.embedded == 0
+    assert embedded_batches == []
+    assert summarized_inputs == []
+    assert fake_redis_store[data_version_key(workspace_id)] == 1
+
+    # 3. Edit one comment in middle group (comment 14 -> group 1, ordinal 100)
+    comments[14].text = "Comment 14 UPDATED with new scope details"
+    card1.content_hash = hashlib.sha256(b"card-one-v2").hexdigest()
+    await db_session.commit()
+
+    res3 = await indexer.index_source(card1.source_id)
+    await db_session.commit()
+
+    assert res3.inserted == 0
+    assert res3.updated == 1
+    assert res3.deleted == 0
+    assert res3.unchanged == 4
+    assert res3.embedded == 1
+    assert len(embedded_batches) == 1
+    assert len(embedded_batches[0]) == 1
+    assert "Comment 14 UPDATED" in embedded_batches[0][0]
+    assert fake_redis_store[data_version_key(workspace_id)] == 2
+
+    # Verify stale summary for card1's old content_hash was deleted and new summary created
+    card1_summaries = list(
+        (
+            await db_session.scalars(
+                select(TrelloCardSummary).where(TrelloCardSummary.card_id == card1.id)
+            )
+        ).all()
+    )
+    assert len(card1_summaries) == 1
+    assert card1_summaries[0].content_hash == card1.content_hash
+
+    # 4. Delete card2 -> its chunks are gone
+    card2_id = card2.id
+    await db_session.delete(card2)
+    await db_session.commit()
+
+    remaining_card2_chunks = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(ContextChunkRecord.card_id == card2_id)
+            )
+        ).all()
+    )
+    assert remaining_card2_chunks == []
+
+
+@pytest.mark.asyncio
+async def test_indexer_embedding_batch_failure_preserves_progress_and_retries_cleanly(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.modules.context.gemini import EmbeddingUnavailable, GeminiContextClient
+    from app.modules.context.indexer import IndexingService
+    from app.modules.context.models import ContextChunkRecord
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Batch Retry WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card1 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Batch Card 1",
+        board_id="batch-board",
+    )
+    card2 = TrelloCard(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        trello_card_id="batch-card-2",
+        name="Batch Card 2",
+        description="Second batch card",
+        list_id="list-1",
+        list_name="Todo",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/b2",
+        content_hash="b" * 64,
+    )
+    card3 = TrelloCard(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        trello_card_id="batch-card-3",
+        name="Batch Card 3",
+        description="Third batch card",
+        list_id="list-1",
+        list_name="Todo",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/b3",
+        content_hash="c" * 64,
+    )
+    db_session.add_all([card2, card3])
+    await db_session.commit()
+
+    call_num = 0
+
+    async def flaky_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        nonlocal call_num
+        call_num += 1
+        if call_num == 2:
+            raise EmbeddingUnavailable("Simulated batch 2 failure")
+        return [[0.5] + [0.0] * 767 for _ in texts]
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", flaky_embed_batch)
+
+    # Use batch_size=1 so batch 1 succeeds, batch 2 fails, batch 3 succeeds
+    indexer = IndexingService(db_session, batch_size=1)
+    first_run = await indexer.index_source(card1.source_id)
+    await db_session.commit()
+
+    assert first_run.inserted == 3
+    assert first_run.embedded == 2
+    assert first_run.failed_batches == 1
+
+    chunks_after_first = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(
+                    ContextChunkRecord.workspace_id == workspace_id,
+                    ContextChunkRecord.source_id == card1.source_id,
+                )
+            )
+        ).all()
+    )
+    assert len(chunks_after_first) == 3
+    unembedded = [c for c in chunks_after_first if c.embedding is None]
+    embedded = [c for c in chunks_after_first if c.embedding is not None]
+    assert len(unembedded) == 1
+    assert len(embedded) == 2
+    assert unembedded[0].embedding_model is None
+
+    # Retry run: only the 1 remaining unembedded chunk is sent to embed_batch
+    second_run = await indexer.index_source(card1.source_id)
+    await db_session.commit()
+
+    assert second_run.inserted == 0
+    assert second_run.updated == 0
+    assert second_run.unchanged == 3
+    assert second_run.embedded == 1
+    assert second_run.failed_batches == 0
+
+    chunks_after_retry = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(
+                    ContextChunkRecord.workspace_id == workspace_id,
+                    ContextChunkRecord.source_id == card1.source_id,
+                )
+            )
+        ).all()
+    )
+    assert all(c.embedding is not None for c in chunks_after_retry)
+    assert all(c.embedding_model is not None for c in chunks_after_retry)
+
+
+@pytest.mark.asyncio
+async def test_indexer_reembeds_when_embedding_model_changes_and_remap_updates_client_id(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.core.config import settings
+    from app.modules.context.gemini import GeminiContextClient
+    from app.modules.context.indexer import IndexingService
+    from app.modules.context.models import ContextChunkRecord
+    from app.modules.github.models import GithubCommit, GithubRepository
+    from app.modules.trello.models import TrelloClientRecord
+    from app.modules.trello.sync import replace_client_mappings
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Remap & Model WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Remap Card",
+        board_id="remap-board",
+    )
+    source = await db_session.get(TrelloSource, card.source_id)
+    assert source is not None
+
+    repo = GithubRepository(
+        workspace_id=workspace_id,
+        connection_id=connection_id,
+        github_repo_id="remap-repo-1",
+        full_name="acme/remap-repo",
+        description="Repo for remap",
+        url="https://github.com/acme/remap-repo",
+        default_branch="main",
+        private=True,
+        included=True,
+        sync_status="completed",
+    )
+    db_session.add(repo)
+    await db_session.flush()
+
+    commit = GithubCommit(
+        workspace_id=workspace_id,
+        repository_id=repo.id,
+        sha="f" * 40,
+        message="feat: initial commit",
+        author_name="Dev",
+        author_login="dev",
+        committed_at=datetime(2026, 4, 15, 12, 0, tzinfo=UTC),
+        url="https://github.com/acme/remap-repo/commit/" + "f" * 40,
+    )
+    db_session.add(commit)
+    await db_session.commit()
+
+    embed_calls: list[list[str]] = []
+
+    async def fake_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        embed_calls.append(list(texts))
+        return [[0.3] + [0.0] * 767 for _ in texts]
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fake_embed_batch)
+
+    indexer = IndexingService(db_session)
+    await indexer.index_source(source.id)
+    await indexer.index_repository(repo.id)
+    await db_session.commit()
+
+    # Remap Trello board to client "NewClient" via replace_client_mappings -> updates chunks.client_id in same transaction
+    await replace_client_mappings(
+        db_session,
+        workspace_id,
+        connection_id,
+        [
+            {
+                "board_id": source.trello_board_id,
+                "mapping_type": "board",
+                "external_ref": source.trello_board_id,
+                "client_name": "NewClient",
+            }
+        ],
+    )
+    new_client = (
+        await db_session.scalars(
+            select(TrelloClientRecord).where(
+                TrelloClientRecord.workspace_id == workspace_id,
+                TrelloClientRecord.name == "NewClient",
+            )
+        )
+    ).one()
+
+    card_chunk = (
+        await db_session.scalars(
+            select(ContextChunkRecord).where(ContextChunkRecord.card_id == card.id)
+        )
+    ).one()
+    assert card_chunk.client_id == new_client.id
+
+    # Remap GitHub repository to new_client -> updates repo chunks.client_id in same transaction
+    updated_repo_chunks = await indexer.remap_repository_client(
+        workspace_id, repo.id, new_client.id
+    )
+    assert updated_repo_chunks == 1
+    repo_chunk = (
+        await db_session.scalars(
+            select(ContextChunkRecord).where(ContextChunkRecord.repository_id == repo.id)
+        )
+    ).one()
+    assert repo_chunk.client_id == new_client.id
+
+    # Re-index after client assignment updates the header ("Client: NewClient") and re-embeds
+    embed_calls.clear()
+    await indexer.index_source(source.id)
+    await indexer.index_repository(repo.id)
+    await db_session.commit()
+    assert len(embed_calls) == 2
+    await db_session.refresh(card_chunk)
+    await db_session.refresh(repo_chunk)
+    assert card_chunk.text.startswith("Client: NewClient |")
+    assert repo_chunk.text.startswith("Client: NewClient |")
+
+    # Changing GEMINI_EMBEDDING_MODEL triggers re-embedding even when content_hash is unchanged
+    embed_calls.clear()
+    monkeypatch.setattr(settings, "GEMINI_EMBEDDING_MODEL", "gemini-embedding-002")
+    res_model_change = await indexer.index_source(source.id)
+    await db_session.commit()
+    assert res_model_change.embedded == 1
+    assert len(embed_calls) == 1
+    await db_session.refresh(card_chunk)
+    assert card_chunk.embedding_model == "gemini-embedding-002"
+
+
+@pytest.mark.asyncio
+async def test_index_task_redis_lock_prevents_duplicate_concurrent_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from app.workers.tasks import _index_source
+
+    source_id = uuid.uuid4()
+    active_runs = 0
+    max_concurrent_runs = 0
+    total_runs = 0
+
+    class FakeLockRedis:
+        def __init__(self) -> None:
+            self.store: dict[str, str] = {}
+
+        async def set(
+            self,
+            key: str,
+            value: str,
+            *,
+            nx: bool = False,
+            ex: int | None = None,
+        ) -> bool:
+            if nx and key in self.store:
+                return False
+            self.store[key] = value
+            return True
+
+        async def get(self, key: str) -> str | None:
+            return self.store.get(key)
+
+        async def delete(self, key: str) -> int:
+            return 1 if self.store.pop(key, None) is not None else 0
+
+        async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> int:
+            assert numkeys == 1
+            key = keys_and_args[0]
+            token = keys_and_args[1]
+            if "del" in script:
+                if self.store.get(key) == token:
+                    self.store.pop(key, None)
+                    return 1
+                return 0
+            if "expire" in script:
+                return 1 if self.store.get(key) == token else 0
+            return 0
+
+    class FakeSessionContext:
+        async def __aenter__(self) -> object:
+            return object()
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    class FakeIndexingService:
+        def __init__(self, db: object, *, redis: object = None) -> None:
+            pass
+
+        async def index_source(self, sid: uuid.UUID, *, force: bool = False) -> None:
+            nonlocal active_runs, max_concurrent_runs, total_runs
+            active_runs += 1
+            total_runs += 1
+            max_concurrent_runs = max(max_concurrent_runs, active_runs)
+            await asyncio.sleep(0.05)
+            active_runs -= 1
+
+    class DummySession:
+        async def commit(self) -> None:
+            return None
+
+    class DummySessionMaker:
+        def __call__(self) -> "DummySessionMaker":
+            return self
+
+        async def __aenter__(self) -> DummySession:
+            return DummySession()
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr("app.workers.tasks.worker_session_maker", DummySessionMaker())
+    monkeypatch.setattr("app.modules.context.indexer.IndexingService", FakeIndexingService)
+
+    fake_redis = FakeLockRedis()
+    results = await asyncio.gather(
+        _index_source(source_id, redis=fake_redis),
+        _index_source(source_id, redis=fake_redis),
+    )
+
+    assert sorted(results) == [False, True]
+    assert total_runs == 1
+    assert max_concurrent_runs == 1
+    assert fake_redis.store == {}
+
+
+@pytest.mark.asyncio
+async def test_workspace_isolation_and_disconnect_cascade_leaves_zero_chunks(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.modules.context.gemini import GeminiContextClient
+    from app.modules.context.indexer import IndexingService
+    from app.modules.context.models import ContextChunkRecord
+    from app.modules.github.models import GithubCommit, GithubRepository
+    from app.modules.github.service import GithubConnectionService
+    from app.modules.trello.service import TrelloConnectionService
+
+    email = await _create_user(async_client)
+    ws_a_resp = await async_client.post("/api/v1/workspaces", json={"name": "Isolation WS A"})
+    ws_b_resp = await async_client.post("/api/v1/workspaces", json={"name": "Isolation WS B"})
+    ws_a_id = uuid.UUID(ws_a_resp.json()["id"])
+    ws_b_id = uuid.UUID(ws_b_resp.json()["id"])
+
+    ws_a = (await db_session.execute(select(Workspace).where(Workspace.id == ws_a_id))).scalar_one()
+    ws_b = (await db_session.execute(select(Workspace).where(Workspace.id == ws_b_id))).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+
+    conn_a_id = await _create_connection(db_session, user, ws_a)
+    conn_b_id = await _create_connection(db_session, user, ws_b)
+
+    card_a = await _create_context_card(
+        db_session, ws_a_id, conn_a_id, name="WS A Card", board_id="ws-a-board"
+    )
+    card_b = await _create_context_card(
+        db_session, ws_b_id, conn_b_id, name="WS B Card", board_id="ws-b-board"
+    )
+
+    gh_conn_a = await ConnectionRepository(db_session).upsert_provider_connection(
+        workspace_id=ws_a_id,
+        provider="github",
+        user_id=user.id,
+        encrypted_token="enc-gh-a",
+        external_account_id="gh-acc-a",
+        external_username="gh-user-a",
+    )
+    repo_a = GithubRepository(
+        workspace_id=ws_a_id,
+        connection_id=gh_conn_a.id,
+        github_repo_id="gh-repo-a",
+        full_name="acme/repo-a",
+        description=None,
+        url="https://github.com/acme/repo-a",
+        default_branch="main",
+        private=True,
+        included=True,
+        sync_status="completed",
+    )
+    db_session.add(repo_a)
+    await db_session.flush()
+    db_session.add(
+        GithubCommit(
+            workspace_id=ws_a_id,
+            repository_id=repo_a.id,
+            sha="a" * 40,
+            message="feat: ws A commit",
+            author_name="Dev A",
+            author_login="deva",
+            committed_at=datetime(2026, 4, 15, 9, 0, tzinfo=UTC),
+            url="https://github.com/acme/repo-a/commit/" + "a" * 40,
+        )
+    )
+    await db_session.commit()
+
+    async def fake_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        return [[0.2] + [0.0] * 767 for _ in texts]
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fake_embed_batch)
+
+    indexer = IndexingService(db_session)
+    # Index only Workspace A's source and repository
+    await indexer.index_source(card_a.source_id)
+    await indexer.index_repository(repo_a.id)
+    await db_session.commit()
+
+    ws_a_chunks = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(ContextChunkRecord.workspace_id == ws_a_id)
+            )
+        ).all()
+    )
+    ws_b_chunks = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(ContextChunkRecord.workspace_id == ws_b_id)
+            )
+        ).all()
+    )
+    assert len(ws_a_chunks) == 2
+    assert ws_b_chunks == []
+
+    # Index Workspace B's source so WS B has chunks, then disconnect WS A's Trello and GitHub providers
+    await indexer.index_source(card_b.source_id)
+    await db_session.commit()
+
+    await TrelloConnectionService(db_session, ws_a_id, user.id).disconnect()
+    await GithubConnectionService(db_session, ws_a_id, user.id).disconnect()
+    await db_session.commit()
+
+    ws_a_chunks_after_disconnect = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(ContextChunkRecord.workspace_id == ws_a_id)
+            )
+        ).all()
+    )
+    ws_b_chunks_after_disconnect = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(ContextChunkRecord.workspace_id == ws_b_id)
+            )
+        ).all()
+    )
+    assert ws_a_chunks_after_disconnect == []
+    assert len(ws_b_chunks_after_disconnect) == 1
+
+
+@pytest.mark.asyncio
+async def test_reindex_script_enqueues_active_sources_and_force_clears_embeddings(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.modules.context.gemini import GeminiContextClient
+    from app.modules.context.indexer import IndexingService
+    from app.modules.context.models import ContextChunkRecord
+    from app.scripts.reindex import reindex_workspace
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Reindex CLI WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Reindex Card",
+        board_id="reindex-board",
+    )
+    await db_session.commit()
+
+    async def fake_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        return [[0.9] + [0.0] * 767 for _ in texts]
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fake_embed_batch)
+
+    await IndexingService(db_session).index_source(card.source_id)
+    await db_session.commit()
+
+    dispatched: list[tuple[str, tuple[object, ...]]] = []
+
+    def capture_dispatch(task_fn: object, *args: object, **kwargs: object) -> None:
+        dispatched.append((getattr(task_fn, "name", str(task_fn)), args))
+
+    monkeypatch.setattr("app.scripts.reindex.dispatch_task", capture_dispatch)
+
+    summary = await reindex_workspace(workspace_id, force=True, db=db_session)
+    await db_session.commit()
+
+    assert summary == {"sources": 1, "repositories": 0, "cleared_embeddings": 1}
+    assert dispatched == [("app.workers.tasks.index_source_task", (str(card.source_id), True))]
+
+    chunk = (
+        await db_session.scalars(
+            select(ContextChunkRecord).where(ContextChunkRecord.card_id == card.id)
+        )
+    ).one()
+    assert chunk.embedding is None
+    assert chunk.embedding_model is None
+
+
+
+@pytest.mark.asyncio
+async def test_indexer_transaction_not_held_during_embed_and_commits_between_batches(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.modules.context.gemini import GeminiContextClient
+    from app.modules.context.indexer import IndexingService
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Tx Phase WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card1 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Tx Card 1",
+        board_id="tx-board",
+    )
+    card2 = TrelloCard(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        trello_card_id="tx-card-2",
+        name="Tx Card 2",
+        description="Second tx card",
+        list_id="list-1",
+        list_name="Todo",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/tx2",
+        content_hash="2" * 64,
+    )
+    card3 = TrelloCard(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        trello_card_id="tx-card-3",
+        name="Tx Card 3",
+        description="Third tx card",
+        list_id="list-1",
+        list_name="Todo",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/tx3",
+        content_hash="3" * 64,
+    )
+    db_session.add_all([card2, card3])
+    await db_session.commit()
+
+    commit_count = 0
+    orig_commit = db_session.commit
+
+    async def tracked_commit() -> None:
+        nonlocal commit_count
+        commit_count += 1
+        await orig_commit()
+
+    monkeypatch.setattr(db_session, "commit", tracked_commit)
+
+    embed_tx_states: list[tuple[bool, int]] = []
+    summarize_tx_states: list[tuple[bool, int]] = []
+
+    async def fake_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        embed_tx_states.append((db_session.in_transaction(), commit_count))
+        return [[0.4] + [0.0] * 767 for _ in texts]
+
+    async def fake_summarize(
+        self: GeminiContextClient,
+        source_text: str,
+    ) -> tuple[str, int, int]:
+        summarize_tx_states.append((db_session.in_transaction(), commit_count))
+        return "Summary text", 15, 6
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fake_embed_batch)
+    monkeypatch.setattr(GeminiContextClient, "summarize", fake_summarize)
+
+    heartbeats = 0
+
+    async def on_batch() -> None:
+        nonlocal heartbeats
+        heartbeats += 1
+
+    indexer = IndexingService(db_session, batch_size=1, on_batch_complete=on_batch)
+    result = await indexer.index_source(card1.source_id)
+
+    assert result.inserted == 3
+    assert result.embedded == 3
+    assert result.summaries_generated == 3
+
+    # Assert no transaction is held open during any embed_batch or summarize call,
+    # and commits happen strictly between Phase (a), each embedding batch, and each card summary:
+    # Commit 1: Phase (a) diff
+    # Commit 2, 3, 4: Embed batches 1, 2, 3
+    # Commit 5, 6, 7: Summaries 1, 2, 3
+    assert embed_tx_states == [(False, 1), (False, 2), (False, 3)]
+    assert summarize_tx_states == [(False, 4), (False, 5), (False, 6)]
+    assert commit_count == 7
+    assert heartbeats == 6
+
+
+@pytest.mark.asyncio
+async def test_indexer_batch_3_failure_keeps_batches_1_and_2_embedded(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.modules.context.gemini import EmbeddingUnavailable, GeminiContextClient
+    from app.modules.context.indexer import IndexingService
+    from app.modules.context.models import ContextChunkRecord
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Batch 3 Fail WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card1 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="B3 Card 1",
+        board_id="b3-board",
+    )
+    card2 = TrelloCard(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        trello_card_id="b3-card-2",
+        name="B3 Card 2",
+        description="Second card",
+        list_id="list-1",
+        list_name="Todo",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/b3-2",
+        content_hash="d" * 64,
+    )
+    card3 = TrelloCard(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        trello_card_id="b3-card-3",
+        name="B3 Card 3",
+        description="Third card",
+        list_id="list-1",
+        list_name="Todo",
+        labels=[],
+        member_ids=[],
+        closed=False,
+        url="https://trello.com/c/b3-3",
+        content_hash="e" * 64,
+    )
+    db_session.add_all([card2, card3])
+    await db_session.commit()
+
+    batch_call = 0
+
+    async def fail_on_batch_3(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        nonlocal batch_call
+        batch_call += 1
+        assert not db_session.in_transaction()
+        if batch_call == 3:
+            raise EmbeddingUnavailable("Batch 3 failed")
+        return [[0.7] + [0.0] * 767 for _ in texts]
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fail_on_batch_3)
+
+    indexer = IndexingService(db_session, batch_size=1)
+    run_res = await indexer.index_source(card1.source_id)
+
+    assert run_res.inserted == 3
+    assert run_res.embedded == 2
+    assert run_res.failed_batches == 1
+
+    # Rollback any current state on db_session to prove batches 1 and 2 were already committed
+    await db_session.rollback()
+
+    rows = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord)
+                .where(
+                    ContextChunkRecord.workspace_id == workspace_id,
+                    ContextChunkRecord.source_id == card1.source_id,
+                )
+                .order_by(
+                    ContextChunkRecord.card_id.nulls_last(),
+                    ContextChunkRecord.chunk_kind,
+                    ContextChunkRecord.ordinal,
+                    ContextChunkRecord.id,
+                )
+            )
+        ).all()
+    )
+    assert len(rows) == 3
+    assert rows[0].embedding is not None
+    assert rows[0].embedding_model is not None
+    assert rows[1].embedding is not None
+    assert rows[1].embedding_model is not None
+    assert rows[2].embedding is None
+    assert rows[2].embedding_model is None
+
+
+@pytest.mark.asyncio
+async def test_indexer_summary_cap_respected_and_remainder_reenqueued(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+    from app.modules.context.gemini import GeminiContextClient
+    from app.modules.context.models import TrelloCardSummary
+    from app.workers.tasks import _index_source
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Summary Cap WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card1 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Cap Card 1",
+        board_id="cap-board",
+    )
+    for idx in range(2, 6):
+        db_session.add(
+            TrelloCard(
+                workspace_id=workspace_id,
+                source_id=card1.source_id,
+                trello_card_id=f"cap-card-{idx}",
+                name=f"Cap Card {idx}",
+                description=f"Card {idx} description",
+                list_id="list-1",
+                list_name="Todo",
+                labels=[],
+                member_ids=[],
+                closed=False,
+                url=f"https://trello.com/c/cap-{idx}",
+                content_hash=f"{idx}" * 64,
+            )
+        )
+    await db_session.commit()
+
+    monkeypatch.setattr(settings, "INDEX_MAX_SUMMARIES_PER_RUN", 2)
+
+    async def fake_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        return [[0.6] + [0.0] * 767 for _ in texts]
+
+    summarize_calls = 0
+
+    async def fake_summarize(
+        self: GeminiContextClient,
+        source_text: str,
+    ) -> tuple[str, int, int]:
+        nonlocal summarize_calls
+        summarize_calls += 1
+        return f"Cap summary {summarize_calls}", 12, 5
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fake_embed_batch)
+    monkeypatch.setattr(GeminiContextClient, "summarize", fake_summarize)
+
+    class SessionWrapper:
+        def __call__(self) -> "SessionWrapper":
+            return self
+
+        async def __aenter__(self) -> AsyncSession:
+            return db_session
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr("app.workers.tasks.worker_session_maker", SessionWrapper())
+
+    class FakeLockRedis:
+        def __init__(self) -> None:
+            self.store: dict[str, str] = {}
+
+        async def set(
+            self,
+            key: str,
+            value: str,
+            *,
+            nx: bool = False,
+            ex: int | None = None,
+        ) -> bool:
+            if nx and key in self.store:
+                return False
+            self.store[key] = value
+            return True
+
+        async def incr(self, key: str) -> int:
+            return 1
+
+        async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> int:
+            key = keys_and_args[0]
+            token = keys_and_args[1]
+            if "del" in script:
+                if self.store.get(key) == token:
+                    self.store.pop(key, None)
+                    return 1
+                return 0
+            if "expire" in script:
+                return 1 if self.store.get(key) == token else 0
+            return 0
+
+    fake_redis = FakeLockRedis()
+    reenqueued: list[tuple[str, tuple[object, ...], bool]] = []
+
+    def capture_dispatch(task_fn: object, *args: object, **kwargs: object) -> None:
+        # Record whether the lock is still held at the moment of re-enqueue
+        lock_still_held = f"lock:index:source:{card1.source_id}" in fake_redis.store
+        reenqueued.append((getattr(task_fn, "name", str(task_fn)), args, lock_still_held))
+
+    monkeypatch.setattr("app.workers.tasks.dispatch_task", capture_dispatch)
+
+    # Run 1: generates 2 of 5 summaries, releases lock, and re-enqueues index_source_task
+    ran1 = await _index_source(card1.source_id, redis=fake_redis)
+    assert ran1 is True
+    assert summarize_calls == 2
+    assert len(reenqueued) == 1
+    assert reenqueued[0] == (
+        "app.workers.tasks.index_source_task",
+        (str(card1.source_id),),
+        False,
+    )
+
+    summaries_after_1 = list(
+        (
+            await db_session.scalars(
+                select(TrelloCardSummary).where(TrelloCardSummary.workspace_id == workspace_id)
+            )
+        ).all()
+    )
+    assert len(summaries_after_1) == 2
+
+    # Run 2: generates next 2 summaries (total 4 of 5) and re-enqueues again
+    reenqueued.clear()
+    ran2 = await _index_source(card1.source_id, redis=fake_redis)
+    assert ran2 is True
+    assert summarize_calls == 4
+    assert len(reenqueued) == 1
+
+    # Run 3: generates final 1 summary (total 5 of 5) and does NOT re-enqueue
+    reenqueued.clear()
+    ran3 = await _index_source(card1.source_id, redis=fake_redis)
+    assert ran3 is True
+    assert summarize_calls == 5
+    assert reenqueued == []
+
+
+@pytest.mark.asyncio
+async def test_index_lock_not_released_by_non_owner() -> None:
+    from app.workers.tasks import (
+        _acquire_index_lock,
+        _extend_index_lock,
+        _release_index_lock,
+    )
+
+    class LuaLockRedis:
+        def __init__(self) -> None:
+            self.store: dict[str, str] = {}
+            self.ttls: dict[str, int] = {}
+            self.eval_scripts: list[str] = []
+
+        async def set(
+            self,
+            key: str,
+            value: str,
+            *,
+            nx: bool = False,
+            ex: int | None = None,
+        ) -> bool:
+            if nx and key in self.store:
+                return False
+            self.store[key] = value
+            if ex is not None:
+                self.ttls[key] = ex
+            return True
+
+        async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> int:
+            self.eval_scripts.append(script)
+            assert numkeys == 1
+            key = keys_and_args[0]
+            token = keys_and_args[1]
+            if "del" in script:
+                if self.store.get(key) == token:
+                    self.store.pop(key, None)
+                    self.ttls.pop(key, None)
+                    return 1
+                return 0
+            if "expire" in script:
+                if self.store.get(key) == token:
+                    self.ttls[key] = int(keys_and_args[2])
+                    return 1
+                return 0
+            return 0
+
+    fake_redis = LuaLockRedis()
+    lock_key = f"lock:index:source:{uuid.uuid4()}"
+
+    assert await _acquire_index_lock(lock_key, "owner-token", redis=fake_redis) is True
+    assert fake_redis.store[lock_key] == "owner-token"
+    assert fake_redis.ttls[lock_key] == 1800
+
+    # Non-owner cannot extend or release the lock
+    assert (
+        await _extend_index_lock(lock_key, "intruder-token", ttl_seconds=900, redis=fake_redis)
+        is False
+    )
+    assert await _release_index_lock(lock_key, "intruder-token", redis=fake_redis) is False
+    assert fake_redis.store[lock_key] == "owner-token"
+
+    # Owner can extend and release the lock via Lua script
+    assert (
+        await _extend_index_lock(lock_key, "owner-token", ttl_seconds=2400, redis=fake_redis)
+        is True
+    )
+    assert fake_redis.ttls[lock_key] == 2400
+    assert await _release_index_lock(lock_key, "owner-token", redis=fake_redis) is True
+    assert lock_key not in fake_redis.store
+
+
+@pytest.mark.asyncio
+async def test_index_lock_fails_closed_when_redis_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from redis.exceptions import RedisError
+
+    from app.workers.tasks import _acquire_index_lock, _index_repository, _index_source
+
+    class BrokenRedis:
+        async def set(
+            self,
+            key: str,
+            value: str,
+            *,
+            nx: bool = False,
+            ex: int | None = None,
+        ) -> bool:
+            raise RedisError("Redis connection down")
+
+    broken = BrokenRedis()
+    source_id = uuid.uuid4()
+    repo_id = uuid.uuid4()
+
+    indexer_called = False
+
+    class NeverCalledIndexingService:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            nonlocal indexer_called
+            indexer_called = True
+
+    monkeypatch.setattr("app.modules.context.indexer.IndexingService", NeverCalledIndexingService)
+
+    assert await _acquire_index_lock("lock:test", "tok", redis=broken) is False
+    assert await _index_source(source_id, redis=broken) is False
+    assert await _index_repository(repo_id, redis=broken) is False
+    assert indexer_called is False
+
+
+@pytest.mark.asyncio
+async def test_client_rename_via_api_reenqueues_index_tasks(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.modules.context.gemini import GeminiContextClient
+    from app.modules.context.indexer import IndexingService
+    from app.modules.context.models import ContextChunkRecord
+    from app.modules.github.models import GithubCommit, GithubRepository
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Client Rename API WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    async_client.headers["X-Workspace-Id"] = str(workspace_id)
+
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    create_resp = await async_client.post("/api/v1/clients", json={"name": "Original Client"})
+    assert create_resp.status_code == 201
+    client_id = uuid.UUID(create_resp.json()["id"])
+
+    other_resp = await async_client.post("/api/v1/clients", json={"name": "Existing Client"})
+    assert other_resp.status_code == 201
+
+    card = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Rename API Card",
+        board_id="rename-api-board",
+    )
+    card.client_id = client_id
+
+    repo = GithubRepository(
+        workspace_id=workspace_id,
+        connection_id=connection_id,
+        client_id=client_id,
+        github_repo_id="rename-api-repo",
+        full_name="acme/rename-api-repo",
+        description="Repo for rename test",
+        url="https://github.com/acme/rename-api-repo",
+        default_branch="main",
+        private=True,
+        included=True,
+        sync_status="completed",
+    )
+    db_session.add(repo)
+    await db_session.flush()
+    db_session.add(
+        GithubCommit(
+            workspace_id=workspace_id,
+            repository_id=repo.id,
+            sha="c" * 40,
+            message="feat: client commit",
+            author_name="Dev",
+            author_login="dev",
+            committed_at=datetime(2026, 4, 15, 11, 0, tzinfo=UTC),
+            url="https://github.com/acme/rename-api-repo/commit/" + "c" * 40,
+        )
+    )
+    await db_session.commit()
+
+    async def fake_embed_batch(
+        self: GeminiContextClient,
+        texts: list[str],
+        query: bool = False,
+    ) -> list[list[float]]:
+        return [[0.8] + [0.0] * 767 for _ in texts]
+
+    monkeypatch.setattr(GeminiContextClient, "embed_batch", fake_embed_batch)
+
+    indexer = IndexingService(db_session)
+    await indexer.index_source(card.source_id)
+    await indexer.index_repository(repo.id)
+
+    dispatched: list[tuple[str, tuple[object, ...]]] = []
+
+    def capture_dispatch(task_fn: object, *args: object, **kwargs: object) -> None:
+        dispatched.append((getattr(task_fn, "name", str(task_fn)), args))
+
+    monkeypatch.setattr("app.workers.tasks.dispatch_task", capture_dispatch)
+
+    # Duplicate client name returns 409
+    conflict_resp = await async_client.patch(
+        f"/api/v1/clients/{client_id}",
+        json={"name": "Existing Client"},
+    )
+    assert conflict_resp.status_code == 409
+    assert dispatched == []
+
+    # Unknown client returns 404
+    missing_resp = await async_client.patch(
+        f"/api/v1/clients/{uuid.uuid4()}",
+        json={"name": "No Such Client"},
+    )
+    assert missing_resp.status_code == 404
+
+    # Valid rename updates client name and dispatches index_source_task and index_repository_task
+    rename_resp = await async_client.patch(
+        f"/api/v1/clients/{client_id}",
+        json={"name": "Renamed Enterprise"},
+    )
+    assert rename_resp.status_code == 200
+    assert rename_resp.json()["name"] == "Renamed Enterprise"
+    assert dispatched == [
+        ("app.workers.tasks.index_source_task", (str(card.source_id),)),
+        ("app.workers.tasks.index_repository_task", (str(repo.id),)),
+    ]
+
+    # Running the enqueued index tasks updates chunk headers to "Client: Renamed Enterprise"
+    source_id = card.source_id
+    repo_id = repo.id
+    db_session.expire_all()
+    await indexer.index_source(source_id)
+    await indexer.index_repository(repo_id)
+
+    chunks = list(
+        (
+            await db_session.scalars(
+                select(ContextChunkRecord).where(
+                    ContextChunkRecord.workspace_id == workspace_id,
+                    ContextChunkRecord.client_id == client_id,
+                )
+            )
+        ).all()
+    )
+    assert len(chunks) == 2
+    assert all(ch.text.startswith("Client: Renamed Enterprise |") for ch in chunks)

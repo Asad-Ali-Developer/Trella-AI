@@ -217,6 +217,7 @@ async def _sync_trello_source(source_id: UUID) -> None:
             source.last_synced_at = datetime.now(UTC)
             source.sync_error = None
             await db.commit()
+            dispatch_task(index_source_task, str(source_id))
         except Exception as exc:
             sync_error = str(exc) if isinstance(exc, TrelloAPIError) else "Synchronization failed."
             await db.rollback()
@@ -253,6 +254,7 @@ async def _sync_github_repository(repository_id: UUID) -> None:
             repository.sync_status = "completed"
             repository.sync_error = None
             await db.commit()
+            dispatch_task(index_repository_task, str(repository_id))
         except Exception as exc:
             message = str(exc) if isinstance(exc, GithubAPIError) else "Synchronization failed."
             await db.rollback()
@@ -352,3 +354,216 @@ def deliver_report_task(delivery_id: str) -> None:
     asyncio.run(_deliver_report(UUID(delivery_id)))
 
 
+INDEX_LOCK_TTL_SECONDS = settings.INDEX_LOCK_TTL_SECONDS
+
+_RELEASE_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
+
+_EXTEND_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("expire", KEYS[1], tonumber(ARGV[2]))
+else
+    return 0
+end
+"""
+
+
+async def _acquire_index_lock(
+    lock_key: str,
+    token: str,
+    *,
+    ttl_seconds: int | None = None,
+    redis: Any = None,
+) -> bool:
+    """Acquire a distributed Redis lock via SET NX EX. Fails closed when Redis is unavailable."""
+    from redis.exceptions import RedisError
+
+    from app.modules.trello.rate_limiter import _get_loop_redis
+
+    effective_ttl = (
+        ttl_seconds if ttl_seconds is not None else settings.INDEX_LOCK_TTL_SECONDS
+    )
+    try:
+        client = redis if redis is not None else _get_loop_redis()
+        acquired = await client.set(lock_key, token, nx=True, ex=effective_ttl)
+        return bool(acquired)
+    except (RedisError, OSError) as exc:
+        logger.warning(
+            "index_lock_redis_unavailable",
+            lock_key=lock_key,
+            error_type=type(exc).__name__,
+        )
+        return False
+
+
+async def _release_index_lock(
+    lock_key: str,
+    token: str,
+    *,
+    redis: Any = None,
+) -> bool:
+    """Atomically release the distributed Redis lock via Lua compare-and-delete."""
+    from redis.exceptions import RedisError
+
+    from app.modules.trello.rate_limiter import _get_loop_redis
+
+    try:
+        client: Any = redis if redis is not None else _get_loop_redis()
+        deleted = await client.eval(_RELEASE_LOCK_LUA, 1, lock_key, token)
+        return bool(int(deleted or 0) > 0)
+    except (RedisError, OSError) as exc:
+        logger.warning(
+            "index_lock_release_failed",
+            lock_key=lock_key,
+            error_type=type(exc).__name__,
+        )
+        return False
+
+
+async def _extend_index_lock(
+    lock_key: str,
+    token: str,
+    *,
+    ttl_seconds: int | None = None,
+    redis: Any = None,
+) -> bool:
+    """Atomically extend the distributed Redis lock TTL via Lua compare-and-expire."""
+    from redis.exceptions import RedisError
+
+    from app.modules.trello.rate_limiter import _get_loop_redis
+
+    effective_ttl = (
+        ttl_seconds if ttl_seconds is not None else settings.INDEX_LOCK_TTL_SECONDS
+    )
+    try:
+        client = redis if redis is not None else _get_loop_redis()
+        eval_fn = getattr(client, "eval", None)
+        if eval_fn is None:
+            return False
+        extended = await eval_fn(
+            _EXTEND_LOCK_LUA, 1, lock_key, token, str(effective_ttl)
+        )
+        return bool(int(extended or 0) > 0)
+    except (RedisError, OSError) as exc:
+        logger.warning(
+            "index_lock_extend_failed",
+            lock_key=lock_key,
+            error_type=type(exc).__name__,
+        )
+        return False
+
+
+async def _index_source(
+    source_id: UUID,
+    *,
+    force: bool = False,
+    redis: Any = None,
+) -> bool:
+    from uuid import uuid4
+
+    from app.modules.context.indexer import IndexingService
+
+    lock_key = f"lock:index:source:{source_id}"
+    token = uuid4().hex
+    acquired = await _acquire_index_lock(lock_key, token, redis=redis)
+    if not acquired:
+        logger.info("index_source_skipped_locked", source_id=str(source_id))
+        return False
+
+    has_more = False
+
+    async def _heartbeat() -> None:
+        await _extend_index_lock(lock_key, token, redis=redis)
+
+    try:
+        async with worker_session_maker() as db:
+            try:
+                service = IndexingService(
+                    db,
+                    redis=redis,
+                    on_batch_complete=_heartbeat,
+                )
+            except TypeError:
+                service = IndexingService(db, redis=redis)
+            run_result = await service.index_source(source_id, force=force)
+            has_more = bool(getattr(run_result, "has_more", False))
+        return True
+    finally:
+        await _release_index_lock(lock_key, token, redis=redis)
+        if has_more:
+            logger.info("index_source_reenqueued_remaining_work", source_id=str(source_id))
+            dispatch_task(index_source_task, str(source_id))
+
+
+@celery_app.task(
+    name="app.workers.tasks.index_source_task",
+    queue="ai",
+    autoretry_for=(OSError,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def index_source_task(source_id: str, force: bool = False) -> bool:
+    """Index a Trello source's cards, comments, and card summaries into chunks on the ai queue."""
+    return asyncio.run(_index_source(UUID(str(source_id)), force=force))
+
+
+async def _index_repository(
+    repo_id: UUID,
+    *,
+    force: bool = False,
+    redis: Any = None,
+) -> bool:
+    from uuid import uuid4
+
+    from app.modules.context.indexer import IndexingService
+
+    lock_key = f"lock:index:repository:{repo_id}"
+    token = uuid4().hex
+    acquired = await _acquire_index_lock(lock_key, token, redis=redis)
+    if not acquired:
+        logger.info("index_repository_skipped_locked", repository_id=str(repo_id))
+        return False
+
+    has_more = False
+
+    async def _heartbeat() -> None:
+        await _extend_index_lock(lock_key, token, redis=redis)
+
+    try:
+        async with worker_session_maker() as db:
+            try:
+                service = IndexingService(
+                    db,
+                    redis=redis,
+                    on_batch_complete=_heartbeat,
+                )
+            except TypeError:
+                service = IndexingService(db, redis=redis)
+            run_result = await service.index_repository(repo_id, force=force)
+            has_more = bool(getattr(run_result, "has_more", False))
+        return True
+    finally:
+        await _release_index_lock(lock_key, token, redis=redis)
+        if has_more:
+            logger.info(
+                "index_repository_reenqueued_remaining_work",
+                repository_id=str(repo_id),
+            )
+            dispatch_task(index_repository_task, str(repo_id))
+
+
+@celery_app.task(
+    name="app.workers.tasks.index_repository_task",
+    queue="ai",
+    autoretry_for=(OSError,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def index_repository_task(repo_id: str, force: bool = False) -> bool:
+    """Index a GitHub repository's commits into daily commit_group chunks on the ai queue."""
+    return asyncio.run(_index_repository(UUID(str(repo_id)), force=force))
