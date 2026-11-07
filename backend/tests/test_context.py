@@ -22,7 +22,7 @@ async def _create_user(async_client: AsyncClient) -> str:
     )
     assert response.status_code == 201
     async_client.headers["Origin"] = "http://localhost:3000"
-    async_client.headers["X-CSRF-Token"] = async_client.cookies.get("csrf_token", "")
+    async_client.headers["X-CSRF-Token"] = async_client.cookies.get("csrf_token") or ""
     return email
 
 
@@ -828,3 +828,662 @@ async def test_context_service_translates_gemini_typed_errors_to_503(
         await service.index_cards(client_id=None, max_cards=5)
     assert index_exc.value.status_code == 503
     assert "Could not reach" in str(index_exc.value.detail)
+
+
+def test_default_token_counter_empty_and_non_empty() -> None:
+    from app.modules.context.chunker import default_token_counter
+
+    assert default_token_counter("") == 0
+    assert default_token_counter("a") == 1
+    assert default_token_counter("abcd") == 1
+    assert default_token_counter("abcde") == 2
+    assert default_token_counter("x" * 100) == 25
+    assert default_token_counter("x" * 101) == 26
+
+
+def test_chunker_determinism() -> None:
+    from datetime import UTC, datetime
+
+    from app.modules.context.chunker import (
+        CardBodyInput,
+        CommentInput,
+        CommitInput,
+        chunk_card_body,
+        chunk_comments,
+        chunk_commits,
+    )
+
+    card = CardBodyInput(
+        client_name="Acme Corp",
+        board_name="Platform Board",
+        list_name="In Progress",
+        card_title="Deterministic Card",
+        description="A detailed paragraph explaining the architecture. " * 40,
+        labels=["backend", "rag"],
+        checklists=[{"name": "Tasks", "items": [{"name": "Step 1", "state": "complete"}]}],
+        occurred_at=datetime(2026, 4, 15, 10, 0, tzinfo=UTC),
+    )
+    first_body = chunk_card_body(card)
+    second_body = chunk_card_body(card)
+    assert first_body == second_body
+    assert [c.content_hash for c in first_body] == [c.content_hash for c in second_body]
+
+    comments = [
+        CommentInput(
+            comment_id=str(uuid.UUID(int=i + 1)),
+            author_name="Alice",
+            text=f"Status update {i} with implementation details.",
+            created_at=datetime(2026, 4, 15, 10, i, tzinfo=UTC),
+        )
+        for i in range(15)
+    ]
+    first_comments = chunk_comments(
+        list(reversed(comments)),
+        client_name=card.client_name,
+        board_name=card.board_name,
+        list_name=card.list_name,
+        card_title=card.card_title,
+    )
+    second_comments = chunk_comments(
+        comments,
+        client_name=card.client_name,
+        board_name=card.board_name,
+        list_name=card.list_name,
+        card_title=card.card_title,
+    )
+    assert first_comments == second_comments
+
+    commits = [
+        CommitInput(
+            commit_id=str(uuid.UUID(int=100 + i)),
+            sha=f"{i:040x}",
+            message=f"feat: implement module {i}",
+            author_name="Dev",
+            committed_at=datetime(2026, 4, 15, 12, i, tzinfo=UTC),
+        )
+        for i in range(5)
+    ]
+    first_commits = chunk_commits(
+        list(reversed(commits)),
+        client_name="Acme Corp",
+        repo_name="org/repo",
+    )
+    second_commits = chunk_commits(
+        commits,
+        client_name="Acme Corp",
+        repo_name="org/repo",
+    )
+    assert first_commits == second_commits
+
+
+def test_chunker_header_present_on_every_chunk() -> None:
+    from datetime import UTC, datetime
+
+    from app.modules.context.chunker import (
+        CardBodyInput,
+        CommentInput,
+        CommitInput,
+        chunk_card_body,
+        chunk_comments,
+        chunk_commits,
+    )
+
+    card = CardBodyInput(
+        client_name="Beta Client",
+        board_name="Roadmap",
+        list_name="Doing",
+        card_title="Header Check",
+        description=("Sentence about system design and milestones.\n\n") * 80,
+        labels=[],
+        occurred_at=None,
+    )
+    expected_card_header = "Client: Beta Client | Board: Roadmap | List: Doing | Card: Header Check"
+    body_chunks = chunk_card_body(card)
+    assert len(body_chunks) > 1
+    for ch in body_chunks:
+        assert ch.text.startswith(expected_card_header + "\n")
+
+    comments = [
+        CommentInput(
+            comment_id=str(uuid.UUID(int=i + 1)),
+            author_name="Reviewer",
+            text=("Detailed feedback line on the sprint deliverable. " * 25),
+            created_at=datetime(2026, 4, 10, 9, i % 60, tzinfo=UTC),
+        )
+        for i in range(12)
+    ]
+    comment_chunks = chunk_comments(
+        comments,
+        client_name="Beta Client",
+        board_name="Roadmap",
+        list_name="Doing",
+        card_title="Header Check",
+    )
+    assert len(comment_chunks) > 2
+    for ch in comment_chunks:
+        assert ch.text.startswith(expected_card_header + "\n")
+
+    commits = [
+        CommitInput(
+            commit_id=str(uuid.UUID(int=200 + i)),
+            sha=f"{i:040x}",
+            message="refactor: update subsystem components and tests " * 15,
+            author_name="Engineer",
+            committed_at=datetime(2026, 4, 12, 14, i % 60, tzinfo=UTC),
+        )
+        for i in range(10)
+    ]
+    expected_commit_header = "Client: Beta Client | Repo: beta/service | Date: 2026-04-12"
+    commit_chunks = chunk_commits(
+        commits,
+        client_name="Beta Client",
+        repo_name="beta/service",
+    )
+    assert len(commit_chunks) > 1
+    for ch in commit_chunks:
+        assert ch.text.startswith(expected_commit_header + "\n")
+
+
+def test_chunker_overlap_only_when_text_exceeds_target() -> None:
+    from app.modules.context.chunker import CardBodyInput, chunk_card_body
+
+    short_card = CardBodyInput(
+        client_name="ClientX",
+        board_name="BoardY",
+        list_name="ListZ",
+        card_title="Short Card",
+        description="Paragraph one.\n\nParagraph two.",
+    )
+    short_chunks = chunk_card_body(short_card, target_tokens=400, overlap_tokens=50)
+    assert len(short_chunks) == 1
+    assert short_chunks[0].ordinal == 0
+
+    paragraphs = [f"UniqueSegment-{i:03d}: " + ("word " * 25) for i in range(12)]
+    long_card = CardBodyInput(
+        client_name="ClientX",
+        board_name="BoardY",
+        list_name="ListZ",
+        card_title="Long Card",
+        description="\n\n".join(paragraphs),
+    )
+    long_chunks = chunk_card_body(long_card, target_tokens=400, overlap_tokens=50)
+    assert len(long_chunks) > 1
+
+    # Verify adjacent chunks share overlapping content from the end of chunk i into the start of chunk i+1
+    for idx in range(len(long_chunks) - 1):
+        current_body = long_chunks[idx].text.split("\n", 1)[1]
+        next_body = long_chunks[idx + 1].text.split("\n", 1)[1]
+        tail_sample = current_body[-80:].strip()
+        assert tail_sample in next_body
+
+
+def test_comment_group_stability_on_single_edit_and_append() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.modules.context.chunker import CommentInput, chunk_comments
+
+    base_time = datetime(2026, 3, 1, 8, 0, tzinfo=UTC)
+    original_comments = [
+        CommentInput(
+            comment_id=str(uuid.UUID(int=1000 + i)),
+            author_name=f"User{i}",
+            text=f"Comment number {i} discussing feature progress.",
+            created_at=base_time + timedelta(minutes=i),
+        )
+        for i in range(25)
+    ]
+
+    baseline_chunks = chunk_comments(
+        original_comments,
+        client_name="Acme",
+        board_name="Sprint",
+        list_name="Active",
+        card_title="Feature Card",
+        comments_per_group=10,
+    )
+    assert len(baseline_chunks) == 3
+
+    # Edit one comment in the middle group (index 14 -> group 1)
+    edited_comments = list(original_comments)
+    edited_comments[14] = CommentInput(
+        comment_id=original_comments[14].comment_id,
+        author_name=original_comments[14].author_name,
+        text="Comment number 14 UPDATED with revised timeline.",
+        created_at=original_comments[14].created_at,
+    )
+    edited_chunks = chunk_comments(
+        edited_comments,
+        client_name="Acme",
+        board_name="Sprint",
+        list_name="Active",
+        card_title="Feature Card",
+        comments_per_group=10,
+    )
+    assert len(edited_chunks) == 3
+    assert edited_chunks[0].content_hash == baseline_chunks[0].content_hash
+    assert edited_chunks[1].content_hash != baseline_chunks[1].content_hash
+    assert edited_chunks[2].content_hash == baseline_chunks[2].content_hash
+
+    # Append a new comment at the end (index 25 -> goes into last group 2)
+    appended_comments = list(original_comments) + [
+        CommentInput(
+            comment_id=str(uuid.UUID(int=1025)),
+            author_name="User25",
+            text="New appended comment at the end of the thread.",
+            created_at=base_time + timedelta(minutes=25),
+        )
+    ]
+    appended_chunks = chunk_comments(
+        appended_comments,
+        client_name="Acme",
+        board_name="Sprint",
+        list_name="Active",
+        card_title="Feature Card",
+        comments_per_group=10,
+    )
+    assert len(appended_chunks) == 3
+    assert appended_chunks[0].content_hash == baseline_chunks[0].content_hash
+    assert appended_chunks[1].content_hash == baseline_chunks[1].content_hash
+    assert appended_chunks[2].content_hash != baseline_chunks[2].content_hash
+
+
+def test_chunk_card_body_no_truncation_on_50k_char_card() -> None:
+    from app.modules.context.chunker import CardBodyInput, chunk_card_body
+
+    blocks: list[str] = []
+    markers: list[str] = []
+    idx = 0
+    total_len = 0
+    while total_len < 50_000:
+        marker = f"MARKER_{idx:04d}_END"
+        markers.append(marker)
+        block = f"Section {idx}: " + ("detailed specification text " * 15) + marker
+        blocks.append(block)
+        total_len += len(block) + 2
+        idx += 1
+
+    description = "\n\n".join(blocks)
+    assert len(description) >= 50_000
+
+    card = CardBodyInput(
+        client_name="MegaClient",
+        board_name="Enterprise Board",
+        list_name="Backlog",
+        card_title="50k Spec Card",
+        description=description,
+        labels=["spec"],
+        occurred_at=None,
+    )
+    chunks = chunk_card_body(card)
+    assert len(chunks) > 30
+    assert [c.ordinal for c in chunks] == list(range(len(chunks)))
+
+    combined = "\n".join(c.text for c in chunks)
+    assert markers[0] in combined
+    assert markers[len(markers) // 2] in combined
+    assert markers[-1] in combined
+    for marker in markers:
+        assert marker in combined
+
+
+def test_commit_grouping_by_utc_date_with_metadata_commit_ids() -> None:
+    from datetime import UTC, datetime, timedelta, timezone
+
+    from app.modules.context.chunker import CommitInput, chunk_commits
+
+    tz_plus_5 = timezone(timedelta(hours=5))
+
+    # 2026-04-10 23:30 UTC (written as 2026-04-11 04:30+05:00 -> still 2026-04-10 in UTC)
+    c1_id = str(uuid.UUID(int=1))
+    c2_id = str(uuid.UUID(int=2))
+    c3_id = str(uuid.UUID(int=3))
+    commits = [
+        CommitInput(
+            commit_id=c1_id,
+            sha="a" * 40,
+            message="fix: late night UTC commit",
+            author_name="Dev1",
+            committed_at=datetime(2026, 4, 11, 4, 30, tzinfo=tz_plus_5),
+        ),
+        CommitInput(
+            commit_id=c2_id,
+            sha="b" * 40,
+            message="feat: earlier same UTC day",
+            author_name="Dev2",
+            committed_at=datetime(2026, 4, 10, 12, 0, tzinfo=UTC),
+        ),
+        CommitInput(
+            commit_id=c3_id,
+            sha="c" * 40,
+            message="chore: next UTC day commit",
+            author_name="Dev1",
+            committed_at=datetime(2026, 4, 11, 9, 0, tzinfo=UTC),
+        ),
+    ]
+
+    chunks = chunk_commits(
+        commits,
+        client_name="Acme",
+        repo_name="org/repo",
+    )
+    assert len(chunks) == 2
+
+    day1, day2 = chunks[0], chunks[1]
+    assert day1.group_key == "2026-04-10"
+    assert day1.ordinal == 0
+    assert day1.metadata["commit_ids"] == [c2_id, c1_id]
+    assert day1.metadata["date"] == "2026-04-10"
+
+    assert day2.group_key == "2026-04-11"
+    assert day2.ordinal == 0
+    assert day2.metadata["commit_ids"] == [c3_id]
+    assert day2.metadata["date"] == "2026-04-11"
+
+
+@pytest.mark.asyncio
+async def test_chunks_and_links_constraints_and_cascades(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from datetime import UTC, datetime
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.modules.context.models import ContextChunkRecord, ContextLink
+    from app.modules.github.models import GithubCommit, GithubRepository
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post(
+        "/api/v1/workspaces",
+        json={"name": "Chunks constraint workspace"},
+    )
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    connection_id = await _create_connection(db_session, user, workspace)
+
+    card1 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Constraint Card 1",
+        board_id="constraint-board-1",
+    )
+    card2 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Constraint Card 2",
+        board_id="constraint-board-2",
+    )
+
+    repo = GithubRepository(
+        workspace_id=workspace_id,
+        connection_id=connection_id,
+        github_repo_id="repo-123",
+        full_name="acme/service",
+        description="Test repo",
+        url="https://github.com/acme/service",
+        default_branch="main",
+        private=True,
+        included=True,
+        sync_status="completed",
+    )
+    db_session.add(repo)
+    await db_session.flush()
+
+    commit = GithubCommit(
+        workspace_id=workspace_id,
+        repository_id=repo.id,
+        sha="1" * 40,
+        message="initial commit",
+        author_name="Dev",
+        author_login="dev",
+        committed_at=datetime(2026, 4, 10, 12, 0, tzinfo=UTC),
+        url="https://github.com/acme/service/commit/" + "1" * 40,
+        additions=10,
+        deletions=0,
+        changed_files=1,
+    )
+    db_session.add(commit)
+    await db_session.commit()
+
+    # 1. Both parents set -> rejected
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(
+                ContextChunkRecord(
+                    workspace_id=workspace_id,
+                    source_id=card1.source_id,
+                    repository_id=repo.id,
+                    source_type="trello",
+                    card_id=card1.id,
+                    chunk_kind="card_body",
+                    ordinal=0,
+                    text="invalid both parents",
+                    token_estimate=5,
+                    chunker_version=1,
+                    content_hash="h1",
+                )
+            )
+            await db_session.flush()
+
+    # 2. No parent set -> rejected
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(
+                ContextChunkRecord(
+                    workspace_id=workspace_id,
+                    source_id=card1.source_id,
+                    repository_id=None,
+                    source_type="trello",
+                    card_id=None,
+                    chunk_kind="card_body",
+                    ordinal=0,
+                    text="invalid no parent",
+                    token_estimate=5,
+                    chunker_version=1,
+                    content_hash="h2",
+                )
+            )
+            await db_session.flush()
+
+    # 3. Trello chunk with repository_id -> rejected
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(
+                ContextChunkRecord(
+                    workspace_id=workspace_id,
+                    source_id=None,
+                    repository_id=repo.id,
+                    source_type="trello",
+                    card_id=None,
+                    group_key="2026-04-10",
+                    chunk_kind="commit_group",
+                    ordinal=0,
+                    text="invalid trello with repository_id",
+                    token_estimate=5,
+                    chunker_version=1,
+                    content_hash="h3",
+                )
+            )
+            await db_session.flush()
+
+    # 4. GitHub chunk without group_key -> rejected
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(
+                ContextChunkRecord(
+                    workspace_id=workspace_id,
+                    source_id=None,
+                    repository_id=repo.id,
+                    source_type="github",
+                    card_id=None,
+                    group_key=None,
+                    chunk_kind="commit_group",
+                    ordinal=0,
+                    text="invalid github without group_key",
+                    token_estimate=5,
+                    chunker_version=1,
+                    content_hash="h4",
+                )
+            )
+            await db_session.flush()
+
+    # 5. Embedding set without embedding_model -> rejected
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(
+                ContextChunkRecord(
+                    workspace_id=workspace_id,
+                    source_id=card1.source_id,
+                    repository_id=None,
+                    source_type="trello",
+                    card_id=card1.id,
+                    chunk_kind="card_body",
+                    ordinal=0,
+                    text="invalid embedding without model",
+                    token_estimate=5,
+                    embedding=[0.1] * 768,
+                    embedding_model=None,
+                    chunker_version=1,
+                    content_hash="h5",
+                )
+            )
+            await db_session.flush()
+
+    # Valid Trello chunk and GitHub chunk
+    valid_card_chunk = ContextChunkRecord(
+        workspace_id=workspace_id,
+        source_id=card1.source_id,
+        repository_id=None,
+        source_type="trello",
+        card_id=card1.id,
+        chunk_kind="card_body",
+        ordinal=0,
+        text="Valid trello card chunk",
+        token_estimate=6,
+        embedding=[0.25] * 768,
+        embedding_model="gemini-embedding-001",
+        chunker_version=1,
+        content_hash="valid-card-hash",
+    )
+    valid_card2_chunk = ContextChunkRecord(
+        workspace_id=workspace_id,
+        source_id=card2.source_id,
+        repository_id=None,
+        source_type="trello",
+        card_id=card2.id,
+        chunk_kind="card_body",
+        ordinal=0,
+        text="Valid trello card 2 chunk",
+        token_estimate=6,
+        chunker_version=1,
+        content_hash="valid-card2-hash",
+    )
+    valid_repo_chunk = ContextChunkRecord(
+        workspace_id=workspace_id,
+        source_id=None,
+        repository_id=repo.id,
+        source_type="github",
+        card_id=None,
+        group_key="2026-04-10",
+        chunk_kind="commit_group",
+        ordinal=0,
+        text="Valid github commit group chunk",
+        token_estimate=8,
+        chunker_version=1,
+        content_hash="valid-repo-hash",
+        chunk_metadata={"commit_ids": [str(commit.id)]},
+    )
+    db_session.add_all([valid_card_chunk, valid_card2_chunk, valid_repo_chunk])
+    await db_session.flush()
+
+    # 6. Duplicate links rejected even with NULL columns (NULLS NOT DISTINCT)
+    link1 = ContextLink(
+        workspace_id=workspace_id,
+        from_card_id=card1.id,
+        from_commit_id=None,
+        to_card_id=card2.id,
+        to_commit_id=None,
+        link_type="mentions",
+        confidence=1.0,
+    )
+    db_session.add(link1)
+    await db_session.flush()
+
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(
+                ContextLink(
+                    workspace_id=workspace_id,
+                    from_card_id=card1.id,
+                    from_commit_id=None,
+                    to_card_id=card2.id,
+                    to_commit_id=None,
+                    link_type="mentions",
+                    confidence=0.8,
+                )
+            )
+            await db_session.flush()
+
+    # 7. Deleting a card cascades to its chunks
+    card1_id = card1.id
+    await db_session.delete(card1)
+    await db_session.flush()
+    remaining_card1_chunks = (
+        await db_session.execute(
+            select(ContextChunkRecord).where(ContextChunkRecord.card_id == card1_id)
+        )
+    ).scalars().all()
+    assert remaining_card1_chunks == []
+
+    # 8. Deleting a repository cascades to its chunks
+    repo_id = repo.id
+    await db_session.delete(repo)
+    await db_session.flush()
+    remaining_repo_chunks = (
+        await db_session.execute(
+            select(ContextChunkRecord).where(ContextChunkRecord.repository_id == repo_id)
+        )
+    ).scalars().all()
+    assert remaining_repo_chunks == []
+
+    # Add a link between card2 and card3 to verify workspace cascade on both chunks & links
+    card3 = await _create_context_card(
+        db_session,
+        workspace_id,
+        connection_id,
+        name="Constraint Card 3",
+        board_id="constraint-board-3",
+    )
+    db_session.add(
+        ContextLink(
+            workspace_id=workspace_id,
+            from_card_id=card2.id,
+            from_commit_id=None,
+            to_card_id=card3.id,
+            to_commit_id=None,
+            link_type="fixes",
+        )
+    )
+    await db_session.flush()
+
+    # 9. Deleting a workspace leaves zero chunks and links
+    await db_session.delete(workspace)
+    await db_session.commit()
+
+    ws_chunks = (
+        await db_session.execute(
+            select(ContextChunkRecord).where(ContextChunkRecord.workspace_id == workspace_id)
+        )
+    ).scalars().all()
+    ws_links = (
+        await db_session.execute(
+            select(ContextLink).where(ContextLink.workspace_id == workspace_id)
+        )
+    ).scalars().all()
+    assert ws_chunks == []
+    assert ws_links == []
