@@ -43,7 +43,6 @@ async def create_client(
 
 
 @router.patch("/{client_id}", response_model=ClientSummaryResponse)
-@router.put("/{client_id}", response_model=ClientSummaryResponse)
 async def update_client(
     client_id: UUID,
     payload: ClientCreateRequest,
