@@ -50,13 +50,16 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = Field()
+    TEST_DATABASE_URL: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@localhost:5433/client_insights_test"
+    )
     DB_POOL_SIZE: int = Field(default=5, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=10, ge=0)
     DB_POOL_RECYCLE: int = Field(default=1800, ge=0)
     DB_POOL_TIMEOUT: int = Field(default=30, ge=1)
     DB_PGBOUNCER: bool = Field(default=False)
 
-    @field_validator("DATABASE_URL", mode="before")
+    @field_validator("DATABASE_URL", "TEST_DATABASE_URL", mode="before")
     @classmethod
     def assemble_db_connection(cls, v: str) -> str:
         if isinstance(v, str):

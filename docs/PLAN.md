@@ -258,7 +258,7 @@ For GitHub, configure an OAuth App callback at `http://localhost:3000/dashboard/
 
 ## 11. Testing and quality
 - **Unit**: encryption, chunking, hashing, cron/timezone math, schema and citation validators.
-- **Integration**: Trello client with respx fixtures, DB with testcontainers, Celery in eager mode.
+- **Integration**: Trello client with respx fixtures, isolated test database via `TEST_DATABASE_URL` (`client_insights_test`, refusing to run if equal to `DATABASE_URL`, with `pgvector` schema setup and table truncation at session start and after committing tests), Celery in eager mode.
 - **Evaluation set**: 3 to 5 anonymized real boards with hand-written expected insights; re-run whenever a prompt or model changes.
 - **E2E**: Playwright for signup → connect → run → report.
 - **Responsive UI**: Use Playwright to check every frontend screen at mobile (375px), tablet (768px), and desktop (1280px) widths; verify primary interactions and no horizontal overflow.
