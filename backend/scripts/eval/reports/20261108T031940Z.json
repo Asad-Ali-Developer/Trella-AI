@@ -1,0 +1,2123 @@
+{
+  "generated_at": "2026-11-08T03:19:40.203793+00:00",
+  "golden_path": "D:\\Trella\\backend\\scripts\\eval\\golden.jsonl",
+  "golden_count": 40,
+  "config": {
+    "seed": 42,
+    "embedding_model": "fake-bench-768",
+    "ef_search": 100,
+    "iterative_scan": "relaxed_order"
+  },
+  "retrievers": {
+    "VectorOnlyRetriever": {
+      "overall": {
+        "count": 40,
+        "recall_at_5": 0.73,
+        "recall_at_10": 0.765,
+        "mrr": 0.7528,
+        "p50_ms": 69.336,
+        "p95_ms": 102.415
+      },
+      "groups": {
+        "semantic": {
+          "count": 10,
+          "recall_at_5": 0.94,
+          "recall_at_10": 0.96,
+          "mrr": 1.0,
+          "p50_ms": 94.01,
+          "p95_ms": 109.582
+        },
+        "exact_identifier": {
+          "count": 10,
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.1,
+          "mrr": 0.0111,
+          "p50_ms": 90.449,
+          "p95_ms": 103.831
+        },
+        "client_filtered": {
+          "count": 10,
+          "recall_at_5": 0.98,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "p50_ms": 66.31,
+          "p95_ms": 75.39
+        },
+        "date_filtered": {
+          "count": 10,
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "p50_ms": 69.019,
+          "p95_ms": 84.806
+        }
+      },
+      "queries": [
+        {
+          "group": "semantic",
+          "query": "merchant checkout settlement payout refund chargeback reconciliation gateway",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "046606f6-3c7a-412d-aafd-3660e5199bd9",
+            "06ae5314-64f5-40c5-9e1f-bf0c357ee616",
+            "0b73ca1c-d1dc-41e5-a9a1-44751958a981",
+            "c4495462-6de0-4a39-a13a-2a59bf3aebc4",
+            "cb21aa80-19d4-439a-bdff-e27d9b125dfb"
+          ],
+          "retrieved_card_ids_top10": [
+            "046606f6-3c7a-412d-aafd-3660e5199bd9",
+            "06ae5314-64f5-40c5-9e1f-bf0c357ee616",
+            "0b73ca1c-d1dc-41e5-a9a1-44751958a981",
+            "c4495462-6de0-4a39-a13a-2a59bf3aebc4",
+            "cb21aa80-19d4-439a-bdff-e27d9b125dfb",
+            "3fe604f4-2867-4d3b-9c5f-3cba150d28eb",
+            "b60b4f87-5dd8-4ffc-9f87-8b322b429596",
+            "baff361a-b37e-4c41-9a62-75f5cf590b8e",
+            "afe6d7b6-e0f8-492f-aeda-791fd770a730",
+            "d840efbd-5a8d-4167-b81c-9aa5b2badc88"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 68.207899981644
+        },
+        {
+          "group": "semantic",
+          "query": "enterprise signup activation wizard kyc provisioning walkthrough checklist",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "1213b82f-c081-41f9-acda-a21685b7c866",
+            "78df0f95-74ca-4720-af4e-0e9f06a894f5",
+            "14b379f4-69c4-461f-96cc-298d576f3527",
+            "abab1341-0b52-4621-8c45-7fac213ce169",
+            "9e5fa747-03fe-428a-919c-ce6981bf8129"
+          ],
+          "retrieved_card_ids_top10": [
+            "1213b82f-c081-41f9-acda-a21685b7c866",
+            "78df0f95-74ca-4720-af4e-0e9f06a894f5",
+            "14b379f4-69c4-461f-96cc-298d576f3527",
+            "abab1341-0b52-4621-8c45-7fac213ce169",
+            "9e5fa747-03fe-428a-919c-ce6981bf8129",
+            "a856227a-8e38-48b3-b833-25b82f6e8679",
+            "a3dc3b5a-91d4-4d13-95a8-38fa953ba84b",
+            "82a3df65-dd26-4ae5-88be-93a637fdefa4",
+            "fe76d3e5-4fcf-4b1c-8031-3984ce53cccf",
+            "9348941f-3e20-4d68-9cc6-b2dcd0c9ae4e"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 115.72659999364987
+        },
+        {
+          "group": "semantic",
+          "query": "scheduled executive report digest csv pdf export ledger summary",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "ad5b7e3e-f051-4118-aead-06a850152418",
+            "2b1e8004-51ef-4bd4-8cb3-c6fa1d30d053",
+            "1ceaaa8a-27cd-4fd0-8cca-89e235b64ab5",
+            "0349a77c-9e9d-42d9-90ce-84524a7977f7",
+            "770138dd-13e2-488d-9c7d-88965542ed1c"
+          ],
+          "retrieved_card_ids_top10": [
+            "ad5b7e3e-f051-4118-aead-06a850152418",
+            "2b1e8004-51ef-4bd4-8cb3-c6fa1d30d053",
+            "1ceaaa8a-27cd-4fd0-8cca-89e235b64ab5",
+            "0349a77c-9e9d-42d9-90ce-84524a7977f7",
+            "770138dd-13e2-488d-9c7d-88965542ed1c",
+            "6363f288-2c66-4630-b466-6cc62ddb5b02",
+            "b3cbd599-b7b9-4fe1-912d-f65addd688c7",
+            "8bebc5ee-80d3-4cc6-a69c-dc5756e94027",
+            "ee1afd75-e8aa-4058-8bba-a725f20b1e6f",
+            "0b60818e-5add-482a-9be2-2aad8b26e4bb"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 96.70840000035241
+        },
+        {
+          "group": "semantic",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "205f9619-df73-421d-87b2-e24dcbad3916",
+            "9155ed93-626d-4bf1-97a3-f0bed9b37816",
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "1a4c0d23-3088-4587-9aab-5c3c5c22e9c1",
+            "a513964e-965a-493e-85b6-9e95cc009f08"
+          ],
+          "retrieved_card_ids_top10": [
+            "205f9619-df73-421d-87b2-e24dcbad3916",
+            "9155ed93-626d-4bf1-97a3-f0bed9b37816",
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "1a4c0d23-3088-4587-9aab-5c3c5c22e9c1",
+            "39d11950-8a45-402e-91f2-0d9bc90ec689",
+            "a513964e-965a-493e-85b6-9e95cc009f08",
+            "755d814b-5f5b-4255-a544-9887b36ab3ed",
+            "c5efd670-1f4d-48ce-998d-e3d83cf29ade",
+            "e208945f-04c6-4509-93e1-eeef84622ac5",
+            "61af663c-ed2e-4bcd-8c06-df90aa1c4023"
+          ],
+          "recall_at_5": 0.8,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 57.77009995654225
+        },
+        {
+          "group": "semantic",
+          "query": "ios android react-native mobile biometric offline push notification sync",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "b0331494-2778-458f-95b8-9e2c5fc23510",
+            "0cb3f031-0808-47eb-8a6d-a8818dc5b493",
+            "0dc2cee5-98f0-4d68-8a2c-9d8677060c7a",
+            "7a42e24e-2e6a-4da9-b033-5b6bc4b033ad",
+            "3347ea22-c777-4dac-9eb3-f8990421d0b2"
+          ],
+          "retrieved_card_ids_top10": [
+            "b0331494-2778-458f-95b8-9e2c5fc23510",
+            "0cb3f031-0808-47eb-8a6d-a8818dc5b493",
+            "0dc2cee5-98f0-4d68-8a2c-9d8677060c7a",
+            "7a42e24e-2e6a-4da9-b033-5b6bc4b033ad",
+            "3347ea22-c777-4dac-9eb3-f8990421d0b2",
+            "48555e78-90fb-4067-8c2b-1f6fe702cea2",
+            "e6b04b55-4e65-40d3-a864-bfae15838511",
+            "76bffd44-d429-4211-b428-08896c3e3ca5",
+            "0470d067-0223-4d3c-8e15-5309814979e3",
+            "e5f473fa-1692-4e3d-88db-f0602f62b4d5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 97.45130001101643
+        },
+        {
+          "group": "semantic",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "23f4d412-e589-4b35-bab2-2ad6334ef6ff",
+            "1a1272f7-0f7c-44c3-b8df-eb00d3adeb1d",
+            "3fbc5dee-3b40-446d-a5c5-4d68821e90ae",
+            "10aaeeb1-f367-496a-ba0f-d3f876f831de"
+          ],
+          "retrieved_card_ids_top10": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "23f4d412-e589-4b35-bab2-2ad6334ef6ff",
+            "1a1272f7-0f7c-44c3-b8df-eb00d3adeb1d",
+            "3fbc5dee-3b40-446d-a5c5-4d68821e90ae",
+            "10aaeeb1-f367-496a-ba0f-d3f876f831de",
+            "9d4fe659-48b1-4e7c-adb4-a2d3e8621daa",
+            "4ec6ac9a-2490-4177-a1c9-ea9f987fe2ea",
+            "d4bed95a-c285-4db3-bb57-faa99ed19a40",
+            "c9f7136f-bd13-4e64-b186-25ddb4505c13",
+            "e4ad4069-5152-4274-9f51-0974fe3ebab5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 91.31240000715479
+        },
+        {
+          "group": "semantic",
+          "query": "trello github jira connector cursor sync webhook verification",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "41c7a406-9359-4b5d-9ac7-25209670efb3",
+            "0d6e7714-f57f-415f-a8b4-592663aca07b",
+            "efab64b5-2702-49a1-80a6-a43b1a3710ae",
+            "960f96d9-051b-4698-8463-299a2ba321ef",
+            "948d8c72-438f-48fb-a416-32b96f96c190"
+          ],
+          "retrieved_card_ids_top10": [
+            "41c7a406-9359-4b5d-9ac7-25209670efb3",
+            "0d6e7714-f57f-415f-a8b4-592663aca07b",
+            "efab64b5-2702-49a1-80a6-a43b1a3710ae",
+            "960f96d9-051b-4698-8463-299a2ba321ef",
+            "948d8c72-438f-48fb-a416-32b96f96c190",
+            "10df8c94-7b41-43ad-8199-673b5f8635af",
+            "85924e5f-1f53-4b6e-ab11-77367260282f",
+            "7e8f7fe9-163b-4284-b1b2-5b70a0a6e38e",
+            "197634e5-054b-4fbb-bad8-66baf252f8f9",
+            "d9a6f581-9cc1-4d6c-8bb2-c634985c5a31"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 58.26269998215139
+        },
+        {
+          "group": "semantic",
+          "query": "cohort retention funnel attribution telemetry warehouse clickhouse metrics",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "52662af9-6f4d-49bc-adfc-aac664d0d710",
+            "c4afee94-8558-40e2-816b-122ddc952f82",
+            "3577f4b0-fd3d-40bc-8e34-df76d1298de6",
+            "907aacfd-fc5e-4a46-a2a3-9d24b2daa983",
+            "432adfc9-91ea-447b-a817-381c1757f919"
+          ],
+          "retrieved_card_ids_top10": [
+            "52662af9-6f4d-49bc-adfc-aac664d0d710",
+            "c4afee94-8558-40e2-816b-122ddc952f82",
+            "3577f4b0-fd3d-40bc-8e34-df76d1298de6",
+            "907aacfd-fc5e-4a46-a2a3-9d24b2daa983",
+            "432adfc9-91ea-447b-a817-381c1757f919",
+            "7f5f056c-d13b-42f7-ae4e-f21a799c7542",
+            "f8563880-a7f3-4fe3-9a73-f6a1c17e09cb",
+            "c0bd494b-69e6-4df4-8be7-3aeb5a6ae3c6",
+            "c88bc7ed-86fa-422c-b8ff-156eedaf3b1d",
+            "13517fc4-fd6b-4de9-813a-69b31dbea7d5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 102.0711999735795
+        },
+        {
+          "group": "semantic",
+          "query": "fernet aes encryption key rotation rbac audit log tenant isolation",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "49d1adbf-54ca-48d0-8f62-89954b612da7",
+            "e9da8158-8bf9-4ebb-b717-2943e34edc2b",
+            "41e38aa6-6dbf-40f0-87cb-54a40d66fcc4",
+            "bfb63623-73bf-4651-8a28-b2a88024b48d",
+            "c4b5d457-28d3-4d36-bef4-f20cfc7e2f36"
+          ],
+          "retrieved_card_ids_top10": [
+            "49d1adbf-54ca-48d0-8f62-89954b612da7",
+            "e9da8158-8bf9-4ebb-b717-2943e34edc2b",
+            "41e38aa6-6dbf-40f0-87cb-54a40d66fcc4",
+            "bfb63623-73bf-4651-8a28-b2a88024b48d",
+            "c4b5d457-28d3-4d36-bef4-f20cfc7e2f36",
+            "d210dccd-63bd-4f42-903e-0dcff8d61d74",
+            "1da7bdd9-e0b9-4320-b6c4-f6b29b0db81d",
+            "1be6f417-cd7b-4b30-914f-9b7ae41230e0",
+            "952c9e6f-5fb2-4ce6-9e49-c8ee61fc222b",
+            "7da21eb9-9ab3-4ec2-b89d-431b3481ebb7"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 97.98690001480281
+        },
+        {
+          "group": "semantic",
+          "query": "subscription invoice proration metering quota overage dunning plan-limit",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "a5b09024-a12a-4119-86fb-bcdb7ecd7062",
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "7c01fb86-adec-43dc-921b-8d2ac5239cca"
+          ],
+          "retrieved_card_ids_top10": [
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "bd76bb2f-f189-4bad-aad8-8bca53cf14e1",
+            "f2e9702d-11e9-4daa-ae69-81a35d3d9e56",
+            "0a813e88-0df3-4a58-be83-3c05cd21fb86",
+            "9c91e8e5-4f30-4268-80ba-deb83572f0f5",
+            "aabe05a3-66e7-403c-a522-67569c4b1428",
+            "60a525ef-9906-4aac-87e7-f31f82383310",
+            "e79524eb-84fa-4889-b21f-9823f23b1efb"
+          ],
+          "recall_at_5": 0.6,
+          "recall_at_10": 0.6,
+          "mrr": 1.0,
+          "latency_ms": 59.34979999437928
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-1000\" 835395eae9 billing billing",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "898f3586-b74a-4db6-a223-afc0429146ca"
+          ],
+          "retrieved_card_ids_top10": [
+            "fdff67de-6a63-4d5b-9398-ba020141f1ae",
+            "dc2dede7-d87d-45e7-9225-12929152da10",
+            "217c82b1-c884-4ac6-a19a-4805e03a0ab6",
+            "e39836bb-e23d-4faa-afad-49e9c41c147e",
+            "a54720e0-88be-4288-87ad-45b104a05d77",
+            "71a84189-565b-4785-b8f9-85fc69598983",
+            "56516ab6-5f7e-4e7d-9d68-9315ccda78e2",
+            "f273f4a4-c7a5-4755-ba97-a5df881e04ef",
+            "831448cb-053f-449f-a290-8eda384ec60d",
+            "d7aa0f83-59f6-464d-bfce-50b36151bd93"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 57.92960000690073
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-1698\" b0010d70b3 analytics analytics",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "2978ad8f-0cc0-423f-a221-6ec62e5a7731"
+          ],
+          "retrieved_card_ids_top10": [
+            "183fea70-3ff6-479e-8cd4-b90abf8211bc",
+            "4a658a7d-c1f5-4014-9fa8-81b0c0133339",
+            "9f9bc7bd-5c3d-415c-8a74-982e56ca0fb3",
+            "27369729-118a-430f-9ecd-a3625fe8b045",
+            "288f3435-c3b5-44db-9387-03c92b29bf36",
+            "04b7bb51-3df0-45f6-8b6b-078b7b6b9fc1",
+            "7a4a902f-21d6-4b0f-b1ac-040d6c1cc405",
+            "fd987761-b0cc-4109-ad37-a68058f99bf7",
+            "2978ad8f-0cc0-423f-a221-6ec62e5a7731",
+            "9946f64c-cbaa-4cfd-8fb1-244485bf7576"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 1.0,
+          "mrr": 0.1111111111111111,
+          "latency_ms": 60.054600005969405
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-2395\" f71274382c mobile_app mobile_app",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "bed6bb8f-387a-4817-b658-1feec6a49a31"
+          ],
+          "retrieved_card_ids_top10": [
+            "02f54282-6768-4dfb-91fa-64af07a367aa",
+            "2a64d46b-ceac-4779-9538-e0354157abec",
+            "babfbd99-2d9d-4bd8-aeb2-f98cdb38c2f2",
+            "e03d1b30-adcd-495f-af91-a7be905c3fd9",
+            "b5aad404-0b1f-4e10-ae6d-605a670d50ef",
+            "954e95fb-362f-4bc2-99d5-d66c072b50ed",
+            "e79c797d-469f-4152-bb81-5c56b95b7efe",
+            "df223246-e6fb-41d3-bba2-6c214264e318",
+            "5b6a8102-0428-4378-bf50-23f440ef3935",
+            "e6bd4bbc-e3a0-4a3c-8c44-d60f8efe59c3"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 65.59419998666272
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-3092\" 2539e7af21 auth auth",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "44bb84b2-4a1e-4e91-933e-db88f9c2f1f5"
+          ],
+          "retrieved_card_ids_top10": [
+            "0555cd43-f936-4c6a-8bf8-5b3646aae4c2",
+            "bd0b7eef-0b71-4a15-b6c2-194f7e2dca62",
+            "fc534487-71e7-43e0-a61f-6cfe29435a8a",
+            "d327e3a3-4ed0-42e4-bfe1-3bd9d997783d",
+            "d4cdf91b-907b-4286-b5c5-71aa285ff996",
+            "d8a8b169-0bc1-4008-bb8e-858f3d2aad69",
+            "f0eebc30-5033-41de-af28-86ff42f1ad3e",
+            "659eff7e-39ba-480a-907e-d9af52e819a5",
+            "80fd884c-88f8-416e-bf0e-46f40422553c",
+            "21f50f57-b278-45f3-a2c0-65d75ad68498"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 108.94949996145442
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-379\" 2d0b0e599a security security",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "65daced0-460a-4125-bf8c-93d4c32afc4a"
+          ],
+          "retrieved_card_ids_top10": [
+            "9dc4805f-1fe3-469c-831e-687425076d01",
+            "7dabc954-cf52-47f4-a1ab-886126117488",
+            "2da61acf-b630-4d90-affa-40f7350cf740",
+            "f2df8f17-1d5c-495c-95a4-d81baeee0e2c",
+            "98507072-7f44-4bca-9d3a-e1311b388581",
+            "dac7bffa-d55a-4290-830c-a1a07946293c",
+            "6ba57136-9144-4442-82d8-a7f546ef7aaa",
+            "17430eff-0431-4773-8544-3fb6ead24b3d",
+            "581848c5-27d1-4990-a049-a289056a3b28",
+            "572398eb-46f8-4203-bb81-6a017b3d2792"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 56.54679995495826
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-4487\" 6f6c73455b security security",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "30a35f24-5fcc-438d-849e-2f138808c8fa"
+          ],
+          "retrieved_card_ids_top10": [
+            "bd2d09f7-0ca2-4bc7-b31d-3a4143eb3c09",
+            "045dde84-9759-44bb-9f45-b2b2fddb5c6e",
+            "30687b1b-ba17-45bd-8b25-34bb91560896",
+            "346683ad-c68f-4f12-bd02-c8fbbb6329e8",
+            "2b19a62b-6a29-4f03-8feb-d75e4880b8fa",
+            "6adbf03c-62fe-43b0-aa1c-d086941fc7cf",
+            "855ab411-061e-4762-a555-9f5cf70b3a05",
+            "6b107e6a-ee9e-400d-a6f9-466e55759b79",
+            "855a1f4f-8bc0-4f6f-843b-778345005273",
+            "07916b95-0287-4f88-b6d9-8418daa6f481"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 97.57580002769828
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-5184\" notifications notifications",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "aa58feda-b960-4b74-a32f-be6b7dd2ab19"
+          ],
+          "retrieved_card_ids_top10": [
+            "419fd247-3059-42ee-8dc4-9be213e05833",
+            "d2faa668-a35d-4dc4-be33-fab12d66d35a",
+            "3fbe4437-e723-417f-8db1-1f0448872477",
+            "df66d41e-08ad-42ec-adbc-f54a79d9ffd8",
+            "b016cb84-636e-4be2-9fde-baddd91c8dbf",
+            "79861b75-c207-413a-8469-f55d18fdaefc",
+            "9f243ccb-6a5f-4051-b07b-738b67f85205",
+            "55a94753-1409-440b-ada7-563bf9102e2c",
+            "5b6b8f80-9e09-4321-bfe0-7d039c404722",
+            "c7f93638-213f-4464-9b14-e9504a6fde70"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 90.50920000299811
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-5881\" 83364e5f00 mobile_app mobile_app",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "2264efac-b100-4aeb-921c-96991a2d27e8"
+          ],
+          "retrieved_card_ids_top10": [
+            "e34e22bb-73ec-44e4-a2e2-ed40be75ffa3",
+            "f521d190-4156-4864-9ad4-042ed9a3b578",
+            "63d3c6f5-96f6-45ab-a05b-d02263a4ccca",
+            "7db0a733-4677-45f4-9fe5-eba297041f94",
+            "b0e7ce7f-c85f-4fce-9aad-8d215d5d1a6d",
+            "4e2b71e6-0492-4fe6-87ed-c0574be1702a",
+            "e00ed5c7-6400-4fee-816b-23a247b8de3c",
+            "66eddb58-1eb2-42bf-a61b-c5d0880e3461",
+            "778238d0-48e2-4fdf-98f1-c89979528997",
+            "4475fba3-f570-469a-8202-977f8ff25018"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 90.3878000099212
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-6579\" 4e78242766 reporting reporting",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "088aff8f-0cd2-4532-9b77-6b2306338df3"
+          ],
+          "retrieved_card_ids_top10": [
+            "048fbff5-4da5-482a-9c08-c51191d81d75",
+            "0349a77c-9e9d-42d9-90ce-84524a7977f7",
+            "265f3dc0-83e3-4a0c-b77a-93a01806e613",
+            "ad5b7e3e-f051-4118-aead-06a850152418",
+            "c2979860-2693-4c30-bb9f-ba982718d1f7",
+            "6296dcb2-9e56-44b5-99a9-80bfb8dd259f",
+            "dbf4fd8c-f8c9-47ba-a9b5-0193f6790567",
+            "e154d715-811e-4eee-95f2-f980f41e7390",
+            "420b8945-6373-4539-89ae-c302c0eb8074",
+            "2b1e8004-51ef-4bd4-8cb3-c6fa1d30d053"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 91.89729997888207
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-7276\" dfc67bff00 billing billing",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "f35d9b69-10fb-48be-9518-f00115f29f76"
+          ],
+          "retrieved_card_ids_top10": [
+            "6c56f939-f538-47c0-9ae1-f68e5507061e",
+            "25b19f55-1d20-462a-8f70-5ab669865984",
+            "a98278c8-feb2-4fdd-9972-c42c1a5afe72",
+            "7bf7c00c-0681-4676-8f51-48ccad6e4775",
+            "7b87ec33-6b08-4236-b03c-9abdc35e53db",
+            "5c1ac29c-23bd-444e-8c9f-ac72e9dad9fc",
+            "c94d1243-e395-4f68-ba33-b8366c9a0616",
+            "15c1a55c-bd8b-4452-a762-3842a9f1c42b",
+            "ded793e8-e82d-4e55-9b3b-db86953604e1",
+            "3b637316-59e0-4dc5-a404-bb3cce73b449"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 92.84750005463138
+        },
+        {
+          "group": "client_filtered",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "1a2a73ed-562b-4f79-8374-59eef50bea63",
+          "expected_card_ids": [
+            "d5e652b7-1a83-4240-b0a3-a4122cfc142d",
+            "8a624cbd-e582-4678-ad52-29dd639fc471",
+            "c2b2547d-ac3c-4be3-bc35-b2747a57772b",
+            "bf54ef05-791b-4244-a442-fc9ea109dbab",
+            "e35e232c-42d9-4eff-8db3-4e0e4d67b051"
+          ],
+          "retrieved_card_ids_top10": [
+            "d5e652b7-1a83-4240-b0a3-a4122cfc142d",
+            "8a624cbd-e582-4678-ad52-29dd639fc471",
+            "c2b2547d-ac3c-4be3-bc35-b2747a57772b",
+            "bf54ef05-791b-4244-a442-fc9ea109dbab",
+            "e35e232c-42d9-4eff-8db3-4e0e4d67b051",
+            "235b275b-dcd2-4b97-b3ca-9a6bccd3af7c",
+            "130e1283-da21-47c8-986a-8dbf2256344f",
+            "3c76c902-ed45-4fa3-a8bf-2bda377c88a0",
+            "ac672695-a54b-406c-b1a3-3f6de3dbe202",
+            "fd08b32c-62d6-4e93-a198-5d54cfb87e6f"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 62.96840001596138
+        },
+        {
+          "group": "client_filtered",
+          "query": "cohort retention funnel attribution telemetry warehouse clickhouse metrics",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": "2599a284-8ade-43bb-b0e7-743e12f86782",
+          "expected_card_ids": [
+            "52662af9-6f4d-49bc-adfc-aac664d0d710",
+            "c4afee94-8558-40e2-816b-122ddc952f82",
+            "3577f4b0-fd3d-40bc-8e34-df76d1298de6",
+            "907aacfd-fc5e-4a46-a2a3-9d24b2daa983",
+            "432adfc9-91ea-447b-a817-381c1757f919"
+          ],
+          "retrieved_card_ids_top10": [
+            "52662af9-6f4d-49bc-adfc-aac664d0d710",
+            "c4afee94-8558-40e2-816b-122ddc952f82",
+            "3577f4b0-fd3d-40bc-8e34-df76d1298de6",
+            "907aacfd-fc5e-4a46-a2a3-9d24b2daa983",
+            "432adfc9-91ea-447b-a817-381c1757f919",
+            "7f5f056c-d13b-42f7-ae4e-f21a799c7542",
+            "f8563880-a7f3-4fe3-9a73-f6a1c17e09cb",
+            "c0bd494b-69e6-4df4-8be7-3aeb5a6ae3c6",
+            "c88bc7ed-86fa-422c-b8ff-156eedaf3b1d",
+            "13517fc4-fd6b-4de9-813a-69b31dbea7d5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 76.40670001273975
+        },
+        {
+          "group": "client_filtered",
+          "query": "merchant checkout settlement payout refund chargeback reconciliation gateway",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": "3f81d4e7-da4d-4558-9d3c-c50618d50162",
+          "expected_card_ids": [
+            "671c75bb-149a-4cdc-96d5-f493f978e7e3",
+            "e3a6ebff-e20e-4c3c-8710-3646771f9dbb",
+            "49d4554e-89bc-414d-ac15-68ba9022ce46",
+            "6706b1bb-76f5-44fc-8f2d-a5c58c9cd19d",
+            "76284eb8-a99e-482f-87df-37b6b7d00e65"
+          ],
+          "retrieved_card_ids_top10": [
+            "671c75bb-149a-4cdc-96d5-f493f978e7e3",
+            "e3a6ebff-e20e-4c3c-8710-3646771f9dbb",
+            "49d4554e-89bc-414d-ac15-68ba9022ce46",
+            "6706b1bb-76f5-44fc-8f2d-a5c58c9cd19d",
+            "57ef866c-69ff-460a-a6ea-3fd7512775a2",
+            "76284eb8-a99e-482f-87df-37b6b7d00e65",
+            "6aa0f8ee-5d7f-4834-adc7-806e00a0ba3f",
+            "bf7115f6-9188-4173-96ec-4488b0d58f5e",
+            "9723a23e-55dd-461b-887b-acdf1d753f02",
+            "0d66a85e-443c-423b-b1a0-261539c42f12"
+          ],
+          "recall_at_5": 0.8,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 67.98960000742227
+        },
+        {
+          "group": "client_filtered",
+          "query": "enterprise signup activation wizard kyc provisioning walkthrough checklist",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "47378190-96da-4dac-b2ff-5d2a386ecbe0",
+          "expected_card_ids": [
+            "e17f5e53-2260-4be8-b8ca-903b1c6c8382",
+            "f79c539a-01fc-4fc0-8020-18a82b267d9a",
+            "58bf597c-5c71-43e8-ae26-e2bc987d2796",
+            "9634d83f-a3fa-49c2-89e1-16b97e2ae0da",
+            "a24015d1-c30b-4db6-a095-8a6968607a49"
+          ],
+          "retrieved_card_ids_top10": [
+            "e17f5e53-2260-4be8-b8ca-903b1c6c8382",
+            "f79c539a-01fc-4fc0-8020-18a82b267d9a",
+            "58bf597c-5c71-43e8-ae26-e2bc987d2796",
+            "9634d83f-a3fa-49c2-89e1-16b97e2ae0da",
+            "a24015d1-c30b-4db6-a095-8a6968607a49",
+            "aee12e2d-632c-48db-aa9a-762526d5db2f",
+            "25f98046-0c1d-480e-9873-9636c50e5194",
+            "01572a56-e4ae-485f-a3fb-e8f2cf5cbd7f",
+            "b5836d91-4eb1-4673-b8ae-1b31becde24c",
+            "7d76ab58-b271-415b-8af0-9ec34b726a7c"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 70.97419997444376
+        },
+        {
+          "group": "client_filtered",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": "6f93327d-4ea6-45cf-b3ab-d8314d7f7468",
+          "expected_card_ids": [
+            "ce5065dd-4652-4e28-801c-4f90d2901483",
+            "078b5c05-5d27-46bc-8a1f-4f7e98b6b59e",
+            "32043a24-faa2-4a36-ab7e-d70eb6a9260e",
+            "c22688e0-a919-49b2-a2f6-8e6ebfb7ee77",
+            "35013e0b-3815-4bf4-925e-4b3fe81133a9"
+          ],
+          "retrieved_card_ids_top10": [
+            "ce5065dd-4652-4e28-801c-4f90d2901483",
+            "078b5c05-5d27-46bc-8a1f-4f7e98b6b59e",
+            "32043a24-faa2-4a36-ab7e-d70eb6a9260e",
+            "c22688e0-a919-49b2-a2f6-8e6ebfb7ee77",
+            "35013e0b-3815-4bf4-925e-4b3fe81133a9",
+            "a041fba8-4b69-47f6-b8ce-5f6c4cf066e1",
+            "4052b375-040d-4c96-999f-727828080604",
+            "94f2c0b3-305e-4b29-af3e-0913579effad",
+            "330975a6-668b-4a47-b38d-967cb6511d4a",
+            "feeb10cc-3301-4eb3-8e0c-e7ad5c24a4a1"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 68.75779997790232
+        },
+        {
+          "group": "client_filtered",
+          "query": "ios android react-native mobile biometric offline push notification sync",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": "7afc1461-ecc0-41b4-bbea-a8ea6908843f",
+          "expected_card_ids": [
+            "ecd374a8-d910-4ccf-9b3c-02c0e2b85924",
+            "160a4064-0025-4856-a5ed-1adb39724854",
+            "6504de10-7448-4227-9af9-93de8cf64d3c",
+            "5fb1c639-5a75-4cb8-b121-ce556b988451",
+            "0163dd4a-0088-48e5-a73f-8a26db6fbac5"
+          ],
+          "retrieved_card_ids_top10": [
+            "ecd374a8-d910-4ccf-9b3c-02c0e2b85924",
+            "160a4064-0025-4856-a5ed-1adb39724854",
+            "6504de10-7448-4227-9af9-93de8cf64d3c",
+            "5fb1c639-5a75-4cb8-b121-ce556b988451",
+            "0163dd4a-0088-48e5-a73f-8a26db6fbac5",
+            "a687dbd4-9f89-4810-83a6-22205b7d42f9",
+            "4813bf6c-1986-460f-9dfa-5b535cbfd9ba",
+            "d8e08f4f-4512-4efc-9127-15fea28bd302",
+            "2df9b030-3575-40b4-8893-3fdb596cd692",
+            "cbcae14f-3102-4921-b458-3deaeb981a7c"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 74.14710003649816
+        },
+        {
+          "group": "client_filtered",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "6c307511-b2b9-437a-a8df-6ec4ce4a2bbd",
+          "expected_card_ids": [
+            "205f9619-df73-421d-87b2-e24dcbad3916",
+            "9155ed93-626d-4bf1-97a3-f0bed9b37816",
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "1a4c0d23-3088-4587-9aab-5c3c5c22e9c1",
+            "a513964e-965a-493e-85b6-9e95cc009f08"
+          ],
+          "retrieved_card_ids_top10": [
+            "205f9619-df73-421d-87b2-e24dcbad3916",
+            "9155ed93-626d-4bf1-97a3-f0bed9b37816",
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "1a4c0d23-3088-4587-9aab-5c3c5c22e9c1",
+            "a513964e-965a-493e-85b6-9e95cc009f08",
+            "39d11950-8a45-402e-91f2-0d9bc90ec689",
+            "74ada148-9671-4d4e-8cbd-0c8c66c5a772",
+            "755d814b-5f5b-4255-a544-9887b36ab3ed",
+            "c5efd670-1f4d-48ce-998d-e3d83cf29ade",
+            "e208945f-04c6-4509-93e1-eeef84622ac5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 62.89279996417463
+        },
+        {
+          "group": "client_filtered",
+          "query": "scheduled executive report digest csv pdf export ledger summary",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": "a587b762-818f-4883-a6f4-b2fd9e891f45",
+          "expected_card_ids": [
+            "7c557465-6dbc-4fd2-b931-d814821fc47c",
+            "0ba6bd79-af16-4754-990b-5e44993f43b5",
+            "d9b8a064-4a40-41e3-b065-34c7a59549c0",
+            "ebc52769-6d8a-49c9-a008-a78a878b9dd1",
+            "84bdff5f-c82c-471d-8e08-aaaae4ac38e6"
+          ],
+          "retrieved_card_ids_top10": [
+            "7c557465-6dbc-4fd2-b931-d814821fc47c",
+            "0ba6bd79-af16-4754-990b-5e44993f43b5",
+            "d9b8a064-4a40-41e3-b065-34c7a59549c0",
+            "ebc52769-6d8a-49c9-a008-a78a878b9dd1",
+            "84bdff5f-c82c-471d-8e08-aaaae4ac38e6",
+            "4c7e8b29-14a8-43fc-b71d-dd8dd68199b3",
+            "014212cc-d07b-454e-bd82-c6fd79c0009b",
+            "a08c1d43-d00d-4898-abc6-bc59f64b835b",
+            "1ccf547c-0e16-4b40-872d-58367907c754",
+            "bf8b2e2d-ca93-442a-a6d1-05c0f4567c13"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 64.6295000333339
+        },
+        {
+          "group": "client_filtered",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": "bedf6b8d-9fd3-4760-aa1d-c4936b3dd738",
+          "expected_card_ids": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "23f4d412-e589-4b35-bab2-2ad6334ef6ff",
+            "1a1272f7-0f7c-44c3-b8df-eb00d3adeb1d",
+            "3fbc5dee-3b40-446d-a5c5-4d68821e90ae",
+            "10aaeeb1-f367-496a-ba0f-d3f876f831de"
+          ],
+          "retrieved_card_ids_top10": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "23f4d412-e589-4b35-bab2-2ad6334ef6ff",
+            "1a1272f7-0f7c-44c3-b8df-eb00d3adeb1d",
+            "3fbc5dee-3b40-446d-a5c5-4d68821e90ae",
+            "10aaeeb1-f367-496a-ba0f-d3f876f831de",
+            "9d4fe659-48b1-4e7c-adb4-a2d3e8621daa",
+            "4ec6ac9a-2490-4177-a1c9-ea9f987fe2ea",
+            "d4bed95a-c285-4db3-bb57-faa99ed19a40",
+            "c9f7136f-bd13-4e64-b186-25ddb4505c13",
+            "e4ad4069-5152-4274-9f51-0974fe3ebab5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 59.16990002151579
+        },
+        {
+          "group": "client_filtered",
+          "query": "subscription invoice proration metering quota overage dunning plan-limit",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "ec1b8ca1-f91e-4d4c-9ff4-9b7889463e85",
+          "expected_card_ids": [
+            "a5b09024-a12a-4119-86fb-bcdb7ecd7062",
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "7c01fb86-adec-43dc-921b-8d2ac5239cca"
+          ],
+          "retrieved_card_ids_top10": [
+            "a5b09024-a12a-4119-86fb-bcdb7ecd7062",
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "7c01fb86-adec-43dc-921b-8d2ac5239cca",
+            "bd76bb2f-f189-4bad-aad8-8bca53cf14e1",
+            "0a813e88-0df3-4a58-be83-3c05cd21fb86",
+            "90b2b633-956b-4c0c-a849-9b926b5252e3",
+            "f2e9702d-11e9-4daa-ae69-81a35d3d9e56",
+            "9c91e8e5-4f30-4268-80ba-deb83572f0f5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 63.727399974595755
+        },
+        {
+          "group": "date_filtered",
+          "query": "merchant checkout settlement payout refund chargeback reconciliation gateway",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "0b73ca1c-d1dc-41e5-a9a1-44751958a981",
+            "cb21aa80-19d4-439a-bdff-e27d9b125dfb",
+            "3fe604f4-2867-4d3b-9c5f-3cba150d28eb",
+            "afe6d7b6-e0f8-492f-aeda-791fd770a730",
+            "d840efbd-5a8d-4167-b81c-9aa5b2badc88"
+          ],
+          "retrieved_card_ids_top10": [
+            "0b73ca1c-d1dc-41e5-a9a1-44751958a981",
+            "cb21aa80-19d4-439a-bdff-e27d9b125dfb",
+            "3fe604f4-2867-4d3b-9c5f-3cba150d28eb",
+            "afe6d7b6-e0f8-492f-aeda-791fd770a730",
+            "d840efbd-5a8d-4167-b81c-9aa5b2badc88",
+            "56666f9f-53ac-4ab9-b467-2cd9362f5e5c",
+            "a9da5dd7-5537-4e6d-b424-4500b20463da",
+            "44651be5-9dd3-425e-91cc-63906221f89c",
+            "62ca8797-c059-486e-ae2b-918650634f9e",
+            "a98afcb0-3ef5-47fe-85e4-307a73e5550d"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 65.48499997006729
+        },
+        {
+          "group": "date_filtered",
+          "query": "enterprise signup activation wizard kyc provisioning walkthrough checklist",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "1213b82f-c081-41f9-acda-a21685b7c866",
+            "abab1341-0b52-4621-8c45-7fac213ce169",
+            "a856227a-8e38-48b3-b833-25b82f6e8679",
+            "33f606be-407e-4860-8f05-cf51af06f6b1",
+            "11fb02d1-8212-44cf-af7f-59008564c133"
+          ],
+          "retrieved_card_ids_top10": [
+            "1213b82f-c081-41f9-acda-a21685b7c866",
+            "abab1341-0b52-4621-8c45-7fac213ce169",
+            "a856227a-8e38-48b3-b833-25b82f6e8679",
+            "33f606be-407e-4860-8f05-cf51af06f6b1",
+            "11fb02d1-8212-44cf-af7f-59008564c133",
+            "a31b4949-e33b-47c6-a633-09284a443c7b",
+            "90fa55ce-d127-4032-b421-772e5be5cfe7",
+            "d9ef9f80-84e3-4389-b6d5-20f0d54e933a",
+            "297c8fd8-ed0c-4208-a486-70e5c0e7e6f8",
+            "96cf41e4-296e-45e4-8399-36be3554a91d"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 86.5955000044778
+        },
+        {
+          "group": "date_filtered",
+          "query": "scheduled executive report digest csv pdf export ledger summary",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "770138dd-13e2-488d-9c7d-88965542ed1c",
+            "6363f288-2c66-4630-b466-6cc62ddb5b02",
+            "b3cbd599-b7b9-4fe1-912d-f65addd688c7",
+            "ee1afd75-e8aa-4058-8bba-a725f20b1e6f",
+            "525751cf-99de-4e34-8bda-394a50cb4bd4"
+          ],
+          "retrieved_card_ids_top10": [
+            "770138dd-13e2-488d-9c7d-88965542ed1c",
+            "6363f288-2c66-4630-b466-6cc62ddb5b02",
+            "b3cbd599-b7b9-4fe1-912d-f65addd688c7",
+            "ee1afd75-e8aa-4058-8bba-a725f20b1e6f",
+            "525751cf-99de-4e34-8bda-394a50cb4bd4",
+            "96b5a4c7-891f-46e1-8147-29d8b1f91ceb",
+            "8ba2b870-33c6-406c-a5a9-5ef281c6d68f",
+            "c35e1aae-2591-478c-9af4-815f65658cb6",
+            "8e4ec537-aa14-49a7-b448-706e14537628",
+            "0babc056-7048-4c5f-9740-9f9956b4cc3d"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 68.12409998383373
+        },
+        {
+          "group": "date_filtered",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "a513964e-965a-493e-85b6-9e95cc009f08",
+            "39d11950-8a45-402e-91f2-0d9bc90ec689",
+            "e208945f-04c6-4509-93e1-eeef84622ac5",
+            "61af663c-ed2e-4bcd-8c06-df90aa1c4023"
+          ],
+          "retrieved_card_ids_top10": [
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "a513964e-965a-493e-85b6-9e95cc009f08",
+            "39d11950-8a45-402e-91f2-0d9bc90ec689",
+            "e208945f-04c6-4509-93e1-eeef84622ac5",
+            "61af663c-ed2e-4bcd-8c06-df90aa1c4023",
+            "a5310be0-f391-4a36-88a4-36ae83a2a06f",
+            "9fc1cc6e-4c85-480d-8b16-4140da41c45c",
+            "dbe79ccb-f600-4685-9dbd-3afbe5f3fcb9",
+            "c11fda29-debd-453c-9032-306158d24990",
+            "abe05b22-13dc-4154-ab1f-c2ab640eb68e"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 63.59199999133125
+        },
+        {
+          "group": "date_filtered",
+          "query": "ios android react-native mobile biometric offline push notification sync",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "e6b04b55-4e65-40d3-a864-bfae15838511",
+            "2ab52672-ddc5-499b-b512-196a35935cc2",
+            "21da109b-71a4-4e7c-a1ac-fdb3d70e773a",
+            "bdf7288b-3c0b-4423-95f7-347dd8412678",
+            "9cf86246-823b-43a3-8c9f-2bacdc502be1"
+          ],
+          "retrieved_card_ids_top10": [
+            "e6b04b55-4e65-40d3-a864-bfae15838511",
+            "2ab52672-ddc5-499b-b512-196a35935cc2",
+            "21da109b-71a4-4e7c-a1ac-fdb3d70e773a",
+            "bdf7288b-3c0b-4423-95f7-347dd8412678",
+            "9cf86246-823b-43a3-8c9f-2bacdc502be1",
+            "026c5576-7a6f-4029-b0d6-f598d274a55d",
+            "9ab4eeb4-8fc1-4104-ba1d-352ca64812d8",
+            "cadac90b-0499-4c04-8179-d9588749761c",
+            "6cccd823-f16f-4ab1-89ab-9c39f2dfaef0",
+            "8fe88ea9-bb39-4f33-97cd-52cd27842066"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 76.02650002809241
+        },
+        {
+          "group": "date_filtered",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "e4ad4069-5152-4274-9f51-0974fe3ebab5",
+            "f5a6b1a1-47c2-470a-a8d7-5856a6c03a5a",
+            "2c2aeb84-4f77-4103-b800-780197486334",
+            "648b9abf-5adf-4a2a-9a8e-387bf75b1ef0"
+          ],
+          "retrieved_card_ids_top10": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "e4ad4069-5152-4274-9f51-0974fe3ebab5",
+            "f5a6b1a1-47c2-470a-a8d7-5856a6c03a5a",
+            "2c2aeb84-4f77-4103-b800-780197486334",
+            "648b9abf-5adf-4a2a-9a8e-387bf75b1ef0",
+            "74e0ebef-340e-4be4-9172-c81093cc4612",
+            "9c466017-0096-44c7-a43b-e3fac6227ca0",
+            "449ecb44-2384-4fde-9bbd-765c1ee98540",
+            "eb9576b7-52d7-46b3-8bb5-39b927d95f22",
+            "fa2696cc-1204-4841-bcb5-da8c54f1d518"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 60.153700003866106
+        },
+        {
+          "group": "date_filtered",
+          "query": "trello github jira connector cursor sync webhook verification",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "41c7a406-9359-4b5d-9ac7-25209670efb3",
+            "85924e5f-1f53-4b6e-ab11-77367260282f",
+            "c9acd635-0d48-4241-bdea-4cc7c6bca20f",
+            "e7635620-eaef-418c-ae60-b3e1402613bb",
+            "620072e0-4cc2-4118-a24e-ae81da2534f2"
+          ],
+          "retrieved_card_ids_top10": [
+            "41c7a406-9359-4b5d-9ac7-25209670efb3",
+            "85924e5f-1f53-4b6e-ab11-77367260282f",
+            "c9acd635-0d48-4241-bdea-4cc7c6bca20f",
+            "e7635620-eaef-418c-ae60-b3e1402613bb",
+            "620072e0-4cc2-4118-a24e-ae81da2534f2",
+            "00c85e9a-408a-4d2f-8c86-e6b66ffcc6e5",
+            "13ed280a-d5e1-4d1f-a5f2-2dfba741104b",
+            "05a562a9-6cc7-4151-9172-44f793645e43",
+            "acdfe0ff-c5ed-4982-b60b-36736422a73e",
+            "d441b7f0-52ad-423f-9c8b-314664128cf5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 63.690299983136356
+        },
+        {
+          "group": "date_filtered",
+          "query": "cohort retention funnel attribution telemetry warehouse clickhouse metrics",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "432adfc9-91ea-447b-a817-381c1757f919",
+            "f8563880-a7f3-4fe3-9a73-f6a1c17e09cb",
+            "c0bd494b-69e6-4df4-8be7-3aeb5a6ae3c6",
+            "489bf387-fed2-49d6-b983-f03b075397ab",
+            "7bd82bd7-e41a-455f-a3af-349d5d3c9898"
+          ],
+          "retrieved_card_ids_top10": [
+            "432adfc9-91ea-447b-a817-381c1757f919",
+            "f8563880-a7f3-4fe3-9a73-f6a1c17e09cb",
+            "c0bd494b-69e6-4df4-8be7-3aeb5a6ae3c6",
+            "489bf387-fed2-49d6-b983-f03b075397ab",
+            "7bd82bd7-e41a-455f-a3af-349d5d3c9898",
+            "28848e97-5a69-4dab-9d1b-779dcc2d9252",
+            "5ef7c6b4-bdbd-4515-8cbe-a96b66c4c628",
+            "dcf35ed1-b182-4c05-95bf-4902c26ba5f2",
+            "0e303118-ac09-4ca2-8553-42a9caffa02a",
+            "fbc9a5c6-e7f8-46fe-8c8b-2b58e6fdb144"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 82.61929999571294
+        },
+        {
+          "group": "date_filtered",
+          "query": "fernet aes encryption key rotation rbac audit log tenant isolation",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "e9da8158-8bf9-4ebb-b717-2943e34edc2b",
+            "bfb63623-73bf-4651-8a28-b2a88024b48d",
+            "d210dccd-63bd-4f42-903e-0dcff8d61d74",
+            "1da7bdd9-e0b9-4320-b6c4-f6b29b0db81d",
+            "cfc17e1b-78d1-41e5-8f98-629ff8d96e97"
+          ],
+          "retrieved_card_ids_top10": [
+            "e9da8158-8bf9-4ebb-b717-2943e34edc2b",
+            "bfb63623-73bf-4651-8a28-b2a88024b48d",
+            "d210dccd-63bd-4f42-903e-0dcff8d61d74",
+            "1da7bdd9-e0b9-4320-b6c4-f6b29b0db81d",
+            "cfc17e1b-78d1-41e5-8f98-629ff8d96e97",
+            "a6774b38-6d6e-4e60-ae52-7c5873ad64c8",
+            "0e47fe8e-585d-43bc-ac73-1a41b8a146c6",
+            "2afed171-238a-40c0-b876-17df4e0c637f",
+            "35dd4e4e-aa21-4a42-b33d-8d79949914f1",
+            "7d2e14e4-796e-41be-9206-a7abfd70c202"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 69.91449999623
+        },
+        {
+          "group": "date_filtered",
+          "query": "subscription invoice proration metering quota overage dunning plan-limit",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "bd76bb2f-f189-4bad-aad8-8bca53cf14e1",
+            "0a813e88-0df3-4a58-be83-3c05cd21fb86",
+            "9c91e8e5-4f30-4268-80ba-deb83572f0f5"
+          ],
+          "retrieved_card_ids_top10": [
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "bd76bb2f-f189-4bad-aad8-8bca53cf14e1",
+            "0a813e88-0df3-4a58-be83-3c05cd21fb86",
+            "9c91e8e5-4f30-4268-80ba-deb83572f0f5",
+            "e79524eb-84fa-4889-b21f-9823f23b1efb",
+            "92502e59-13f0-4822-9374-8a1145712959",
+            "8d8164b0-f85a-4287-93ff-c45f2b80e44a",
+            "d2919b85-3044-4fc4-8e82-cf50f3796ab2",
+            "489af195-62b6-4594-90f4-c9418fc7ad79"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 81.48729999084026
+        }
+      ]
+    },
+    "KeywordOnlyRetriever": {
+      "overall": {
+        "count": 40,
+        "recall_at_5": 0.27,
+        "recall_at_10": 0.29,
+        "mrr": 0.2893,
+        "p50_ms": 18.563,
+        "p95_ms": 44.932
+      },
+      "groups": {
+        "semantic": {
+          "count": 10,
+          "recall_at_5": 0.02,
+          "recall_at_10": 0.04,
+          "mrr": 0.0416,
+          "p50_ms": 20.672,
+          "p95_ms": 42.769
+        },
+        "exact_identifier": {
+          "count": 10,
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "p50_ms": 17.854,
+          "p95_ms": 18.644
+        },
+        "client_filtered": {
+          "count": 10,
+          "recall_at_5": 0.02,
+          "recall_at_10": 0.04,
+          "mrr": 0.0325,
+          "p50_ms": 25.089,
+          "p95_ms": 47.307
+        },
+        "date_filtered": {
+          "count": 10,
+          "recall_at_5": 0.04,
+          "recall_at_10": 0.08,
+          "mrr": 0.0832,
+          "p50_ms": 18.819,
+          "p95_ms": 27.004
+        }
+      },
+      "queries": [
+        {
+          "group": "semantic",
+          "query": "merchant checkout settlement payout refund chargeback reconciliation gateway",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "046606f6-3c7a-412d-aafd-3660e5199bd9",
+            "06ae5314-64f5-40c5-9e1f-bf0c357ee616",
+            "0b73ca1c-d1dc-41e5-a9a1-44751958a981",
+            "c4495462-6de0-4a39-a13a-2a59bf3aebc4",
+            "cb21aa80-19d4-439a-bdff-e27d9b125dfb"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 4.397899960167706
+        },
+        {
+          "group": "semantic",
+          "query": "enterprise signup activation wizard kyc provisioning walkthrough checklist",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "1213b82f-c081-41f9-acda-a21685b7c866",
+            "78df0f95-74ca-4720-af4e-0e9f06a894f5",
+            "14b379f4-69c4-461f-96cc-298d576f3527",
+            "abab1341-0b52-4621-8c45-7fac213ce169",
+            "9e5fa747-03fe-428a-919c-ce6981bf8129"
+          ],
+          "retrieved_card_ids_top10": [
+            "89230c23-544a-4c1f-86ea-a920849dda7c",
+            "2e84377e-8573-4350-bd11-abcd0f5a3828",
+            "5a9f7310-9a14-48e4-88f6-0274754c7df2",
+            "4eb3c40c-d534-4ffe-8d67-f4286c9e7811",
+            "f6b9bc93-0bf3-4d4f-ae1f-6ba536d38c50",
+            "c7929699-1733-4a6b-9973-552a039dfa20",
+            "febaddbf-5b0c-436e-8e03-e0294709e22d",
+            "235b6973-1af4-4065-9569-b6bf4295fb7a",
+            "fe5ccf9a-8e82-4e0f-b71f-c8c43388d946",
+            "2e3081ce-232f-400e-b98c-efa549b88721"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.09090909090909091,
+          "latency_ms": 40.143200021702796
+        },
+        {
+          "group": "semantic",
+          "query": "scheduled executive report digest csv pdf export ledger summary",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "ad5b7e3e-f051-4118-aead-06a850152418",
+            "2b1e8004-51ef-4bd4-8cb3-c6fa1d30d053",
+            "1ceaaa8a-27cd-4fd0-8cca-89e235b64ab5",
+            "0349a77c-9e9d-42d9-90ce-84524a7977f7",
+            "770138dd-13e2-488d-9c7d-88965542ed1c"
+          ],
+          "retrieved_card_ids_top10": [
+            "735426fb-0074-4c5e-92c8-406394ed5bb2",
+            "c19c8af7-320a-4b26-a824-08dcdf579365",
+            "0d8d5a25-e9d3-4b1e-9621-1731b18f71d1",
+            "30437fa2-e191-4de6-bb92-4f3625524464",
+            "c440fd8c-3688-40cc-b53a-f1783ffc4bc1",
+            "9db0db36-7719-47a6-9135-54fffa782f17",
+            "6815dc2e-f678-497e-a42e-fec9ec63787a",
+            "770138dd-13e2-488d-9c7d-88965542ed1c",
+            "b623c92d-ad67-4e99-bd45-8d0d1ffa35ec",
+            "86c819ee-1393-4110-8568-31e0fe403806"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.2,
+          "mrr": 0.125,
+          "latency_ms": 23.293100006412715
+        },
+        {
+          "group": "semantic",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "205f9619-df73-421d-87b2-e24dcbad3916",
+            "9155ed93-626d-4bf1-97a3-f0bed9b37816",
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "1a4c0d23-3088-4587-9aab-5c3c5c22e9c1",
+            "a513964e-965a-493e-85b6-9e95cc009f08"
+          ],
+          "retrieved_card_ids_top10": [
+            "d6d24227-2d5c-4a61-a302-1daa5ba3a49c",
+            "f7c8435f-8c83-4c68-a6ac-e59a5e85643c",
+            "300ffa68-4f22-4efa-a8e1-3f98c1ab6398",
+            "5850a652-79a6-470c-9c16-e6a26439a29b",
+            "e4cb277f-bc95-4041-8cdf-b034e9a84c51",
+            "614996d1-01db-40b4-8422-1bf274faebdd",
+            "74eff545-3e65-4603-b8e3-654bfaf14ff0",
+            "165effd1-c764-4651-bca8-72f2cd2c4a30",
+            "e7270909-0500-4955-94d7-1e4a13149627",
+            "fd55c844-c242-47c5-8613-71c199fd92a4"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 33.27379998518154
+        },
+        {
+          "group": "semantic",
+          "query": "ios android react-native mobile biometric offline push notification sync",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "b0331494-2778-458f-95b8-9e2c5fc23510",
+            "0cb3f031-0808-47eb-8a6d-a8818dc5b493",
+            "0dc2cee5-98f0-4d68-8a2c-9d8677060c7a",
+            "7a42e24e-2e6a-4da9-b033-5b6bc4b033ad",
+            "3347ea22-c777-4dac-9eb3-f8990421d0b2"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 18.050999962724745
+        },
+        {
+          "group": "semantic",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "23f4d412-e589-4b35-bab2-2ad6334ef6ff",
+            "1a1272f7-0f7c-44c3-b8df-eb00d3adeb1d",
+            "3fbc5dee-3b40-446d-a5c5-4d68821e90ae",
+            "10aaeeb1-f367-496a-ba0f-d3f876f831de"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 17.64309999998659
+        },
+        {
+          "group": "semantic",
+          "query": "trello github jira connector cursor sync webhook verification",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "41c7a406-9359-4b5d-9ac7-25209670efb3",
+            "0d6e7714-f57f-415f-a8b4-592663aca07b",
+            "efab64b5-2702-49a1-80a6-a43b1a3710ae",
+            "960f96d9-051b-4698-8463-299a2ba321ef",
+            "948d8c72-438f-48fb-a416-32b96f96c190"
+          ],
+          "retrieved_card_ids_top10": [
+            "f398d16e-18b9-40a2-a364-42e58abe5779",
+            "f57c2a25-7b62-4e6a-9084-44736c71dad1",
+            "c0b30303-af47-4a0b-a7fd-3482b7c9debe",
+            "c5583a17-f70d-48a0-bd75-e4232d921dab",
+            "15604ec8-1ca9-41d9-a5bf-13792587f6a0",
+            "c0d978e7-cf6c-4143-8335-5860e84e9da0",
+            "8d9957fa-76fe-4cd6-917e-7f4a0f8593c3",
+            "ee9765f7-96ac-4b5d-b5a2-62f7705b7572",
+            "cbbed980-07e6-4cb0-90bd-e9001529e6f5",
+            "7e8f7fe9-163b-4284-b1b2-5b70a0a6e38e"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 9.596700023394078
+        },
+        {
+          "group": "semantic",
+          "query": "cohort retention funnel attribution telemetry warehouse clickhouse metrics",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "52662af9-6f4d-49bc-adfc-aac664d0d710",
+            "c4afee94-8558-40e2-816b-122ddc952f82",
+            "3577f4b0-fd3d-40bc-8e34-df76d1298de6",
+            "907aacfd-fc5e-4a46-a2a3-9d24b2daa983",
+            "432adfc9-91ea-447b-a817-381c1757f919"
+          ],
+          "retrieved_card_ids_top10": [
+            "82088899-8ac8-4be9-a724-aae035b23ce3",
+            "7f5f056c-d13b-42f7-ae4e-f21a799c7542",
+            "07246bba-02ae-4d0f-9b10-1bc744a1264c",
+            "f366bc5e-e537-4fd0-a30f-7d44bd78da81",
+            "cd884a36-f499-4604-b6ba-797444dec505",
+            "ac50a7cb-11db-4eac-b940-525c42a4f2fe",
+            "420c4d50-71e5-4258-90d5-50d1b14a663d",
+            "2ecbd946-0f54-45dd-a30b-34b922aff6bb",
+            "de1aa2e3-5f24-4615-a693-afe45cad27f4",
+            "4f8a70aa-ea0a-462f-996b-a2d1020e308f"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 44.91810000035912
+        },
+        {
+          "group": "semantic",
+          "query": "fernet aes encryption key rotation rbac audit log tenant isolation",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "49d1adbf-54ca-48d0-8f62-89954b612da7",
+            "e9da8158-8bf9-4ebb-b717-2943e34edc2b",
+            "41e38aa6-6dbf-40f0-87cb-54a40d66fcc4",
+            "bfb63623-73bf-4651-8a28-b2a88024b48d",
+            "c4b5d457-28d3-4d36-bef4-f20cfc7e2f36"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 17.878999991808087
+        },
+        {
+          "group": "semantic",
+          "query": "subscription invoice proration metering quota overage dunning plan-limit",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "a5b09024-a12a-4119-86fb-bcdb7ecd7062",
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "7c01fb86-adec-43dc-921b-8d2ac5239cca"
+          ],
+          "retrieved_card_ids_top10": [
+            "5d20d8de-24a1-4c7f-b63f-93f646b5b8f6",
+            "8fffe845-6257-4e9c-8260-1132c02fb24f",
+            "55dddf38-fc94-44ae-867a-211ade162c17",
+            "813a3aa5-7d81-4c21-bf76-4fcea97ef131",
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "4ef8a787-34c5-4d5b-a5f5-ed6fc5e2cdcc",
+            "593c73f2-b8e5-4141-8067-6073e9c000f0",
+            "71a84189-565b-4785-b8f9-85fc69598983",
+            "7bab1baa-2172-40aa-a44a-913af933a9fa",
+            "572bcbf9-d778-41a0-af28-1d8e256efea5"
+          ],
+          "recall_at_5": 0.2,
+          "recall_at_10": 0.2,
+          "mrr": 0.2,
+          "latency_ms": 33.47349999239668
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-1000\" 835395eae9 billing billing",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "898f3586-b74a-4db6-a223-afc0429146ca"
+          ],
+          "retrieved_card_ids_top10": [
+            "898f3586-b74a-4db6-a223-afc0429146ca"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 2.589999989140779
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-1698\" b0010d70b3 analytics analytics",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "2978ad8f-0cc0-423f-a221-6ec62e5a7731"
+          ],
+          "retrieved_card_ids_top10": [
+            "2978ad8f-0cc0-423f-a221-6ec62e5a7731"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 2.6829999987967312
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-2395\" f71274382c mobile_app mobile_app",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "bed6bb8f-387a-4817-b658-1feec6a49a31"
+          ],
+          "retrieved_card_ids_top10": [
+            "bed6bb8f-387a-4817-b658-1feec6a49a31"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 2.673500042874366
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-3092\" 2539e7af21 auth auth",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "44bb84b2-4a1e-4e91-933e-db88f9c2f1f5"
+          ],
+          "retrieved_card_ids_top10": [
+            "44bb84b2-4a1e-4e91-933e-db88f9c2f1f5"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 17.78339996235445
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-379\" 2d0b0e599a security security",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "65daced0-460a-4125-bf8c-93d4c32afc4a"
+          ],
+          "retrieved_card_ids_top10": [
+            "65daced0-460a-4125-bf8c-93d4c32afc4a"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 2.4915000540204346
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-4487\" 6f6c73455b security security",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "30a35f24-5fcc-438d-849e-2f138808c8fa"
+          ],
+          "retrieved_card_ids_top10": [
+            "30a35f24-5fcc-438d-849e-2f138808c8fa"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 17.925499996636063
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-5184\" notifications notifications",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "aa58feda-b960-4b74-a32f-be6b7dd2ab19"
+          ],
+          "retrieved_card_ids_top10": [
+            "aa58feda-b960-4b74-a32f-be6b7dd2ab19"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 18.045600038021803
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-5881\" 83364e5f00 mobile_app mobile_app",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "2264efac-b100-4aeb-921c-96991a2d27e8"
+          ],
+          "retrieved_card_ids_top10": [
+            "2264efac-b100-4aeb-921c-96991a2d27e8"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 18.636699998751283
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-6579\" 4e78242766 reporting reporting",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "088aff8f-0cd2-4532-9b77-6b2306338df3"
+          ],
+          "retrieved_card_ids_top10": [
+            "088aff8f-0cd2-4532-9b77-6b2306338df3"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 18.569199950434268
+        },
+        {
+          "group": "exact_identifier",
+          "query": "\"PROJ-7276\" dfc67bff00 billing billing",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "f35d9b69-10fb-48be-9518-f00115f29f76"
+          ],
+          "retrieved_card_ids_top10": [
+            "f35d9b69-10fb-48be-9518-f00115f29f76"
+          ],
+          "recall_at_5": 1.0,
+          "recall_at_10": 1.0,
+          "mrr": 1.0,
+          "latency_ms": 18.649299978278577
+        },
+        {
+          "group": "client_filtered",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "1a2a73ed-562b-4f79-8374-59eef50bea63",
+          "expected_card_ids": [
+            "d5e652b7-1a83-4240-b0a3-a4122cfc142d",
+            "8a624cbd-e582-4678-ad52-29dd639fc471",
+            "c2b2547d-ac3c-4be3-bc35-b2747a57772b",
+            "bf54ef05-791b-4244-a442-fc9ea109dbab",
+            "e35e232c-42d9-4eff-8db3-4e0e4d67b051"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 4.988000029698014
+        },
+        {
+          "group": "client_filtered",
+          "query": "cohort retention funnel attribution telemetry warehouse clickhouse metrics",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": "2599a284-8ade-43bb-b0e7-743e12f86782",
+          "expected_card_ids": [
+            "52662af9-6f4d-49bc-adfc-aac664d0d710",
+            "c4afee94-8558-40e2-816b-122ddc952f82",
+            "3577f4b0-fd3d-40bc-8e34-df76d1298de6",
+            "907aacfd-fc5e-4a46-a2a3-9d24b2daa983",
+            "432adfc9-91ea-447b-a817-381c1757f919"
+          ],
+          "retrieved_card_ids_top10": [
+            "82088899-8ac8-4be9-a724-aae035b23ce3",
+            "7f5f056c-d13b-42f7-ae4e-f21a799c7542",
+            "07246bba-02ae-4d0f-9b10-1bc744a1264c",
+            "f366bc5e-e537-4fd0-a30f-7d44bd78da81",
+            "cd884a36-f499-4604-b6ba-797444dec505",
+            "ac50a7cb-11db-4eac-b940-525c42a4f2fe",
+            "420c4d50-71e5-4258-90d5-50d1b14a663d",
+            "2ecbd946-0f54-45dd-a30b-34b922aff6bb",
+            "de1aa2e3-5f24-4615-a693-afe45cad27f4",
+            "4f8a70aa-ea0a-462f-996b-a2d1020e308f"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 45.20520003279671
+        },
+        {
+          "group": "client_filtered",
+          "query": "merchant checkout settlement payout refund chargeback reconciliation gateway",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": "3f81d4e7-da4d-4558-9d3c-c50618d50162",
+          "expected_card_ids": [
+            "671c75bb-149a-4cdc-96d5-f493f978e7e3",
+            "e3a6ebff-e20e-4c3c-8710-3646771f9dbb",
+            "49d4554e-89bc-414d-ac15-68ba9022ce46",
+            "6706b1bb-76f5-44fc-8f2d-a5c58c9cd19d",
+            "76284eb8-a99e-482f-87df-37b6b7d00e65"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 18.311099964194
+        },
+        {
+          "group": "client_filtered",
+          "query": "enterprise signup activation wizard kyc provisioning walkthrough checklist",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "47378190-96da-4dac-b2ff-5d2a386ecbe0",
+          "expected_card_ids": [
+            "e17f5e53-2260-4be8-b8ca-903b1c6c8382",
+            "f79c539a-01fc-4fc0-8020-18a82b267d9a",
+            "58bf597c-5c71-43e8-ae26-e2bc987d2796",
+            "9634d83f-a3fa-49c2-89e1-16b97e2ae0da",
+            "a24015d1-c30b-4db6-a095-8a6968607a49"
+          ],
+          "retrieved_card_ids_top10": [
+            "c5709e30-417b-4634-a3ec-152ce0653245",
+            "deaf0fa9-24a6-4a6c-b641-d44931f09021",
+            "0ba6eab9-4639-447b-a067-bdac88bd13d1",
+            "51beb80e-b7e6-414c-9c8a-49225005680f",
+            "a1001bc8-9758-425f-9ad8-e2dafe17ddb3",
+            "0aecc94d-aebb-469f-bdc2-705ce023282a",
+            "25f98046-0c1d-480e-9873-9636c50e5194",
+            "70fbb28e-0d9b-43b5-956f-f3c182077e01",
+            "8cb21aa2-1715-4c03-ab4f-36381190e515",
+            "817c6779-d52d-4f91-864f-e16479472ea4"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 26.07329998863861
+        },
+        {
+          "group": "client_filtered",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": "6f93327d-4ea6-45cf-b3ab-d8314d7f7468",
+          "expected_card_ids": [
+            "ce5065dd-4652-4e28-801c-4f90d2901483",
+            "078b5c05-5d27-46bc-8a1f-4f7e98b6b59e",
+            "32043a24-faa2-4a36-ab7e-d70eb6a9260e",
+            "c22688e0-a919-49b2-a2f6-8e6ebfb7ee77",
+            "35013e0b-3815-4bf4-925e-4b3fe81133a9"
+          ],
+          "retrieved_card_ids_top10": [
+            "d9c19d2d-6c73-4e30-b5bf-4d563d231498",
+            "4e630ebf-2b46-430a-a54b-d7ea443ec2bb",
+            "cbc0327a-451b-4fac-b906-3887d679b7c6",
+            "96502ed4-8dc1-4db4-a406-522ff2ef3eb1",
+            "10feb92a-ee04-48f3-bad8-22063eb9fa26",
+            "9790c368-7965-496a-a539-5726b43e6742",
+            "b9276d12-e5f4-45dc-ad84-619a9a3b4bdf",
+            "35013e0b-3815-4bf4-925e-4b3fe81133a9",
+            "f264a4a1-9447-43be-8afa-1dfaedcb14d5",
+            "0555cd43-f936-4c6a-8bf8-5b3646aae4c2"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.2,
+          "mrr": 0.125,
+          "latency_ms": 49.02719997335225
+        },
+        {
+          "group": "client_filtered",
+          "query": "ios android react-native mobile biometric offline push notification sync",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": "7afc1461-ecc0-41b4-bbea-a8ea6908843f",
+          "expected_card_ids": [
+            "ecd374a8-d910-4ccf-9b3c-02c0e2b85924",
+            "160a4064-0025-4856-a5ed-1adb39724854",
+            "6504de10-7448-4227-9af9-93de8cf64d3c",
+            "5fb1c639-5a75-4cb8-b121-ce556b988451",
+            "0163dd4a-0088-48e5-a73f-8a26db6fbac5"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 18.293700006324798
+        },
+        {
+          "group": "client_filtered",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "6c307511-b2b9-437a-a8df-6ec4ce4a2bbd",
+          "expected_card_ids": [
+            "205f9619-df73-421d-87b2-e24dcbad3916",
+            "9155ed93-626d-4bf1-97a3-f0bed9b37816",
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "1a4c0d23-3088-4587-9aab-5c3c5c22e9c1",
+            "a513964e-965a-493e-85b6-9e95cc009f08"
+          ],
+          "retrieved_card_ids_top10": [
+            "d6d24227-2d5c-4a61-a302-1daa5ba3a49c",
+            "f7c8435f-8c83-4c68-a6ac-e59a5e85643c",
+            "300ffa68-4f22-4efa-a8e1-3f98c1ab6398",
+            "5850a652-79a6-470c-9c16-e6a26439a29b",
+            "e4cb277f-bc95-4041-8cdf-b034e9a84c51",
+            "614996d1-01db-40b4-8422-1bf274faebdd",
+            "74eff545-3e65-4603-b8e3-654bfaf14ff0",
+            "165effd1-c764-4651-bca8-72f2cd2c4a30",
+            "e7270909-0500-4955-94d7-1e4a13149627",
+            "fd55c844-c242-47c5-8613-71c199fd92a4"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 35.05790000781417
+        },
+        {
+          "group": "client_filtered",
+          "query": "scheduled executive report digest csv pdf export ledger summary",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": "a587b762-818f-4883-a6f4-b2fd9e891f45",
+          "expected_card_ids": [
+            "7c557465-6dbc-4fd2-b931-d814821fc47c",
+            "0ba6bd79-af16-4754-990b-5e44993f43b5",
+            "d9b8a064-4a40-41e3-b065-34c7a59549c0",
+            "ebc52769-6d8a-49c9-a008-a78a878b9dd1",
+            "84bdff5f-c82c-471d-8e08-aaaae4ac38e6"
+          ],
+          "retrieved_card_ids_top10": [
+            "036cc5c8-fccf-4e92-8b33-12c969ff7a6a",
+            "24867c1c-3f20-4850-b69d-cf81e3f1c6a1",
+            "d5b8c4ca-2ec1-4ff5-9041-471d61828f6d",
+            "a546dcb4-8365-400b-a0ca-2e88cc502050",
+            "cd68c7a0-b9a7-45c9-99f4-7d17513a2071",
+            "71ef5f95-eb93-4354-9274-c058431e0390",
+            "5ed50843-8e1e-4f05-98eb-1b1c31e1ed5e",
+            "16de7e83-6fcd-43f9-b81d-f0c561e567c8",
+            "6c9f0ca8-eece-41db-9813-82827efc35a4",
+            "04a921a3-1403-416e-b371-827abfc1d9fa"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 24.10399995278567
+        },
+        {
+          "group": "client_filtered",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": "bedf6b8d-9fd3-4760-aa1d-c4936b3dd738",
+          "expected_card_ids": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "23f4d412-e589-4b35-bab2-2ad6334ef6ff",
+            "1a1272f7-0f7c-44c3-b8df-eb00d3adeb1d",
+            "3fbc5dee-3b40-446d-a5c5-4d68821e90ae",
+            "10aaeeb1-f367-496a-ba0f-d3f876f831de"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 18.04880000418052
+        },
+        {
+          "group": "client_filtered",
+          "query": "subscription invoice proration metering quota overage dunning plan-limit",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": "ec1b8ca1-f91e-4d4c-9ff4-9b7889463e85",
+          "expected_card_ids": [
+            "a5b09024-a12a-4119-86fb-bcdb7ecd7062",
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "7c01fb86-adec-43dc-921b-8d2ac5239cca"
+          ],
+          "retrieved_card_ids_top10": [
+            "5d20d8de-24a1-4c7f-b63f-93f646b5b8f6",
+            "8fffe845-6257-4e9c-8260-1132c02fb24f",
+            "55dddf38-fc94-44ae-867a-211ade162c17",
+            "813a3aa5-7d81-4c21-bf76-4fcea97ef131",
+            "2d28746a-5a6d-4285-978f-48ebc9fbe7f1",
+            "4ef8a787-34c5-4d5b-a5f5-ed6fc5e2cdcc",
+            "593c73f2-b8e5-4141-8067-6073e9c000f0",
+            "71a84189-565b-4785-b8f9-85fc69598983",
+            "7bab1baa-2172-40aa-a44a-913af933a9fa",
+            "572bcbf9-d778-41a0-af28-1d8e256efea5"
+          ],
+          "recall_at_5": 0.2,
+          "recall_at_10": 0.2,
+          "mrr": 0.2,
+          "latency_ms": 29.055100050754845
+        },
+        {
+          "group": "date_filtered",
+          "query": "merchant checkout settlement payout refund chargeback reconciliation gateway",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "0b73ca1c-d1dc-41e5-a9a1-44751958a981",
+            "cb21aa80-19d4-439a-bdff-e27d9b125dfb",
+            "3fe604f4-2867-4d3b-9c5f-3cba150d28eb",
+            "afe6d7b6-e0f8-492f-aeda-791fd770a730",
+            "d840efbd-5a8d-4167-b81c-9aa5b2badc88"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 5.594799993559718
+        },
+        {
+          "group": "date_filtered",
+          "query": "enterprise signup activation wizard kyc provisioning walkthrough checklist",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "1213b82f-c081-41f9-acda-a21685b7c866",
+            "abab1341-0b52-4621-8c45-7fac213ce169",
+            "a856227a-8e38-48b3-b833-25b82f6e8679",
+            "33f606be-407e-4860-8f05-cf51af06f6b1",
+            "11fb02d1-8212-44cf-af7f-59008564c133"
+          ],
+          "retrieved_card_ids_top10": [
+            "5a9f7310-9a14-48e4-88f6-0274754c7df2",
+            "4eb3c40c-d534-4ffe-8d67-f4286c9e7811",
+            "f6b9bc93-0bf3-4d4f-ae1f-6ba536d38c50",
+            "c7929699-1733-4a6b-9973-552a039dfa20",
+            "1213b82f-c081-41f9-acda-a21685b7c866",
+            "f0acce13-cda3-4d5a-8a9e-90b614e1521c",
+            "d9ef9f80-84e3-4389-b6d5-20f0d54e933a",
+            "71428419-f586-4b79-b969-c0a5394e0293",
+            "5a06e318-85c7-4e1e-a3e0-d1177099a9e9",
+            "42ecbb8d-6700-4eee-9cba-09e80b730bca"
+          ],
+          "recall_at_5": 0.2,
+          "recall_at_10": 0.2,
+          "mrr": 0.2,
+          "latency_ms": 25.393799995072186
+        },
+        {
+          "group": "date_filtered",
+          "query": "scheduled executive report digest csv pdf export ledger summary",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "770138dd-13e2-488d-9c7d-88965542ed1c",
+            "6363f288-2c66-4630-b466-6cc62ddb5b02",
+            "b3cbd599-b7b9-4fe1-912d-f65addd688c7",
+            "ee1afd75-e8aa-4058-8bba-a725f20b1e6f",
+            "525751cf-99de-4e34-8bda-394a50cb4bd4"
+          ],
+          "retrieved_card_ids_top10": [
+            "0d8d5a25-e9d3-4b1e-9621-1731b18f71d1",
+            "30437fa2-e191-4de6-bb92-4f3625524464",
+            "770138dd-13e2-488d-9c7d-88965542ed1c",
+            "ec8c52d3-642a-4733-8906-563efe29d7ee",
+            "3e56ad6d-bda2-4786-97e2-1daf1530604b",
+            "11440251-3f12-4601-8c45-747be95be246",
+            "6363f288-2c66-4630-b466-6cc62ddb5b02",
+            "68c8ba02-1aaf-4093-aaf8-522b2bec0b47",
+            "4984db1f-86b4-4e2b-96fc-a4e3126eb977",
+            "7e1bce66-8491-4adb-9bb3-ab787d2510c3"
+          ],
+          "recall_at_5": 0.2,
+          "recall_at_10": 0.4,
+          "mrr": 0.3333333333333333,
+          "latency_ms": 20.742200023960322
+        },
+        {
+          "group": "date_filtered",
+          "query": "federated saml sso oauth pkce authentication mfa totp session passkey",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "00cb9caa-bbdf-4574-89b8-f7ba98a7fea2",
+            "a513964e-965a-493e-85b6-9e95cc009f08",
+            "39d11950-8a45-402e-91f2-0d9bc90ec689",
+            "e208945f-04c6-4509-93e1-eeef84622ac5",
+            "61af663c-ed2e-4bcd-8c06-df90aa1c4023"
+          ],
+          "retrieved_card_ids_top10": [
+            "5850a652-79a6-470c-9c16-e6a26439a29b",
+            "e7270909-0500-4955-94d7-1e4a13149627",
+            "fd55c844-c242-47c5-8613-71c199fd92a4",
+            "18323765-d145-4528-b91b-ad400b022156",
+            "217d65a0-c568-41cd-9563-f61600e85ece",
+            "c9d6a63b-ca3c-4f5f-9bb5-c40c03cde2e3",
+            "3c10316d-3f63-4065-be85-c8c4a9470663",
+            "c11fda29-debd-453c-9032-306158d24990",
+            "04b40ac9-2831-4f0d-be90-63fb64b5d9a5",
+            "cbb18c79-1036-408d-99a0-90075bb47c18"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0625,
+          "latency_ms": 15.332899987697601
+        },
+        {
+          "group": "date_filtered",
+          "query": "ios android react-native mobile biometric offline push notification sync",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "e6b04b55-4e65-40d3-a864-bfae15838511",
+            "2ab52672-ddc5-499b-b512-196a35935cc2",
+            "21da109b-71a4-4e7c-a1ac-fdb3d70e773a",
+            "bdf7288b-3c0b-4423-95f7-347dd8412678",
+            "9cf86246-823b-43a3-8c9f-2bacdc502be1"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 22.72459998494014
+        },
+        {
+          "group": "date_filtered",
+          "query": "slack email webhook alert notification quiet hours unsubscribe bounce",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "99bbd402-96f3-406c-a987-b09b23b3479e",
+            "e4ad4069-5152-4274-9f51-0974fe3ebab5",
+            "f5a6b1a1-47c2-470a-a8d7-5856a6c03a5a",
+            "2c2aeb84-4f77-4103-b800-780197486334",
+            "648b9abf-5adf-4a2a-9a8e-387bf75b1ef0"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 18.69370002532378
+        },
+        {
+          "group": "date_filtered",
+          "query": "trello github jira connector cursor sync webhook verification",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "41c7a406-9359-4b5d-9ac7-25209670efb3",
+            "85924e5f-1f53-4b6e-ab11-77367260282f",
+            "c9acd635-0d48-4241-bdea-4cc7c6bca20f",
+            "e7635620-eaef-418c-ae60-b3e1402613bb",
+            "620072e0-4cc2-4118-a24e-ae81da2534f2"
+          ],
+          "retrieved_card_ids_top10": [
+            "f398d16e-18b9-40a2-a364-42e58abe5779",
+            "f57c2a25-7b62-4e6a-9084-44736c71dad1",
+            "cbbed980-07e6-4cb0-90bd-e9001529e6f5",
+            "66c14dca-8255-4a61-9a3b-031932f57510",
+            "aa528f85-01d9-4b33-b488-e328c075e119",
+            "8377dc89-0ee6-44f4-b84d-57a513118ab7",
+            "00c85e9a-408a-4d2f-8c86-e6b66ffcc6e5",
+            "9710160b-de6d-4591-9362-0975ad14ea20",
+            "05a562a9-6cc7-4151-9172-44f793645e43",
+            "620072e0-4cc2-4118-a24e-ae81da2534f2"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.2,
+          "mrr": 0.1,
+          "latency_ms": 6.2074000015854836
+        },
+        {
+          "group": "date_filtered",
+          "query": "cohort retention funnel attribution telemetry warehouse clickhouse metrics",
+          "workspace_id": "b409a852-b180-46c9-9ca0-0a43f6236412",
+          "client_id": null,
+          "expected_card_ids": [
+            "432adfc9-91ea-447b-a817-381c1757f919",
+            "f8563880-a7f3-4fe3-9a73-f6a1c17e09cb",
+            "c0bd494b-69e6-4df4-8be7-3aeb5a6ae3c6",
+            "489bf387-fed2-49d6-b983-f03b075397ab",
+            "7bd82bd7-e41a-455f-a3af-349d5d3c9898"
+          ],
+          "retrieved_card_ids_top10": [
+            "07246bba-02ae-4d0f-9b10-1bc744a1264c",
+            "ac50a7cb-11db-4eac-b940-525c42a4f2fe",
+            "4f8a70aa-ea0a-462f-996b-a2d1020e308f",
+            "3fc31311-88f1-4964-80fc-844fb0395904",
+            "6b31f6c1-d1b2-48ff-877c-dedb65f8cdbd",
+            "66ce8d55-b2b6-4df8-a999-ac1ae3e1f96b",
+            "0bc7e4b8-f1c1-4fc1-b9e4-c9981d4fe191",
+            "e725b034-163e-4cac-a4b4-a59d5735025f",
+            "542c6bb8-263a-449e-8335-f7ab4a06ff9b",
+            "1abec6a6-2134-40f4-8e31-031d4e8995c9"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.058823529411764705,
+          "latency_ms": 28.321799996774644
+        },
+        {
+          "group": "date_filtered",
+          "query": "fernet aes encryption key rotation rbac audit log tenant isolation",
+          "workspace_id": "604814ce-5bb7-42bc-8fa5-5a77fd3d867a",
+          "client_id": null,
+          "expected_card_ids": [
+            "e9da8158-8bf9-4ebb-b717-2943e34edc2b",
+            "bfb63623-73bf-4651-8a28-b2a88024b48d",
+            "d210dccd-63bd-4f42-903e-0dcff8d61d74",
+            "1da7bdd9-e0b9-4320-b6c4-f6b29b0db81d",
+            "cfc17e1b-78d1-41e5-8f98-629ff8d96e97"
+          ],
+          "retrieved_card_ids_top10": [],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.0,
+          "latency_ms": 18.556000024545938
+        },
+        {
+          "group": "date_filtered",
+          "query": "subscription invoice proration metering quota overage dunning plan-limit",
+          "workspace_id": "23b8c1e9-3924-46de-beb1-3b9046685257",
+          "client_id": null,
+          "expected_card_ids": [
+            "b6a16061-9d70-42c1-8478-9ccf041dac52",
+            "f891b0c3-dd3f-487e-92bd-c6619fe0a8c7",
+            "bd76bb2f-f189-4bad-aad8-8bca53cf14e1",
+            "0a813e88-0df3-4a58-be83-3c05cd21fb86",
+            "9c91e8e5-4f30-4268-80ba-deb83572f0f5"
+          ],
+          "retrieved_card_ids_top10": [
+            "8fffe845-6257-4e9c-8260-1132c02fb24f",
+            "4ef8a787-34c5-4d5b-a5f5-ed6fc5e2cdcc",
+            "593c73f2-b8e5-4141-8067-6073e9c000f0",
+            "7bab1baa-2172-40aa-a44a-913af933a9fa",
+            "82d621dd-f00a-4b85-bc50-1ef8bb94c73b",
+            "2af474fd-e104-484c-89b9-4f8420a038fc",
+            "27af9995-8e5a-4e09-accc-181e2e54ca50",
+            "552d4865-d756-4d35-ad2e-ebea69b7d533",
+            "d7aa0f83-59f6-464d-bfce-50b36151bd93",
+            "61223189-35f3-4e4a-ac92-04b40306a258"
+          ],
+          "recall_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "mrr": 0.07692307692307693,
+          "latency_ms": 18.94360000733286
+        }
+      ]
+    }
+  }
+}
