@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+from typing import Any
 
 import pytest
 import respx
@@ -2985,3 +2986,790 @@ async def test_client_rename_via_api_reenqueues_index_tasks(
     )
     assert len(chunks) == 2
     assert all(ch.text.startswith("Client: Renamed Enterprise |") for ch in chunks)
+
+
+
+def _unit_vec(index: int, dims: int = 768) -> list[float]:
+    vec = [0.0] * dims
+    vec[index % dims] = 1.0
+    return vec
+
+
+def _make_chunk_record(
+    *,
+    workspace_id: uuid.UUID,
+    source_id: uuid.UUID | None = None,
+    card_id: uuid.UUID | None = None,
+    repository_id: uuid.UUID | None = None,
+    client_id: uuid.UUID | None = None,
+    source_type: str = "trello",
+    chunk_kind: str = "card_body",
+    ordinal: int = 0,
+    group_key: str | None = None,
+    text: str,
+    embedding: list[float] | None,
+    embedding_model: str = "gemini-embedding-001",
+    occurred_at: object = None,
+) -> Any:
+    from datetime import UTC, datetime
+
+    from app.modules.context.models import ContextChunkRecord
+
+    dt = (
+        occurred_at
+        if isinstance(occurred_at, datetime)
+        else datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    )
+    return ContextChunkRecord(
+        workspace_id=workspace_id,
+        source_id=source_id,
+        card_id=card_id,
+        repository_id=repository_id,
+        client_id=client_id,
+        source_type=source_type,
+        chunk_kind=chunk_kind,
+        ordinal=ordinal,
+        group_key=group_key,
+        content_hash=hashlib.sha256(
+            f"{workspace_id}:{card_id}:{repository_id}:{chunk_kind}:{ordinal}:{text}".encode()
+        ).hexdigest(),
+        text=text,
+        token_estimate=max(1, len(text.split())),
+        chunker_version=1,
+        chunk_metadata={},
+        occurred_at=dt,
+        embedding=embedding,
+        embedding_model=embedding_model if embedding is not None else None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_active_sources_filters_excluded_and_inactive_in_one_query(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from sqlalchemy import event
+
+    from app.modules.connections.models import ProviderAccount
+    from app.modules.context.retriever import resolve_active_sources
+    from app.modules.github.models import GithubRepository
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Active Sources WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    second_user = User(
+        email=f"second_{uuid.uuid4().hex[:8]}@example.com",
+        name="Second User",
+        hashed_password=user.hashed_password,
+    )
+    db_session.add(second_user)
+    await db_session.flush()
+    connections = ConnectionRepository(db_session)
+
+    active_trello_conn = await connections.upsert_provider_connection(
+        workspace_id=workspace_id,
+        provider="trello",
+        user_id=user.id,
+        encrypted_token="enc-trello-active",
+        external_account_id="trello-acc-active",
+        external_username="trello-active",
+    )
+    inactive_trello_conn = await connections.upsert_provider_connection(
+        workspace_id=workspace_id,
+        provider="trello",
+        user_id=second_user.id,
+        encrypted_token="enc-trello-inactive",
+        external_account_id="trello-acc-inactive",
+        external_username="trello-inactive",
+    )
+    inactive_trello_conn.status = "revoked"
+
+    active_gh_conn = await connections.upsert_provider_connection(
+        workspace_id=workspace_id,
+        provider="github",
+        user_id=user.id,
+        encrypted_token="enc-gh-active",
+        external_account_id="gh-acc-active",
+        external_username="gh-active",
+    )
+    inactive_gh_conn = await connections.upsert_provider_connection(
+        workspace_id=workspace_id,
+        provider="github",
+        user_id=second_user.id,
+        encrypted_token="enc-gh-inactive",
+        external_account_id="gh-acc-inactive",
+        external_username="gh-inactive",
+    )
+    inactive_gh_account = await db_session.get(
+        ProviderAccount, inactive_gh_conn.provider_account_id
+    )
+    assert inactive_gh_account is not None
+    inactive_gh_account.status = "error"
+
+    included_board = TrelloSource(
+        workspace_id=workspace_id,
+        connection_id=active_trello_conn.id,
+        trello_board_id="b-inc",
+        name="Included Board",
+        url="https://trello.com/b/inc",
+        excluded=False,
+        sync_status="completed",
+    )
+    excluded_board = TrelloSource(
+        workspace_id=workspace_id,
+        connection_id=active_trello_conn.id,
+        trello_board_id="b-exc",
+        name="Excluded Board",
+        url="https://trello.com/b/exc",
+        excluded=True,
+        sync_status="completed",
+    )
+    inactive_conn_board = TrelloSource(
+        workspace_id=workspace_id,
+        connection_id=inactive_trello_conn.id,
+        trello_board_id="b-inact",
+        name="Inactive Conn Board",
+        url="https://trello.com/b/inact",
+        excluded=False,
+        sync_status="completed",
+    )
+
+    included_repo = GithubRepository(
+        workspace_id=workspace_id,
+        connection_id=active_gh_conn.id,
+        github_repo_id="r-inc",
+        full_name="acme/included-repo",
+        url="https://github.com/acme/included-repo",
+        default_branch="main",
+        private=True,
+        included=True,
+        sync_status="completed",
+    )
+    excluded_repo = GithubRepository(
+        workspace_id=workspace_id,
+        connection_id=active_gh_conn.id,
+        github_repo_id="r-exc",
+        full_name="acme/excluded-repo",
+        url="https://github.com/acme/excluded-repo",
+        default_branch="main",
+        private=True,
+        included=False,
+        sync_status="completed",
+    )
+    inactive_acc_repo = GithubRepository(
+        workspace_id=workspace_id,
+        connection_id=inactive_gh_conn.id,
+        github_repo_id="r-inact",
+        full_name="acme/inactive-repo",
+        url="https://github.com/acme/inactive-repo",
+        default_branch="main",
+        private=True,
+        included=True,
+        sync_status="completed",
+    )
+    db_session.add_all(
+        [
+            included_board,
+            excluded_board,
+            inactive_conn_board,
+            included_repo,
+            excluded_repo,
+            inactive_acc_repo,
+        ]
+    )
+    await db_session.commit()
+
+    executed_statements: list[str] = []
+
+    def _before_cursor_execute(
+        conn: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        if "SELECT" in statement.upper():
+            executed_statements.append(statement)
+
+    sync_engine = db_session.bind.sync_engine  # type: ignore[union-attr]
+    event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
+    try:
+        source_ids, repo_ids = await resolve_active_sources(db_session, workspace_id)
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before_cursor_execute)
+
+    assert len(executed_statements) == 1
+    assert source_ids == [included_board.id]
+    assert repo_ids == [included_repo.id]
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_workspace_isolation_and_excluded_sources(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from app.modules.context.retriever import HybridRetriever, resolve_active_sources
+
+    email = await _create_user(async_client)
+    ws1_resp = await async_client.post("/api/v1/workspaces", json={"name": "Hybrid WS 1"})
+    ws2_resp = await async_client.post("/api/v1/workspaces", json={"name": "Hybrid WS 2"})
+    ws1_id = uuid.UUID(ws1_resp.json()["id"])
+    ws2_id = uuid.UUID(ws2_resp.json()["id"])
+
+    ws1 = (await db_session.execute(select(Workspace).where(Workspace.id == ws1_id))).scalar_one()
+    ws2 = (await db_session.execute(select(Workspace).where(Workspace.id == ws2_id))).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    conn1_id = await _create_connection(db_session, user, ws1)
+    conn2_id = await _create_connection(db_session, user, ws2)
+
+    active_card = await _create_context_card(
+        db_session, ws1_id, conn1_id, name="Active WS1 Card", board_id="ws1-active", excluded=False
+    )
+    excluded_card = await _create_context_card(
+        db_session,
+        ws1_id,
+        conn1_id,
+        name="Excluded WS1 Card",
+        board_id="ws1-excluded",
+        excluded=True,
+    )
+    other_ws_card = await _create_context_card(
+        db_session, ws2_id, conn2_id, name="Other WS2 Card", board_id="ws2-active", excluded=False
+    )
+
+    shared_vec = _unit_vec(0)
+    db_session.add_all(
+        [
+            _make_chunk_record(
+                workspace_id=ws1_id,
+                source_id=active_card.source_id,
+                card_id=active_card.id,
+                text="PROJ-900 deployment pipeline rollout",
+                embedding=shared_vec,
+            ),
+            _make_chunk_record(
+                workspace_id=ws1_id,
+                source_id=excluded_card.source_id,
+                card_id=excluded_card.id,
+                text="PROJ-900 deployment pipeline rollout excluded secret",
+                embedding=shared_vec,
+            ),
+            _make_chunk_record(
+                workspace_id=ws2_id,
+                source_id=other_ws_card.source_id,
+                card_id=other_ws_card.id,
+                text="PROJ-900 deployment pipeline rollout other workspace",
+                embedding=shared_vec,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    class StubEmbedder:
+        def embed(self, text: str, *, query: bool = False) -> list[float]:
+            assert query is True
+            return shared_vec
+
+    src_ids, repo_ids = await resolve_active_sources(db_session, ws1_id)
+    retriever = HybridRetriever(db_session, embedder=StubEmbedder())
+    results = await retriever.search(
+        workspace_id=ws1_id,
+        query="PROJ-900 deployment pipeline",
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        limit=10,
+    )
+
+    assert [r.card_id for r in results] == [active_card.id]
+    assert results[0].parent_title == "Active WS1 Card"
+    assert results[0].parent_url == "https://trello.com/c/ws1-active"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_keyword_identifier_and_vector_semantic_paths(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from app.modules.context.retriever import HybridRetriever, resolve_active_sources
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Paths WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    conn_id = await _create_connection(db_session, user, workspace)
+
+    identifier_card = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Ticket PROJ-123 Hotfix", board_id="b-id"
+    )
+    semantic_card = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Latency Optimization", board_id="b-sem"
+    )
+    unembedded_card = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Unembedded PROJ-456 Card", board_id="b-unemb"
+    )
+
+    db_session.add_all(
+        [
+            _make_chunk_record(
+                workspace_id=workspace_id,
+                source_id=identifier_card.source_id,
+                card_id=identifier_card.id,
+                text="Urgent customer escalation tracked under identifier PROJ-123 in production.",
+                embedding=_unit_vec(10),
+            ),
+            _make_chunk_record(
+                workspace_id=workspace_id,
+                source_id=semantic_card.source_id,
+                card_id=semantic_card.id,
+                text="Database connection pooling reduced p95 response durations.",
+                embedding=_unit_vec(1),
+            ),
+            _make_chunk_record(
+                workspace_id=workspace_id,
+                source_id=unembedded_card.source_id,
+                card_id=unembedded_card.id,
+                text="Critical hotfix reference PROJ-456 awaiting deployment.",
+                embedding=None,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    src_ids, repo_ids = await resolve_active_sources(db_session, workspace_id)
+
+    # 1. Exact identifier query ("PROJ-123") found via keyword path
+    class OrthogonalEmbedder:
+        def embed(self, text: str, *, query: bool = False) -> list[float]:
+            assert query is True
+            return _unit_vec(99)
+
+    retriever_kw = HybridRetriever(db_session, embedder=OrthogonalEmbedder())
+    id_results = await retriever_kw.search(
+        workspace_id=workspace_id,
+        query='"PROJ-123"',
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        limit=5,
+    )
+    assert len(id_results) >= 1
+    assert id_results[0].card_id == identifier_card.id
+    assert id_results[0].scores["keyword_rank"] == 1
+
+    # Unembedded chunk found strictly through keyword path (vector_rank is None)
+    kw_only_hit = await retriever_kw.search(
+        workspace_id=workspace_id,
+        query='"PROJ-456"',
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        limit=5,
+    )
+    assert kw_only_hit[0].card_id == unembedded_card.id
+    assert kw_only_hit[0].scores["keyword_rank"] == 1
+    assert kw_only_hit[0].scores["vector_rank"] is None
+
+    # 2. Semantic query ("slow API requests"): zero lexical overlap, found via vector path
+    class SemanticEmbedder:
+        def embed(self, text: str, *, query: bool = False) -> list[float]:
+            assert query is True
+            return _unit_vec(1)
+
+    retriever_vec = HybridRetriever(db_session, embedder=SemanticEmbedder())
+    sem_results = await retriever_vec.search(
+        workspace_id=workspace_id,
+        query="slow API requests",
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        limit=5,
+    )
+    assert len(sem_results) >= 1
+    assert sem_results[0].card_id == semantic_card.id
+    assert sem_results[0].scores["vector_rank"] == 1
+    assert sem_results[0].scores["keyword_rank"] is None
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_returns_github_commit_chunks_with_repository_ids(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from app.modules.context.retriever import HybridRetriever, resolve_active_sources
+    from app.modules.github.models import GithubRepository
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "GitHub Commits WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    gh_conn = await ConnectionRepository(db_session).upsert_provider_connection(
+        workspace_id=workspace_id,
+        provider="github",
+        user_id=user.id,
+        encrypted_token="enc-gh-token",
+        external_account_id="gh-acc-1",
+        external_username="octocat",
+    )
+    repo = GithubRepository(
+        workspace_id=workspace_id,
+        connection_id=gh_conn.id,
+        github_repo_id="repo-777",
+        full_name="acme/payments-service",
+        description="Payments microservice",
+        url="https://github.com/acme/payments-service",
+        default_branch="main",
+        private=True,
+        included=True,
+        sync_status="completed",
+    )
+    db_session.add(repo)
+    await db_session.flush()
+
+    commit_chunk = _make_chunk_record(
+        workspace_id=workspace_id,
+        repository_id=repo.id,
+        card_id=None,
+        source_id=None,
+        source_type="github",
+        chunk_kind="commit_group",
+        ordinal=0,
+        group_key="2026-W19",
+        text="Client: Acme | Repo: acme/payments-service (main)\n- a1b2c3d: fix webhook signature validation (PROJ-777)",
+        embedding=_unit_vec(5),
+    )
+    db_session.add(commit_chunk)
+    await db_session.commit()
+
+    src_ids, repo_ids = await resolve_active_sources(db_session, workspace_id)
+    assert src_ids == []
+    assert repo_ids == [repo.id]
+
+    class StubEmbedder:
+        def embed(self, text: str, *, query: bool = False) -> list[float]:
+            return _unit_vec(5)
+
+    retriever = HybridRetriever(db_session, embedder=StubEmbedder())
+    results = await retriever.search(
+        workspace_id=workspace_id,
+        query='"PROJ-777" webhook signature',
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        limit=5,
+    )
+
+    assert len(results) == 1
+    hit = results[0]
+    assert hit.card_id is None
+    assert hit.repository_id == repo.id
+    assert hit.source_type == "github"
+    assert hit.chunk_kind == "commit_group"
+    assert hit.parent_title == "acme/payments-service"
+    assert hit.parent_url == "https://github.com/acme/payments-service"
+    assert hit.scores["vector_rank"] == 1
+    assert hit.scores["keyword_rank"] == 1
+    assert hit.scores["rrf"] == pytest.approx(2.0 / 61.0)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_embedding_failure_degrades_to_keyword_only(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.modules.context.gemini import EmbeddingUnavailable
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Degraded Fallback WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    conn_id = await _create_connection(db_session, user, workspace)
+
+    card = await _create_context_card(
+        db_session,
+        workspace_id,
+        conn_id,
+        name="Outage Postmortem PROJ-500",
+        board_id="b-degraded",
+    )
+    db_session.add(
+        _make_chunk_record(
+            workspace_id=workspace_id,
+            source_id=card.source_id,
+            card_id=card.id,
+            text="Root cause analysis for PROJ-500 Redis failover incident.",
+            embedding=_unit_vec(3),
+        )
+    )
+    await db_session.commit()
+
+    class FailingGemini:
+        async def __aenter__(self) -> "FailingGemini":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def embed(self, text: str, *, query: bool = False) -> list[float]:
+            raise EmbeddingUnavailable("Gemini embedding endpoint returned 503")
+
+    monkeypatch.setattr("app.modules.context.service.GeminiContextClient", FailingGemini)
+
+    async_client.headers["X-Workspace-Id"] = str(workspace_id)
+    response = await async_client.post(
+        "/api/v1/context/search",
+        json={"query": '"PROJ-500" Redis failover'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["degraded"] is True
+    assert payload["search_mode"] == "keyword_only"
+    assert payload["metadata"]["degraded"] is True
+    assert payload["metadata"]["mode"] == "keyword_only"
+    assert payload["metadata"]["embed_error_type"] == "EmbeddingUnavailable"
+    assert len(payload["results"]) == 1
+    assert payload["results"][0]["card_id"] == str(card.id)
+    assert payload["results"][0]["scores"]["keyword_rank"] == 1
+    assert payload["results"][0]["scores"]["vector_rank"] is None
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_rrf_ordering_and_per_card_collapse_on_handmade_example(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from app.modules.context.retriever import HybridRetriever, resolve_active_sources
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Handmade RRF WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    conn_id = await _create_connection(db_session, user, workspace)
+
+    card_a = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Card A Dual Match", board_id="b-rrf-a"
+    )
+    card_b = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Card B Vector Top1", board_id="b-rrf-b"
+    )
+    card_c = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Card C Keyword Top1", board_id="b-rrf-c"
+    )
+
+    vec_b = [1.0, 0.0] + [0.0] * 766
+    vec_a0 = [0.8, 0.6] + [0.0] * 766
+    vec_a1 = [0.6, 0.8] + [0.0] * 766
+
+    chunk_a0 = _make_chunk_record(
+        workspace_id=workspace_id,
+        source_id=card_a.source_id,
+        card_id=card_a.id,
+        chunk_kind="card_body",
+        ordinal=0,
+        text="Implement oauth2 token exchange for SSO login.",
+        embedding=vec_a0,
+    )
+    chunk_a1 = _make_chunk_record(
+        workspace_id=workspace_id,
+        source_id=card_a.source_id,
+        card_id=card_a.id,
+        chunk_kind="comment_group",
+        ordinal=0,
+        text="Follow-up notes on session cookies.",
+        embedding=vec_a1,
+    )
+    chunk_b = _make_chunk_record(
+        workspace_id=workspace_id,
+        source_id=card_b.source_id,
+        card_id=card_b.id,
+        chunk_kind="card_body",
+        ordinal=0,
+        text="Completely different phrasing without the target keyword.",
+        embedding=vec_b,
+    )
+    chunk_c = _make_chunk_record(
+        workspace_id=workspace_id,
+        source_id=card_c.source_id,
+        card_id=card_c.id,
+        chunk_kind="card_body",
+        ordinal=0,
+        text="oauth2 oauth2 oauth2 specification compliance checklist.",
+        embedding=None,
+    )
+    db_session.add_all([chunk_a0, chunk_a1, chunk_b, chunk_c])
+    await db_session.commit()
+
+    class QueryEmbedder:
+        def embed(self, text: str, *, query: bool = False) -> list[float]:
+            return [1.0, 0.0] + [0.0] * 766
+
+    src_ids, repo_ids = await resolve_active_sources(db_session, workspace_id)
+    retriever = HybridRetriever(db_session, embedder=QueryEmbedder(), keyword_weight=1.0)
+    results = await retriever.search(
+        workspace_id=workspace_id,
+        query="oauth2",
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        limit=10,
+    )
+
+    assert [r.card_id for r in results] == [card_a.id, card_c.id, card_b.id]
+    assert results[0].chunk_id == chunk_a0.id
+    assert set(results[0].chunk_ids) == {chunk_a0.id, chunk_a1.id}
+    assert results[0].scores["vector_rank"] == 2
+    assert results[0].scores["keyword_rank"] == 2
+    assert results[0].scores["rrf"] == pytest.approx(1.0 / 62.0 + 1.0 / 62.0)
+    assert results[1].scores["rrf"] == pytest.approx(1.0 / 61.0)
+    assert results[2].scores["rrf"] == pytest.approx(1.0 / 61.0)
+
+    # Verify weighted RRF (vector_weight=1.0, keyword_weight=0.5)
+    retriever_weighted = HybridRetriever(
+        db_session, embedder=QueryEmbedder(), keyword_weight=0.5, vector_weight=1.0
+    )
+    weighted_results = await retriever_weighted.search(
+        workspace_id=workspace_id,
+        query="oauth2",
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        limit=10,
+    )
+    # Card A has rank 2 vector + rank 2 keyword: 1.0/62 + 0.5/62 = 1.5/62 (0.02419)
+    # Card B has rank 1 vector: 1.0/61 (0.01639)
+    # Card C has rank 1 keyword: 0.5/61 (0.00820)
+    # Card B outranks Card C due to vector weighting!
+    assert [r.card_id for r in weighted_results] == [card_a.id, card_b.id, card_c.id]
+    assert weighted_results[0].scores["rrf"] == pytest.approx(1.0 / 62.0 + 0.5 / 62.0)
+    assert weighted_results[1].scores["rrf"] == pytest.approx(1.0 / 61.0)
+    assert weighted_results[2].scores["rrf"] == pytest.approx(0.5 / 61.0)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_respects_client_and_date_filters_and_logs_safe_timings(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.modules.context.retriever import (
+        HybridRetriever,
+        parse_pgvector_version,
+        reset_pgvector_version_cache,
+        resolve_active_sources,
+    )
+    from app.modules.trello.models import TrelloClientRecord
+
+    email = await _create_user(async_client)
+    ws_resp = await async_client.post("/api/v1/workspaces", json={"name": "Filter & Timing WS"})
+    workspace_id = uuid.UUID(ws_resp.json()["id"])
+    workspace = (
+        await db_session.execute(select(Workspace).where(Workspace.id == workspace_id))
+    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    conn_id = await _create_connection(db_session, user, workspace)
+
+    client_alpha = TrelloClientRecord(workspace_id=workspace_id, name="Client Alpha")
+    client_beta = TrelloClientRecord(workspace_id=workspace_id, name="Client Beta")
+    db_session.add_all([client_alpha, client_beta])
+    await db_session.flush()
+
+    card_alpha_jan = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Alpha Jan Card", board_id="b-alpha-jan"
+    )
+    card_alpha_jan.client_id = client_alpha.id
+
+    card_alpha_mar = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Alpha Mar Card", board_id="b-alpha-mar"
+    )
+    card_alpha_mar.client_id = client_alpha.id
+
+    card_beta_mar = await _create_context_card(
+        db_session, workspace_id, conn_id, name="Beta Mar Card", board_id="b-beta-mar"
+    )
+    card_beta_mar.client_id = client_beta.id
+
+    vec = _unit_vec(7)
+    secret_chunk_phrase = "SUPER_SECRET_CHUNK_BODY_DO_NOT_LOG_98765"
+    secret_query_phrase = "SUPER_SECRET_QUERY_TEXT_DO_NOT_LOG_12345"
+
+    db_session.add_all(
+        [
+            _make_chunk_record(
+                workspace_id=workspace_id,
+                source_id=card_alpha_jan.source_id,
+                card_id=card_alpha_jan.id,
+                client_id=client_alpha.id,
+                text=f"Alpha January deliverable {secret_chunk_phrase}",
+                embedding=vec,
+                occurred_at=datetime(2026, 1, 15, 10, 0, tzinfo=UTC),
+            ),
+            _make_chunk_record(
+                workspace_id=workspace_id,
+                source_id=card_alpha_mar.source_id,
+                card_id=card_alpha_mar.id,
+                client_id=client_alpha.id,
+                text=f"Alpha March deliverable {secret_chunk_phrase}",
+                embedding=vec,
+                occurred_at=datetime(2026, 3, 15, 10, 0, tzinfo=UTC),
+            ),
+            _make_chunk_record(
+                workspace_id=workspace_id,
+                source_id=card_beta_mar.source_id,
+                card_id=card_beta_mar.id,
+                client_id=client_beta.id,
+                text=f"Beta March deliverable {secret_chunk_phrase}",
+                embedding=vec,
+                occurred_at=datetime(2026, 3, 15, 10, 0, tzinfo=UTC),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    logged_events: list[tuple[str, dict[str, object]]] = []
+
+    def _capture_info(event: str, **kwargs: object) -> None:
+        logged_events.append((event, kwargs))
+
+    monkeypatch.setattr("app.modules.context.retriever.logger.info", _capture_info)
+
+    class StubEmbedder:
+        def embed(self, text: str, *, query: bool = False) -> list[float]:
+            return vec
+
+    src_ids, repo_ids = await resolve_active_sources(db_session, workspace_id)
+    retriever = HybridRetriever(db_session, embedder=StubEmbedder())
+
+    filtered = await retriever.search(
+        workspace_id=workspace_id,
+        query=secret_query_phrase,
+        client_id=client_alpha.id,
+        source_ids=src_ids,
+        repository_ids=repo_ids,
+        date_from=datetime(2026, 3, 1, 0, 0, tzinfo=UTC),
+        date_to=datetime(2026, 3, 31, 23, 59, tzinfo=UTC),
+        limit=10,
+    )
+    assert [r.card_id for r in filtered] == [card_alpha_mar.id]
+
+    assert len(logged_events) == 1
+    event_name, log_kwargs = logged_events[0]
+    assert event_name == "context_hybrid_search_completed"
+    assert "embed_ms" in log_kwargs
+    assert "db_ms" in log_kwargs
+    assert "total_ms" in log_kwargs
+    serialized_log = repr(log_kwargs)
+    assert secret_query_phrase not in serialized_log
+    assert secret_chunk_phrase not in serialized_log
+
+    assert parse_pgvector_version("0.8.0") == (0, 8)
+    assert parse_pgvector_version("0.7.4") == (0, 7)
+    assert parse_pgvector_version(None) == (0, 0)
+    reset_pgvector_version_cache()

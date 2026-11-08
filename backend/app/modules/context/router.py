@@ -106,6 +106,8 @@ async def search_workspace_context(
             query=payload.query,
             client_id=payload.client_id,
             limit=payload.limit,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
         )
     except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
         raise HTTPException(

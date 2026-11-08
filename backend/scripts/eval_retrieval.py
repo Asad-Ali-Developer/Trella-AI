@@ -19,6 +19,7 @@ from sqlalchemy import Select, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.context.models import EMBEDDING_DIMENSIONS, ContextChunkRecord
+from app.modules.context.retriever import HybridRetriever
 from app.modules.github.models import GithubRepository
 from app.modules.trello.models import TrelloSource
 from scripts.bench_db import (
@@ -152,7 +153,7 @@ class VectorOnlyRetriever:
         date_to: datetime | None = None,
         limit: int = 10,
     ) -> list[RetrievedChunk]:
-        query_vec = self.embedder.embed(query)
+        query_vec = [round(float(x), 5) for x in self.embedder.embed(query)]
         halfvec_param = cast(query_vec, HALFVEC(EMBEDDING_DIMENSIONS))
         distance_expr = ContextChunkRecord.embedding.cosine_distance(halfvec_param)
 
@@ -191,8 +192,13 @@ class VectorOnlyRetriever:
                 await self.session.execute(
                     text(f"SET LOCAL hnsw.iterative_scan = {self.iterative_scan}")
                 )
-            rows = (await self.session.execute(stmt)).all()
-        self.last_db_latency_ms = (time.perf_counter() - t0) * 1000.0
+            t_exec_start = time.perf_counter()
+            result_proxy = await self.session.execute(stmt)
+            t_exec_end = time.perf_counter()
+            rows = result_proxy.all()
+        t1 = time.perf_counter()
+        self.last_db_exec_ms = (t_exec_end - t_exec_start) * 1000.0
+        self.last_db_latency_ms = (t1 - t0) * 1000.0
 
         return [
             RetrievedChunk(
@@ -258,8 +264,12 @@ class KeywordOnlyRetriever:
         stmt = stmt.order_by(rank_expr.desc(), ContextChunkRecord.id).limit(limit)
 
         t0 = time.perf_counter()
-        rows = (await self.session.execute(stmt)).all()
-        self.last_db_latency_ms = (time.perf_counter() - t0) * 1000.0
+        result_proxy = await self.session.execute(stmt)
+        t_exec = time.perf_counter()
+        rows = result_proxy.all()
+        t1 = time.perf_counter()
+        self.last_db_exec_ms = (t_exec - t0) * 1000.0
+        self.last_db_latency_ms = (t1 - t0) * 1000.0
 
         return [
             RetrievedChunk(
@@ -277,7 +287,7 @@ class KeywordOnlyRetriever:
         ]
 
 
-def deduplicate_ranked_card_ids(chunks: Sequence[RetrievedChunk]) -> list[str]:
+def deduplicate_ranked_card_ids(chunks: Sequence[Any]) -> list[str]:
     """Extract unique card_ids from retrieved chunks while preserving rank order."""
     seen: set[str] = set()
     ranked: list[str] = []
@@ -347,6 +357,8 @@ class GroupMetrics:
     mrr: float
     p50_ms: float
     p95_ms: float
+    p50_exec_ms: float = 0.0
+    p95_exec_ms: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -356,6 +368,8 @@ class GroupMetrics:
             "mrr": round(self.mrr, 4),
             "p50_ms": round(self.p50_ms, 3),
             "p95_ms": round(self.p95_ms, 3),
+            "p50_exec_ms": round(self.p50_exec_ms, 3),
+            "p95_exec_ms": round(self.p95_exec_ms, 3),
         }
 
 
@@ -369,12 +383,15 @@ def aggregate_query_records(records: Sequence[dict[str, Any]]) -> GroupMetrics:
             mrr=0.0,
             p50_ms=0.0,
             p95_ms=0.0,
+            p50_exec_ms=0.0,
+            p95_exec_ms=0.0,
         )
     n = len(records)
     r5 = sum(float(r["recall_at_5"]) for r in records) / n
     r10 = sum(float(r["recall_at_10"]) for r in records) / n
     mrr = sum(float(r["mrr"]) for r in records) / n
     latencies = [float(r["latency_ms"]) for r in records]
+    exec_latencies = [float(r.get("db_exec_ms", r["latency_ms"])) for r in records]
     return GroupMetrics(
         count=n,
         recall_at_5=r5,
@@ -382,11 +399,13 @@ def aggregate_query_records(records: Sequence[dict[str, Any]]) -> GroupMetrics:
         mrr=mrr,
         p50_ms=compute_percentile(latencies, 50.0),
         p95_ms=compute_percentile(latencies, 95.0),
+        p50_exec_ms=compute_percentile(exec_latencies, 50.0),
+        p95_exec_ms=compute_percentile(exec_latencies, 95.0),
     )
 
 
 async def evaluate_retriever(
-    retriever: Retriever,
+    retriever: Retriever | HybridRetriever,
     golden_entries: Sequence[GoldenQueryEntry],
     *,
     limit: int = 20,
@@ -414,6 +433,7 @@ async def evaluate_retriever(
         )
         wall_ms = (time.perf_counter() - t0) * 1000.0
         db_ms = float(getattr(retriever, "last_db_latency_ms", wall_ms) or wall_ms)
+        db_exec_ms = float(getattr(retriever, "last_db_exec_ms", db_ms) or db_ms)
 
         ranked_cards = deduplicate_ranked_card_ids(chunks)
         r5 = compute_recall_at_k(ranked_cards, entry.expected_card_ids, 5)
@@ -431,6 +451,8 @@ async def evaluate_retriever(
             "recall_at_10": r10,
             "mrr": mrr,
             "latency_ms": db_ms,
+            "db_exec_ms": db_exec_ms,
+            "wall_ms": wall_ms,
         }
         per_query.append(rec)
         by_group.setdefault(entry.group, []).append(rec)
@@ -447,23 +469,126 @@ async def evaluate_retriever(
     }
 
 
+async def evaluate_tsquery_comparison(
+    session: AsyncSession,
+    golden_entries: Sequence[GoldenQueryEntry],
+) -> dict[str, Any]:
+    """Evaluate plainto_tsquery (AND) vs websearch_to_tsquery (OR) for candidate CTE execution times."""
+    conn = await session.connection()
+    driver = (await conn.get_raw_connection()).driver_connection
+
+    nl_entries = [
+        e for e in golden_entries if e.group in ("semantic", "client_filtered", "date_filtered")
+    ]
+    id_entries = [e for e in golden_entries if e.group == "exact_identifier"]
+
+    plain_times: list[float] = []
+    plain_counts: list[int] = []
+    or_times: list[float] = []
+    or_counts: list[int] = []
+    id_times: list[float] = []
+    id_counts: list[int] = []
+
+    for entry in nl_entries:
+        ws_id = UUID(entry.workspace_id)
+        q = entry.query
+        q_or = " or ".join(q.split())
+
+        t0 = time.perf_counter()
+        rows_plain = await driver.fetch(
+            """
+            SELECT id FROM (
+                SELECT id, tsv, ts_q FROM chunks, plainto_tsquery('simple', $2) AS ts_q
+                WHERE workspace_id = $1 AND tsv @@ ts_q
+                ORDER BY occurred_at DESC NULLS LAST, id DESC LIMIT 300
+            ) pre ORDER BY ts_rank_cd(tsv, ts_q) DESC LIMIT 50
+            """,
+            ws_id,
+            q,
+        )
+        plain_times.append((time.perf_counter() - t0) * 1000.0)
+        plain_counts.append(len(rows_plain))
+
+        t0 = time.perf_counter()
+        rows_or = await driver.fetch(
+            """
+            SELECT id FROM (
+                SELECT id, tsv, ts_q FROM chunks, websearch_to_tsquery('simple', $2) AS ts_q
+                WHERE workspace_id = $1 AND tsv @@ ts_q
+                ORDER BY occurred_at DESC NULLS LAST, id DESC LIMIT 300
+            ) pre ORDER BY ts_rank_cd(tsv, ts_q) DESC LIMIT 50
+            """,
+            ws_id,
+            q_or,
+        )
+        or_times.append((time.perf_counter() - t0) * 1000.0)
+        or_counts.append(len(rows_or))
+
+    for entry in id_entries:
+        ws_id = UUID(entry.workspace_id)
+        q = entry.query
+        t0 = time.perf_counter()
+        rows_id = await driver.fetch(
+            """
+            SELECT id FROM (
+                SELECT id, tsv, ts_q FROM chunks, websearch_to_tsquery('simple', $2) AS ts_q
+                WHERE workspace_id = $1 AND tsv @@ ts_q
+                ORDER BY occurred_at DESC NULLS LAST, id DESC LIMIT 300
+            ) pre ORDER BY ts_rank_cd(tsv, ts_q) DESC LIMIT 50
+            """,
+            ws_id,
+            q,
+        )
+        id_times.append((time.perf_counter() - t0) * 1000.0)
+        id_counts.append(len(rows_id))
+
+    return {
+        "plainto_and": {
+            "p50_ms": compute_percentile(plain_times, 50.0),
+            "p95_ms": compute_percentile(plain_times, 95.0),
+            "avg_matches": (
+                round(sum(plain_counts) / len(plain_counts), 1) if plain_counts else 0.0
+            ),
+        },
+        "websearch_or": {
+            "p50_ms": compute_percentile(or_times, 50.0),
+            "p95_ms": compute_percentile(or_times, 95.0),
+            "avg_matches": (
+                round(sum(or_counts) / len(or_counts), 1) if or_counts else 0.0
+            ),
+        },
+        "websearch_exact_id": {
+            "p50_ms": compute_percentile(id_times, 50.0),
+            "p95_ms": compute_percentile(id_times, 95.0),
+            "avg_matches": (
+                round(sum(id_counts) / len(id_counts), 1) if id_counts else 0.0
+            ),
+        },
+    }
+
+
 def _print_eval_table(retriever_name: str, report: dict[str, Any]) -> None:
     print(f"\n=== {retriever_name} ===")
-    header = f"{'Group':<20} | {'Count':>5} | {'Recall@5':>8} | {'Recall@10':>9} | {'MRR':>8} | {'p50 (ms)':>8} | {'p95 (ms)':>8}"
+    header = (
+        f"{'Group':<20} | {'Count':>5} | {'Recall@5':>8} | {'Recall@10':>9} | {'MRR':>8} | "
+        f"{'db_ms p50':>9} | {'exec_ms p50':>11} | {'p95 (ms)':>8}"
+    )
     print(header)
     print("-" * len(header))
     for grp, metrics in report["groups"].items():
         print(
             f"{grp:<20} | {metrics['count']:>5d} | {metrics['recall_at_5']:>8.4f} | "
             f"{metrics['recall_at_10']:>9.4f} | {metrics['mrr']:>8.4f} | "
-            f"{metrics['p50_ms']:>8.2f} | {metrics['p95_ms']:>8.2f}"
+            f"{metrics['p50_ms']:>9.2f} | {metrics.get('p50_exec_ms', metrics['p50_ms']):>11.2f} | "
+            f"{metrics['p95_ms']:>8.2f}"
         )
     print("-" * len(header))
     ov = report["overall"]
     print(
         f"{'OVERALL':<20} | {ov['count']:>5d} | {ov['recall_at_5']:>8.4f} | "
         f"{ov['recall_at_10']:>9.4f} | {ov['mrr']:>8.4f} | "
-        f"{ov['p50_ms']:>8.2f} | {ov['p95_ms']:>8.2f}"
+        f"{ov['p50_ms']:>9.2f} | {ov.get('p50_exec_ms', ov['p50_ms']):>11.2f} | "
+        f"{ov['p95_ms']:>8.2f}"
     )
 
 
@@ -472,11 +597,11 @@ async def run_evaluation(
     golden_path: Path = DEFAULT_GOLDEN_PATH,
     reports_dir: Path = DEFAULT_REPORTS_DIR,
     seed: int = 42,
-    ef_search: int = 100,
+    ef_search: int = 40,
     iterative_scan: IterativeScanMode | None = "relaxed_order",
     bench_url: str | None = None,
 ) -> tuple[dict[str, Any], Path]:
-    """Run VectorOnlyRetriever and KeywordOnlyRetriever on the golden set and write a JSON report."""
+    """Run VectorOnlyRetriever, KeywordOnlyRetriever, and HybridRetriever on the golden set and write a JSON report."""
     isolated_url = assert_bench_database_isolated(bench_url=bench_url)
     golden_entries = load_golden_jsonl(golden_path)
     if not golden_entries:
@@ -495,13 +620,33 @@ async def run_evaluation(
             )
             keyword_retriever = KeywordOnlyRetriever(session)
 
-            # Warmup query so connection setup is not counted in p50/p95
+            # Warmup queries so connection setup is not counted in p50/p95
             first_ws = UUID(golden_entries[0].workspace_id)
             await vector_retriever.search(workspace_id=first_ws, query="warmup", limit=5)
             await keyword_retriever.search(workspace_id=first_ws, query="warmup", limit=5)
 
             vector_report = await evaluate_retriever(vector_retriever, golden_entries)
             keyword_report = await evaluate_retriever(keyword_retriever, golden_entries)
+
+            # Evaluate HybridRetriever with weighted RRF across weights [0.3, 0.5, 1.0]
+            hybrid_reports: dict[float, dict[str, Any]] = {}
+            for kw_weight in [0.3, 0.5, 1.0]:
+                hybrid_ret = HybridRetriever(
+                    session,
+                    embedder=embedder,
+                    embedding_model=FAKE_EMBEDDING_MODEL,
+                    ef_search=ef_search,
+                    iterative_scan=iterative_scan,
+                    candidate_pool_limit=15,
+                    vector_weight=1.0,
+                    keyword_weight=kw_weight,
+                )
+                await hybrid_ret.search(workspace_id=first_ws, query="warmup", limit=5)
+                report = await evaluate_retriever(hybrid_ret, golden_entries)
+                hybrid_reports[kw_weight] = report
+
+            # Evaluate natural-language queries: plainto_tsquery (AND) vs websearch_to_tsquery (OR)
+            tsquery_comp = await evaluate_tsquery_comparison(session, golden_entries)
     finally:
         await engine.dispose()
 
@@ -510,6 +655,29 @@ async def run_evaluation(
         vector_report,
     )
     _print_eval_table("KeywordOnlyRetriever (simple FTS + ts_rank_cd)", keyword_report)
+    for kw_weight in [0.3, 0.5, 1.0]:
+        _print_eval_table(
+            f"HybridRetriever (vector_weight=1.0, keyword_weight={kw_weight}, ef_search={ef_search})",
+            hybrid_reports[kw_weight],
+        )
+
+    print("\n=== Keyword CTE Strategy Comparison (Target < 8 ms) ===")
+    print(
+        f"{'Strategy':<30} | {'Match Mode':<12} | {'CTE p50 (ms)':>12} | {'CTE p95 (ms)':>12} | {'Avg Matches':>11}"
+    )
+    print("-" * 87)
+    p_and = tsquery_comp["plainto_and"]
+    print(
+        f"{'plainto_tsquery (NL queries)':<30} | {'AND':<12} | {p_and['p50_ms']:>12.2f} | {p_and['p95_ms']:>12.2f} | {p_and['avg_matches']:>11.1f}"
+    )
+    w_or = tsquery_comp["websearch_or"]
+    print(
+        f"{'websearch_to_tsquery (NL)':<30} | {'OR':<12} | {w_or['p50_ms']:>12.2f} | {w_or['p95_ms']:>12.2f} | {w_or['avg_matches']:>11.1f}"
+    )
+    w_id = tsquery_comp["websearch_exact_id"]
+    print(
+        f"{'websearch_to_tsquery (Exact)':<30} | {'Identifiers':<12} | {w_id['p50_ms']:>12.2f} | {w_id['p95_ms']:>12.2f} | {w_id['avg_matches']:>11.1f}"
+    )
 
     now_utc = datetime.now(UTC)
     timestamp_slug = now_utc.strftime("%Y%m%dT%H%M%SZ")
@@ -529,6 +697,10 @@ async def run_evaluation(
         "retrievers": {
             "VectorOnlyRetriever": vector_report,
             "KeywordOnlyRetriever": keyword_report,
+            "HybridRetriever_w0.3": hybrid_reports[0.3],
+            "HybridRetriever_w0.5": hybrid_reports[0.5],
+            "HybridRetriever_w1.0": hybrid_reports[1.0],
+            "tsquery_comparison": tsquery_comp,
         },
     }
     report_path.write_text(json.dumps(full_payload, indent=2), encoding="utf-8")
@@ -553,7 +725,7 @@ def main() -> None:
         help="Directory for JSON reports (default: backend/scripts/eval/reports)",
     )
     parser.add_argument("--seed", type=int, default=42, help="Embedder seed (default: 42)")
-    parser.add_argument("--ef-search", type=int, default=100, help="HNSW ef_search (default: 100)")
+    parser.add_argument("--ef-search", type=int, default=40, help="HNSW ef_search (default: 40)")
     parser.add_argument(
         "--iterative-scan",
         choices=["off", "relaxed_order", "strict_order"],

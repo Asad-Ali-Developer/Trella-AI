@@ -327,3 +327,13 @@ Show them for review. Do not write routers or services yet.
   - Maintained behind a clean `LLMProvider` interface to preserve future multi-provider swappability.
 - **Redis Cache-Aside**: Cache decoded workspace permissions and user roles with 5–15 min TTL, invalidated immediately on role/membership updates.
 - **Frontend Virtualization**: Use `@tanstack/react-virtual` for boards and insights with hundreds/thousands of cards to prevent DOM bloat, paired with TanStack Query optimistic UI updates.
+
+## Retrieval follow-ups (open)
+
+- [ ] Validate keyword search and the keyword candidate cap (RETRIEVAL_KEYWORD_CANDIDATES=300,
+      newest-first) on real anonymized boards, with a handwritten golden set of 20-30 queries.
+      Re-tune RETRIEVAL_KEYWORD_WEIGHT (currently 0.5) on that set, not on synthetic data.
+- [ ] Resolve the benchmark discrepancy: natural-language queries reported 0 keyword matches in one
+      measurement and 35-50 in another. Identify which query set or query mode each used.
+- [ ] Tech debt: WorkspaceContextService.index_cards still writes chunks outside IndexingService.
+      Make the legacy /context/index endpoint call IndexingService and remove the duplicate path.

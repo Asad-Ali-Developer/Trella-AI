@@ -11,12 +11,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.modules.connections.models import ProviderAccount, WorkspaceConnection
+from app.modules.context.chunker import (
+    CHUNKER_VERSION,
+    CardBodyInput,
+    CommentInput,
+    chunk_card_body,
+    chunk_comments,
+)
 from app.modules.context.gemini import (
     EmbeddingRateLimited,
     EmbeddingUnavailable,
     GeminiContextClient,
 )
-from app.modules.context.models import TrelloCardEmbedding, TrelloCardSummary
+from app.modules.context.models import (
+    ContextChunkRecord,
+    TrelloCardEmbedding,
+    TrelloCardSummary,
+)
+from app.modules.context.retriever import HybridRetriever, resolve_active_sources
 from app.modules.context.schemas import (
     CardSummaryResponse,
     ContextAccount,
@@ -523,25 +535,131 @@ class WorkspaceContextService:
             comments_by_card: dict[UUID, list[TrelloComment]] = {}
             for comment in comments:
                 comments_by_card.setdefault(comment.card_id, []).append(comment)
+
+            sources_raw = await self._load_sources()
+            source_names_by_id = {s.id: s.name for s, _ in sources_raw}
+            clients_by_id: dict[UUID, str] = {}
+            client_ids_needed = [c.client_id for c in to_index if c.client_id is not None]
+            if client_ids_needed:
+                client_rows = (
+                    await self.db.execute(
+                        select(TrelloClientRecord.id, TrelloClientRecord.name).where(
+                            TrelloClientRecord.workspace_id == self.workspace.id,
+                            TrelloClientRecord.id.in_(client_ids_needed),
+                        )
+                    )
+                ).all()
+                clients_by_id = {row.id: row.name for row in client_rows}
+
             try:
                 async with GeminiContextClient() as gemini:
                     for card in to_index:
-                        vector = await gemini.embed(
-                            self._card_source_text(card, comments_by_card.get(card.id, []))
+                        board_name = source_names_by_id.get(card.source_id, "")
+                        client_name = (
+                            clients_by_id.get(card.client_id) if card.client_id else None
                         )
-                        statement = insert(TrelloCardEmbedding).values(
-                            workspace_id=self.workspace.id,
-                            card_id=card.id,
-                            content_hash=card.content_hash,
-                            model=settings.GEMINI_EMBEDDING_MODEL,
-                            embedding=vector,
+                        label_names = [
+                            str(label.get("name", "")).strip()
+                            for label in (card.labels or [])
+                            if isinstance(label, dict) and str(label.get("name", "")).strip()
+                        ]
+                        body_input = CardBodyInput(
+                            client_name=client_name,
+                            board_name=board_name,
+                            list_name=card.list_name,
+                            card_title=card.name,
+                            description=card.description or "",
+                            labels=label_names,
+                            checklists=(),
+                            occurred_at=card.last_activity_at,
+                            metadata={
+                                "card_id": str(card.id),
+                                "trello_card_id": card.trello_card_id,
+                                "list_id": card.list_id,
+                                "list_name": card.list_name,
+                                "labels": label_names,
+                                "closed": card.closed,
+                                "url": card.url,
+                            },
                         )
-                        await self.db.execute(
-                            statement.on_conflict_do_update(
-                                constraint="uq_card_embeddings_cache_key",
-                                set_={"embedding": statement.excluded.embedding},
+                        body_chunks = chunk_card_body(body_input)
+                        card_comments = comments_by_card.get(card.id, [])
+                        comment_inputs = [
+                            CommentInput(
+                                comment_id=str(c.id),
+                                author_name=c.author_id or "Unknown",
+                                created_at=c.created_at_trello,
+                                text=c.text,
                             )
+                            for c in card_comments
+                        ]
+                        comment_chunks = chunk_comments(
+                            comment_inputs,
+                            client_name=client_name,
+                            board_name=board_name,
+                            list_name=card.list_name,
+                            card_title=card.name,
                         )
+                        all_chunks = list(body_chunks) + list(comment_chunks)
+
+                        primary_vector: list[float] | None = None
+                        for ch in all_chunks:
+                            ch_vector = await gemini.embed(ch.text)
+                            if primary_vector is None:
+                                primary_vector = ch_vector
+
+                            existing_chunk = await self.db.scalar(
+                                select(ContextChunkRecord).where(
+                                    ContextChunkRecord.workspace_id == self.workspace.id,
+                                    ContextChunkRecord.card_id == card.id,
+                                    ContextChunkRecord.chunk_kind == ch.kind,
+                                    ContextChunkRecord.ordinal == ch.ordinal,
+                                )
+                            )
+                            if existing_chunk is None:
+                                self.db.add(
+                                    ContextChunkRecord(
+                                        workspace_id=self.workspace.id,
+                                        client_id=card.client_id,
+                                        source_id=card.source_id,
+                                        repository_id=None,
+                                        source_type="trello",
+                                        card_id=card.id,
+                                        group_key=ch.group_key,
+                                        chunk_kind=ch.kind,
+                                        ordinal=ch.ordinal,
+                                        text=ch.text,
+                                        token_estimate=ch.token_estimate,
+                                        embedding=ch_vector,
+                                        embedding_model=settings.GEMINI_EMBEDDING_MODEL,
+                                        chunker_version=CHUNKER_VERSION,
+                                        content_hash=ch.content_hash,
+                                        occurred_at=ch.occurred_at or card.last_activity_at,
+                                        chunk_metadata=ch.metadata,
+                                    )
+                                )
+                            else:
+                                existing_chunk.embedding = ch_vector
+                                existing_chunk.embedding_model = settings.GEMINI_EMBEDDING_MODEL
+                                existing_chunk.text = ch.text
+                                existing_chunk.token_estimate = ch.token_estimate
+                                existing_chunk.content_hash = ch.content_hash
+
+                        if primary_vector is not None:
+                            statement = insert(TrelloCardEmbedding).values(
+                                workspace_id=self.workspace.id,
+                                card_id=card.id,
+                                content_hash=card.content_hash,
+                                model=settings.GEMINI_EMBEDDING_MODEL,
+                                embedding=primary_vector,
+                            )
+                            await self.db.execute(
+                                statement.on_conflict_do_update(
+                                    constraint="uq_card_embeddings_cache_key",
+                                    set_={"embedding": statement.excluded.embedding},
+                                )
+                            )
+                        await self.db.flush()
             except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -559,79 +677,101 @@ class WorkspaceContextService:
         query: str,
         client_id: UUID | None,
         limit: int,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> ContextSearchResponse:
         if client_id is not None:
             await self._validate_client(client_id)
-        sources = await self._load_sources()
-        source_ids = [source.id for source, _ in sources]
-        if not source_ids:
+        source_ids, repository_ids = await resolve_active_sources(
+            self.db,
+            self.workspace.id,
+            client_id=client_id,
+        )
+        if not source_ids and not repository_ids:
             return ContextSearchResponse(
                 query=query,
                 workspace_id=self.workspace.id,
                 results=[],
             )
-        has_indexed_cards = await self.db.scalar(
-            select(TrelloCardEmbedding.id)
-            .join(TrelloCard, TrelloCard.id == TrelloCardEmbedding.card_id)
-            .join(TrelloSource, TrelloSource.id == TrelloCard.source_id)
+
+        from sqlalchemy import or_ as sa_or
+
+        active_chunk_clauses = []
+        if source_ids:
+            active_chunk_clauses.append(ContextChunkRecord.source_id.in_(source_ids))
+        if repository_ids:
+            active_chunk_clauses.append(ContextChunkRecord.repository_id.in_(repository_ids))
+
+        has_indexed_chunks = await self.db.scalar(
+            select(ContextChunkRecord.id)
             .where(
-                TrelloCardEmbedding.workspace_id == self.workspace.id,
-                TrelloCardEmbedding.model == settings.GEMINI_EMBEDDING_MODEL,
-                TrelloCardEmbedding.content_hash == TrelloCard.content_hash,
-                TrelloCard.workspace_id == self.workspace.id,
-                TrelloSource.id.in_(source_ids),
+                ContextChunkRecord.workspace_id == self.workspace.id,
+                sa_or(*active_chunk_clauses),
             )
             .limit(1)
         )
-        if has_indexed_cards is None:
+        if has_indexed_chunks is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Index this workspace's cards before searching related work.",
             )
-        try:
-            async with GeminiContextClient() as gemini:
-                query_vector = await gemini.embed(query, query=True)
-        except (EmbeddingRateLimited, EmbeddingUnavailable) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=exc.detail,
-            ) from exc
 
-        distance = TrelloCardEmbedding.embedding.cosine_distance(query_vector)
-        statement = (
-            select(TrelloCard, TrelloClientRecord.name, distance.label("distance"))
-            .join(TrelloCard, TrelloCard.id == TrelloCardEmbedding.card_id)
-            .join(TrelloSource, TrelloSource.id == TrelloCard.source_id)
-            .outerjoin(TrelloClientRecord, TrelloClientRecord.id == TrelloCard.client_id)
-            .where(
-                TrelloCardEmbedding.workspace_id == self.workspace.id,
-                TrelloCard.workspace_id == self.workspace.id,
-                TrelloCardEmbedding.model == settings.GEMINI_EMBEDDING_MODEL,
-                TrelloCardEmbedding.content_hash == TrelloCard.content_hash,
-                TrelloSource.id.in_(source_ids),
-            )
+        retriever = HybridRetriever(self.db)
+        retrieved_chunks = await retriever.search(
+            workspace_id=self.workspace.id,
+            query=query,
+            client_id=client_id,
+            source_ids=source_ids,
+            repository_ids=repository_ids,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
         )
-        if client_id is not None:
-            statement = statement.where(TrelloCard.client_id == client_id)
-        result = await self.db.execute(statement.order_by(distance).limit(limit))
-        rows = result.all()
-        search_results = [
-            SimilarCardResponse(
-                card_id=card.id,
-                trello_card_id=card.trello_card_id,
-                title=card.name,
-                description=card.description,
-                url=card.url,
-                client_id=card.client_id,
-                client_name=client_name,
-                similarity=max(-1.0, min(1.0, 1.0 - float(distance_value))),
+
+        search_results: list[SimilarCardResponse] = []
+        for ch in retrieved_chunks:
+            if ch.vector_distance is not None:
+                sim = max(-1.0, min(1.0, 1.0 - float(ch.vector_distance)))
+            else:
+                sim = max(-1.0, min(1.0, float(ch.scores.get("rrf", 0.0))))
+            effective_card_id = ch.card_id or ch.repository_id or ch.chunk_id
+            effective_ext_id = ch.trello_card_id or (
+                str(ch.repository_id) if ch.repository_id is not None else str(ch.chunk_id)
             )
-            for card, client_name, distance_value in rows
-        ]
+            effective_description = (
+                ch.card_description if ch.card_description is not None else ch.text
+            )
+            search_results.append(
+                SimilarCardResponse(
+                    card_id=effective_card_id,
+                    trello_card_id=effective_ext_id,
+                    title=ch.parent_title,
+                    description=effective_description,
+                    url=ch.parent_url,
+                    client_id=ch.client_id,
+                    client_name=ch.client_name,
+                    similarity=sim,
+                    chunk_id=ch.chunk_id,
+                    chunk_ids=list(ch.chunk_ids) if ch.chunk_ids else [ch.chunk_id],
+                    repository_id=ch.repository_id,
+                    source_type=ch.source_type,
+                    chunk_kind=ch.chunk_kind,
+                    text=ch.text,
+                    occurred_at=ch.occurred_at,
+                    scores=dict(ch.scores),
+                )
+            )
+
+        search_mode: Literal["hybrid", "keyword_only"] = (
+            "keyword_only" if retriever.last_degraded else "hybrid"
+        )
         return ContextSearchResponse(
             query=query,
             workspace_id=self.workspace.id,
             results=search_results,
+            degraded=retriever.last_degraded,
+            search_mode=search_mode,
+            metadata=dict(retriever.last_metadata),
         )
 
     async def _load_included_cards(self, client_id: UUID | None) -> list[TrelloCard]:

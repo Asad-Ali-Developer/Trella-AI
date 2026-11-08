@@ -21,10 +21,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-<<<<<<< HEAD
 /backend/celerybeat-schedule*
-=======
->>>>>>> refs/rewritten/onto
+scripts/eval/reports/
+backend/scripts/eval/reports/
 
 # Virtual Environments
 .venv/

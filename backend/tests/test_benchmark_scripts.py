@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.modules.context.retriever import HybridRetriever
 from scripts.bench_db import assert_bench_database_isolated
 from scripts.benchmark_sql import HNSW_INDEX_NAME, parse_explain_json
 from scripts.eval.gen_golden import (
@@ -256,6 +257,15 @@ async def test_small_seed_golden_and_retrievers_integration(
 
     vec_report = await evaluate_retriever(vec_retriever, reloaded, limit=10)
     kw_report = await evaluate_retriever(kw_retriever, reloaded, limit=10)
+    hybrid_retriever = HybridRetriever(
+        db_session,
+        embedder=DeterministicFakeEmbedder(seed=42),
+        embedding_model=FAKE_EMBEDDING_MODEL,
+        ef_search=40,
+        iterative_scan="relaxed_order",
+    )
+    hybrid_report = await evaluate_retriever(hybrid_retriever, reloaded, limit=10)
+    assert hybrid_report["overall"]["count"] == 8
 
     assert vec_report["overall"]["count"] == 8
     assert vec_report["overall"]["recall_at_5"] > 0.5

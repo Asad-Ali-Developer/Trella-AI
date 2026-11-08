@@ -744,32 +744,50 @@ def build_synthetic_dataset(
             else:
                 profile = "medium"
 
-            kw_pair = f"{keywords[0]} {keywords[1]} {keywords[2]}"
+            # Derive varied sentence ordering and keyword subsets per card to prevent exact FTS score ties
+            num_sentences = len(sentences)
+            card_sentences = [
+                sentences[(card_idx + offset) % num_sentences] for offset in range(num_sentences)
+            ]
+            num_kw = len(keywords)
+            card_keywords = [
+                keywords[(card_idx * 3 + offset) % num_kw] for offset in range(num_kw)
+            ]
+            kw_a = card_keywords[0]
+            kw_b = card_keywords[1]
+            kw_c = card_keywords[2]
+            kw_pair = f"{kw_a} {kw_b} {kw_c}"
             card_title = (
                 f"[{proj_code}] {topic.replace('_', ' ').title()}: "
-                f"{sentences[0][:68]} ({kw_pair})"
+                f"{card_sentences[0][:64]} ({kw_pair})"
             )
 
             if profile == "tiny":
                 description = ""
                 num_comments = 0
             elif profile == "medium":
+                med_kw = card_keywords[: 3 + (card_idx % 4)]
                 description = (
                     f"Identifier: {proj_code} | Commit: {commit_sha_ref} | Topic: {topic}\n"
-                    f"{sentences[0]} {sentences[1]}\n"
-                    f"Key terms: {', '.join(keywords[:6])}."
+                    f"{card_sentences[0]} {card_sentences[1]}\n"
+                    f"Key terms: {', '.join(med_kw)}. Area: {kw_a} spec ({card_idx + 1})."
                 )
                 num_comments = 3 if remaining >= 2 else 0
             else:
                 # Long description > 400 tokens (~1800+ chars) so chunk_card_body splits into 2 chunks
-                para = (
-                    f"Reference {proj_code} (commit {commit_sha_ref}) for {topic}: "
-                    + " ".join(sentences)
-                    + " Keywords: "
-                    + ", ".join(keywords)
-                    + "."
+                sections = []
+                for sec_idx in range(7):
+                    s1 = card_sentences[sec_idx % num_sentences]
+                    s2 = card_sentences[(sec_idx + 1) % num_sentences]
+                    sec_kw = [card_keywords[(sec_idx * 2 + k) % num_kw] for k in range(3)]
+                    sections.append(
+                        f"Section {sec_idx + 1} detail for {proj_code} ({topic} phase {sec_idx + 1}): "
+                        f"{s1} {s2} Relevant focus: {', '.join(sec_kw)}."
+                    )
+                description = (
+                    f"Reference {proj_code} (commit {commit_sha_ref}) for {topic}:\n\n"
+                    + "\n\n".join(sections)
                 )
-                description = "\n\n".join(f"Section {idx + 1}: {para}" for idx in range(7))
                 num_comments = 4 if remaining >= 3 else 0
 
             labels_json = [{"name": topic, "color": "blue"}]
@@ -847,9 +865,10 @@ def build_synthetic_dataset(
                 for cm_idx in range(num_comments):
                     cm_id = _deterministic_uuid(rng)
                     cm_dt = occurred_at + timedelta(minutes=(cm_idx + 1) * 10)
-                    cm_sentence = sentences[(cm_idx + 1) % len(sentences)]
+                    cm_sentence = card_sentences[(cm_idx + 2) % num_sentences]
+                    cm_kw = card_keywords[(cm_idx + 1) % num_kw]
                     cm_text = (
-                        f"[{proj_code}] Follow-up on {topic} ({keywords[cm_idx % len(keywords)]}): "
+                        f"[{proj_code}] Follow-up on {topic} ({cm_kw}): "
                         f"{cm_sentence} Verified commit {commit_sha_ref}."
                     )
                     comments_rows.append(

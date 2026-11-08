@@ -112,6 +112,8 @@ class ContextIndexResponse(BaseModel):
 class ContextSearchRequest(BaseModel):
     query: str = Field(min_length=3, max_length=1000)
     client_id: UUID | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
     limit: int = Field(default=10, ge=1, le=20)
 
 
@@ -124,9 +126,20 @@ class SimilarCardResponse(BaseModel):
     client_id: UUID | None
     client_name: str | None
     similarity: float
+    chunk_id: UUID | None = None
+    chunk_ids: list[UUID] | None = None
+    repository_id: UUID | None = None
+    source_type: str | None = None
+    chunk_kind: str | None = None
+    text: str | None = None
+    occurred_at: datetime | None = None
+    scores: dict[str, Any] | None = None
 
 
 class ContextSearchResponse(BaseModel):
     query: str
     workspace_id: UUID
     results: list[SimilarCardResponse]
+    degraded: bool = False
+    search_mode: Literal["hybrid", "keyword_only"] = "hybrid"
+    metadata: dict[str, Any] = Field(default_factory=dict)

@@ -134,6 +134,30 @@ class Settings(BaseSettings):
     INDEX_MAX_SUMMARIES_PER_RUN: int = Field(default=50, ge=1)
     INDEX_MAX_EMBED_PER_RUN: int = Field(default=500, ge=1)
     INDEX_LOCK_TTL_SECONDS: int = Field(default=1800, ge=1)
+    RETRIEVAL_EF_SEARCH: int = Field(default=40, ge=1)
+    RETRIEVAL_ITERATIVE_SCAN: Literal["off", "relaxed_order", "strict_order"] = Field(
+        default="relaxed_order"
+    )
+    RETRIEVAL_KEYWORD_TIE_LIMIT: int = Field(
+        default=0,
+        ge=0,
+        description="Benchmark workaround: limit keyword candidates per exact rank tie (0 = disabled).",
+    )
+    RETRIEVAL_KEYWORD_CANDIDATES: int = Field(
+        default=300,
+        ge=1,
+        description="Cap keyword matching chunks before evaluating ts_rank_cd.",
+    )
+    RETRIEVAL_VECTOR_WEIGHT: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Weighted RRF vector rank multiplier.",
+    )
+    RETRIEVAL_KEYWORD_WEIGHT: float = Field(
+        default=0.5,
+        ge=0.0,
+        description="Weighted RRF keyword rank multiplier.",
+    )
 
     # Trello
     TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")
