@@ -45,11 +45,13 @@ import type {
 import { authService } from "@/services/AuthService";
 import { trelloService } from "@/services/TrelloService";
 import { workspaceService } from "@/services/WorkspaceService";
+import { useSyncQueue } from "@/components/providers/SyncQueueProvider";
 
 export default function TrelloSettingsPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.auth.user);
+  const { notifySyncStarted } = useSyncQueue();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [connection, setConnection] = useState<TrelloConnectionStatus | null>(null);
@@ -202,7 +204,28 @@ export default function TrelloSettingsPage() {
     try {
       await trelloService.syncBoards();
       setBoards(await trelloService.listBoards());
-      setNotice("Board sync queued.");
+      notifySyncStarted("Trello Boards");
+      setNotice("Board sync queued. Syncing cards & embeddings in background...");
+
+      let attempts = 0;
+      const pollInterval = setInterval(async () => {
+        attempts += 1;
+        try {
+          const updated = await trelloService.listBoards();
+          setBoards(updated);
+          const stillRunning = updated.some(
+            (b) => !b.excluded && (b.sync_status === "running" || b.sync_status === "not_started"),
+          );
+          if (!stillRunning || attempts >= 15) {
+            clearInterval(pollInterval);
+            if (!stillRunning) {
+              setNotice("Trello sync completed successfully!");
+            }
+          }
+        } catch {
+          clearInterval(pollInterval);
+        }
+      }, 2000);
     } catch {
       setError("Could not start Trello sync. Please retry.");
     } finally {

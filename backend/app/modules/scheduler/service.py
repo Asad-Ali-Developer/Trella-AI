@@ -288,7 +288,10 @@ class ScheduleService:
             trigger="scheduled",
         )
         run = await run_service.create_run(schedule.workspace_id, None, run_create)
-        executed_run = await run_service.execute_run(run.id)
+        try:
+            executed_run = await run_service.execute_run(run.id, schedule=schedule)
+        except TypeError:
+            executed_run = await run_service.execute_run(run.id)
 
         # 3. Handle run completion or failure
         if executed_run.status == "completed":

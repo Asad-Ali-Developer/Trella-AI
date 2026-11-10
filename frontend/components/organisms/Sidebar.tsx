@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   Blocks,
   BrainCircuit,
   BriefcaseBusiness,
@@ -151,6 +152,14 @@ export function Sidebar({
           >
             <Blocks className="h-[18px] w-[18px]" />
             Connected Apps
+          </Link>
+          <Link
+            href="/dashboard/queue"
+            aria-current={pathname.startsWith("/dashboard/queue") ? "page" : undefined}
+            className={navClass(pathname.startsWith("/dashboard/queue"))}
+          >
+            <Activity className="h-[18px] w-[18px]" />
+            Sync Queue
           </Link>
         </nav>
       </div>
