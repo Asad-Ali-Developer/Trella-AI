@@ -11,6 +11,7 @@ workspace and client, reporting:
 
 import argparse
 import asyncio
+import json
 import sys
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -119,14 +120,17 @@ async def run_pipeline_for_mode(
     stats = output.get("stats") or {}
     meta_budget = output.get("_meta", {}).get("budget") or {}
 
-    items_sent = stats.get("context_items_total") or meta_budget.get("final_tokens", 0)
+    card_count = stats.get("card_count", 0)
+    comment_count = stats.get("comment_count", 0)
+    commit_count = stats.get("commit_count", 0)
+    items_sent = f"{card_count} cards, {comment_count} comments, {commit_count} commits"
     input_tokens = full_run.tokens_in or meta_budget.get("final_tokens", 0)
 
     insights = list(full_run.insights)
     insights_count = len(insights)
     valid_citations = sum(1 for i in insights if all(s.get("valid", True) for s in i.source_refs))
-    valid_ratio = (valid_citations / insights_count) if insights_count > 0 else 1.0
-    titles = [i.title for i in insights]
+    valid_ratio: float | str = (valid_citations / insights_count) if insights_count > 0 else "n/a"
+    titles = [f"[{i.category}] {i.title}" for i in insights]
 
     return {
         "run_id": str(full_run.id),
@@ -136,6 +140,7 @@ async def run_pipeline_for_mode(
         "insights_count": insights_count,
         "valid_citation_ratio": valid_ratio,
         "insight_titles": titles,
+        "meta_budget": meta_budget,
     }
 
 
@@ -211,14 +216,19 @@ async def main() -> None:
         # 2. Run Scoped
         scoped_res = await run_pipeline_for_mode(db, workspace, skill, client, mode="scoped", mock_llm=not args.real)
 
+        def format_ratio(val: Any) -> str:
+            if isinstance(val, (int, float)):
+                return f"{val:.2%}"
+            return str(val)
+
         # Print comparison table
-        print(f"{'Metric':<25} | {'Legacy':<15} | {'Scoped':<15}")
-        print("-" * 60)
-        print(f"{'Items Sent':<25} | {str(legacy_res['items_sent']):<15} | {str(scoped_res['items_sent']):<15}")
-        print(f"{'Estimated Input Tokens':<25} | {str(legacy_res['input_tokens']):<15} | {str(scoped_res['input_tokens']):<15}")
-        print(f"{'Number of Insights':<25} | {str(legacy_res['insights_count']):<15} | {str(scoped_res['insights_count']):<15}")
-        print(f"{'Valid-Citation Ratio':<25} | {legacy_res['valid_citation_ratio']:<15.2%} | {scoped_res['valid_citation_ratio']:<15.2%}")
-        print("-" * 60)
+        print(f"{'Metric':<25} | {'Legacy':<40} | {'Scoped':<40}")
+        print("-" * 110)
+        print(f"{'Items Sent':<25} | {str(legacy_res['items_sent']):<40} | {str(scoped_res['items_sent']):<40}")
+        print(f"{'Estimated Input Tokens':<25} | {str(legacy_res['input_tokens']):<40} | {str(scoped_res['input_tokens']):<40}")
+        print(f"{'Number of Insights':<25} | {str(legacy_res['insights_count']):<40} | {str(scoped_res['insights_count']):<40}")
+        print(f"{'Valid-Citation Ratio':<25} | {format_ratio(legacy_res['valid_citation_ratio']):<40} | {format_ratio(scoped_res['valid_citation_ratio']):<40}")
+        print("-" * 110)
 
         # Side-by-side insight titles
         print("\nSide-by-side Insight Titles:")
@@ -232,6 +242,12 @@ async def main() -> None:
             lt = (legacy_titles[i][:32] + "...") if i < len(legacy_titles) and len(legacy_titles[i]) > 35 else (legacy_titles[i] if i < len(legacy_titles) else "-")
             st = (scoped_titles[i][:32] + "...") if i < len(scoped_titles) and len(scoped_titles[i]) > 35 else (scoped_titles[i] if i < len(scoped_titles) else "-")
             print(f"{i+1:<4} | {lt:<35} | {st:<35}")
+
+        print("\nScope Configuration:")
+        print(json.dumps(skill.scope_json or {}, indent=2))
+        if scoped_res.get("meta_budget"):
+            print("\nScoped _meta.budget:")
+            print(json.dumps(scoped_res["meta_budget"], indent=2))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 import hashlib
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -17,6 +17,7 @@ from app.modules.context.models import TrelloCardSummary
 from app.modules.context.schemas import (
     ContextChunk,
     ContextClient,
+    ContextItem,
     ContextSource,
     WorkspaceContextResponse,
 )
@@ -24,9 +25,15 @@ from app.modules.context.scope import ScopeResolver, ScopeValidationError
 from app.modules.context.service import WorkspaceContextService
 from app.modules.github.models import GithubCommit
 from app.modules.llm import get_llm_provider
-from app.modules.runs.budget import assemble_and_budget_prompt
+from app.modules.llm.base import LLMResult
+from app.modules.runs.budget import (
+    _card_activity_timestamp,
+    _comment_activity_timestamp,
+    _format_card_raw_text,
+    assemble_and_budget_prompt,
+)
 from app.modules.runs.citations import validate_and_enrich_citations
-from app.modules.runs.models import Insight, Run
+from app.modules.runs.models import ClientDigest, Insight, Run
 from app.modules.runs.prompts import (
     GENERATION_SYSTEM_PROMPT,
     PROMPT_VERSION,
@@ -142,6 +149,35 @@ def _sanitize_extras(
     return stats
 
 
+def _compute_core_citation_stats(
+    report: Any,
+    valid_ids: set[str],
+) -> tuple[float, int, int]:
+    """Compute (invalid_ratio, invalid_citations, total_citations) across the core 4 sections.
+    Core sections: needs, patterns, stakeholders, risks.
+    """
+    total_citations = 0
+    invalid_citations = 0
+    lower_valid_ids = {vid.strip().lower() for vid in valid_ids}
+
+    for section_name in ("needs", "patterns", "stakeholders", "risks"):
+        items = getattr(report, section_name, []) or []
+        for item in items:
+            sources = getattr(item, "sources", []) or []
+            if not sources:
+                total_citations += 1
+                invalid_citations += 1
+                continue
+            for src in sources:
+                total_citations += 1
+                sid = getattr(src, "source_id", "")
+                if not sid or str(sid).strip().lower() not in lower_valid_ids:
+                    invalid_citations += 1
+
+    ratio = (invalid_citations / total_citations) if total_citations > 0 else 0.0
+    return ratio, invalid_citations, total_citations
+
+
 def _compute_metrics(items: list[Any]) -> dict[str, Any]:
     """Code-computed facts the LLM may quote. Event metrics arrive with card_events (planned)."""
     roles = [
@@ -152,6 +188,9 @@ def _compute_metrics(items: list[Any]) -> dict[str, Any]:
     return {
         "context_items_total": len(items),
         "items_by_type": dict(Counter(str(i.item_type) for i in items)),
+        "card_count": sum(1 for i in items if str(i.item_type) == "card"),
+        "comment_count": sum(1 for i in items if str(i.item_type) == "comment"),
+        "commit_count": sum(1 for i in items if str(i.item_type) == "commit"),
         "client_authored_items": sum(1 for r in roles if r == "client"),
         "internal_authored_items": sum(1 for r in roles if r == "internal"),
         "role_data_available": any(r in ("client", "internal") for r in roles),
@@ -337,7 +376,11 @@ class RunService:
         normalize_headline(parsed_report)
         output = enriched_report.model_dump()
         output.update(parsed_report.model_dump(include=V2_EXTRA_FIELDS, by_alias=True))
-        output["stats"] = build_stats(metrics, parsed_report)
+        stats_dict = build_stats(metrics, parsed_report)
+        stats_dict["card_count"] = metrics.get("card_count", 0)
+        stats_dict["comment_count"] = metrics.get("comment_count", 0)
+        stats_dict["commit_count"] = metrics.get("commit_count", 0)
+        output["stats"] = stats_dict
         output["quality"] = {"prompt_version": PROMPT_VERSION, **extra_stats}
 
         run.tokens_in = llm_result.prompt_tokens
@@ -573,10 +616,197 @@ class RunService:
             clients_by_id=clients_by_id,
         )
 
+        # Check if scoped input exceeds Settings.RUN_DIGEST_THRESHOLD_TOKENS
+        use_digest = (
+            budget_result.initial_tokens > settings.RUN_DIGEST_THRESHOLD_TOKENS
+            and len(clients_by_id) > 0
+        )
+
+        provider_name = skill.model_config_json.get("provider", "gemini")
+        model_name = skill.model_config_json.get("model")
+        provider = get_llm_provider(provider_name, model=model_name)
+
+        digest_cache_hits = 0
+        digest_cache_misses = 0
+        digest_tokens_in = 0
+        digest_tokens_out = 0
+        digest_cost = 0.0
+
+        if use_digest:
+            # Map-Reduce Digests per client
+            target_clients: list[TrelloClientRecord] = []
+            if run.client_id and run.client_id in clients_by_id:
+                target_clients = [clients_by_id[run.client_id]]
+            else:
+                cids_in_cards = {c.client_id for c in loaded_cards if c.client_id is not None}
+                target_clients = [clients_by_id[cid] for cid in cids_in_cards if cid in clients_by_id]
+                if not target_clients and clients_by_id:
+                    target_clients = list(clients_by_id.values())
+
+            client_digests_map: dict[UUID, str] = {}
+            for cl in target_clients:
+                cl_cards = [c for c in loaded_cards if c.client_id == cl.id]
+                cl_cards_sorted = sorted(cl_cards, key=_card_activity_timestamp, reverse=True)
+                cl_blocks: list[str] = []
+                for card in cl_cards_sorted:
+                    card_summary = summaries_by_card_id.get(card.id)
+                    if card_summary:
+                        summary_text = card_summary.summary
+                    else:
+                        summary_text = card.description.strip() if card.description else card.name
+                    cmts = comments_by_card.get(card.id, [])
+                    cmts_snippet = " ".join(c.text for c in cmts[:5])
+                    cl_blocks.append(f"Card '{card.name}' (List: {card.list_name}): {summary_text}\nComments: {cmts_snippet}")
+
+                cl_input_text = "\n---\n".join(cl_blocks) if cl_blocks else f"Client {cl.name} work activity."
+                input_hash = hashlib.sha256(cl_input_text.encode("utf-8")).hexdigest()
+
+                # Check client_digests cache
+                q_cd = select(ClientDigest).where(
+                    ClientDigest.workspace_id == run.workspace_id,
+                    ClientDigest.client_id == cl.id,
+                    ClientDigest.period_start == resolved_scope.date_from,
+                    ClientDigest.period_end == resolved_scope.date_to,
+                    ClientDigest.input_hash == input_hash,
+                    ClientDigest.model == (model_name or "gemini"),
+                    ClientDigest.prompt_version == PROMPT_VERSION,
+                )
+                cd_res = await self.db.scalars(q_cd)
+                cached_cd = cd_res.first()
+
+                if cached_cd is not None:
+                    digest_cache_hits += 1
+                    client_digests_map[cl.id] = cached_cd.digest
+                else:
+                    digest_cache_misses += 1
+                    digest_prompt = (
+                        f"Summarize work, recurring patterns, and progress for client '{cl.name}' concisely and dense with facts:\n\n"
+                        f"{cl_input_text}"
+                    )
+                    d_res = await provider.generate(
+                        prompt=digest_prompt,
+                        model=model_name,
+                        system_instruction="You are a senior technical project analyst. Summarize client project status faithfully.",
+                        temperature=0.1,
+                        max_tokens=1500,
+                    )
+                    digest_tokens_in += d_res.prompt_tokens
+                    digest_tokens_out += d_res.completion_tokens
+                    digest_cost += d_res.cost_usd
+                    client_digests_map[cl.id] = d_res.content
+
+                    new_cd = ClientDigest(
+                        workspace_id=run.workspace_id,
+                        client_id=cl.id,
+                        period_start=resolved_scope.date_from,
+                        period_end=resolved_scope.date_to,
+                        input_hash=input_hash,
+                        model=(model_name or "gemini"),
+                        prompt_version=PROMPT_VERSION,
+                        digest=d_res.content,
+                        input_tokens=d_res.prompt_tokens,
+                        output_tokens=d_res.completion_tokens,
+                    )
+                    self.db.add(new_cd)
+                    await self.db.flush()
+
+            # Bounded raw excerpts from most active cards
+            BOUNDED_EXCERPTS = 10
+            sorted_all_cards = sorted(loaded_cards, key=_card_activity_timestamp, reverse=True)
+            excerpt_cards = sorted_all_cards[:BOUNDED_EXCERPTS]
+
+            excerpt_items: list[ContextItem] = []
+            for card in excerpt_cards:
+                cl_record = clients_by_id.get(card.client_id) if card.client_id else None
+                m_names = [
+                    members_by_id[mid].full_name or members_by_id[mid].username
+                    for mid in card.member_ids if mid in members_by_id
+                ]
+                card_raw = _format_card_raw_text(card, resolved_scope.include_labels, m_names)
+                c_item = ContextItem(
+                    item_type="card",
+                    source_id=card.source_id,
+                    client_id=cl_record.id if cl_record else None,
+                    client_name=cl_record.name if cl_record else None,
+                    card_id=card.id,
+                    external_id=card.trello_card_id,
+                    title=card.name,
+                    text=card_raw,
+                    url=card.url,
+                    occurred_at=card.last_activity_at,
+                    metadata={
+                        "list_id": card.list_id,
+                        "list_name": card.list_name,
+                        "labels": card.labels,
+                        "member_ids": card.member_ids,
+                        "closed": card.closed,
+                    },
+                )
+                excerpt_items.append(c_item)
+
+                cmts = comments_by_card.get(card.id, [])
+                sorted_cmts = sorted(cmts, key=_comment_activity_timestamp, reverse=True)[:5]
+                for cmt in sorted_cmts:
+                    author = members_by_id.get(cmt.author_id)
+                    author_name = author.full_name or author.username if author else "Unknown member"
+                    role_tag: Literal["client", "internal", "unknown"] = (
+                        "client"
+                        if (author and author.role_tag == "client")
+                        else ("internal" if (author and author.role_tag == "internal") else "unknown")
+                    )
+                    cm_item = ContextItem(
+                        item_type="comment",
+                        source_id=card.source_id,
+                        client_id=cl_record.id if cl_record else None,
+                        client_name=cl_record.name if cl_record else None,
+                        card_id=card.id,
+                        external_id=cmt.trello_action_id,
+                        title=card.name,
+                        text=cmt.text,
+                        url=card.url,
+                        occurred_at=cmt.created_at_trello,
+                        author_name=author_name,
+                        author_role=role_tag,
+                        metadata={"author_id": cmt.author_id, "author_name": author_name, "author_role": role_tag},
+                    )
+                    excerpt_items.append(cm_item)
+
+            digest_text_blocks = [
+                f"### Client Activity Digest: {clients_by_id[cid].name}\n{dtext}"
+                for cid, dtext in client_digests_map.items()
+                if cid in clients_by_id
+            ]
+            excerpt_blocks = [
+                f"{_item_header(it, str(it.card_id or it.external_id or it.source_id or 'unknown').strip())}\n{it.text}\n"
+                for it in excerpt_items
+            ]
+            combined_ctx_text = (
+                "=== CLIENT ACTIVITY DIGESTS ===\n"
+                + "\n\n".join(digest_text_blocks)
+                + "\n\n=== RAW WORK EXCERPTS (MOST ACTIVE CARDS) ===\n"
+                + "\n---\n".join(excerpt_blocks)
+            )
+            comp_metrics = _compute_metrics(excerpt_items)
+            task_instruction = render_skill_template(skill.prompt_template, client_name)
+            prompt_to_send = build_generation_prompt(
+                task_instruction=task_instruction,
+                client_name=client_name,
+                period=resolved_scope.period_label,
+                reference_date=datetime.now(UTC).date().isoformat(),
+                metrics=comp_metrics,
+                context_text=combined_ctx_text,
+            )
+            items_for_citations = excerpt_items
+            final_metrics = comp_metrics
+        else:
+            prompt_to_send = budget_result.full_prompt
+            items_for_citations = budget_result.items_sent
+            final_metrics = budget_result.metrics
+
         # 5. Provenance hashing
         context_content = "".join(
             f"{item.external_id or item.card_id or item.source_id}:{item.text}"
-            for item in budget_result.items_sent
+            for item in items_for_citations
         )
         run.input_context_hash = hashlib.sha256(context_content.encode("utf-8")).hexdigest()
 
@@ -584,7 +814,7 @@ class RunService:
         valid_ids: set[str] = set()
         text_by_id: dict[str, str] = {}
         ref_index: dict[str, dict[str, Any]] = {}
-        for item in budget_result.items_sent:
+        for item in items_for_citations:
             item_id = str(item.card_id or item.external_id or item.source_id or "unknown").strip()
             item_text = _norm(f"{item.title or ''} {item.text}")
             item_ref = {
@@ -630,23 +860,19 @@ class RunService:
             sources=context_sources,
             clients=context_clients,
             members=[],
-            item_count=len(budget_result.items_sent),
+            item_count=len(items_for_citations),
             chunks=[
                 ContextChunk(
                     index=0,
                     estimated_tokens=budget_result.final_tokens,
-                    items=budget_result.items_sent,
+                    items=items_for_citations,
                 )
             ],
         )
 
         # 7. Invoke LLM provider
-        provider_name = skill.model_config_json.get("provider", "gemini")
-        model_name = skill.model_config_json.get("model")
-        provider = get_llm_provider(provider_name, model=model_name)
-
         parsed_report, llm_result = await provider.generate_structured(
-            prompt=budget_result.full_prompt,
+            prompt=prompt_to_send,
             response_schema=ClientNeedsReportV2,
             model=model_name,
             system_instruction=GENERATION_SYSTEM_PROMPT,
@@ -654,21 +880,101 @@ class RunService:
             max_tokens=max(int(skill.model_config_json.get("max_tokens", MIN_OUTPUT_TOKENS)), MIN_OUTPUT_TOKENS),
         )
 
+        # Citation validation and retry if needed
+        initial_invalid_ratio, _, _ = _compute_core_citation_stats(parsed_report, valid_ids)
+        retry_count = 0
+        final_report = parsed_report
+        final_llm_result = llm_result
+
+        if valid_ids and initial_invalid_ratio > settings.RUN_CITATION_INVALID_RATIO:
+            retry_count = 1
+            corrective_instruction = (
+                f"\n\nCORRECTIVE INSTRUCTION: In your previous draft, {initial_invalid_ratio:.1%} of citations in core sections "
+                f"were invalid (exceeding maximum allowed ratio of {settings.RUN_CITATION_INVALID_RATIO:.1%}). "
+                "You MUST ground all claims. Every cited source_id MUST match one of the following valid IDs:\n"
+                + "\n".join(f"- {vid}" for vid in sorted(valid_ids))
+                + "\nDo not invent or alter any ID. Re-generate the entire report strictly adhering to these valid IDs."
+            )
+            retry_prompt = prompt_to_send + corrective_instruction
+            parsed_report_retry, llm_result_retry = await provider.generate_structured(
+                prompt=retry_prompt,
+                response_schema=ClientNeedsReportV2,
+                model=model_name,
+                system_instruction=GENERATION_SYSTEM_PROMPT,
+                temperature=skill.model_config_json.get("temperature", 0.1),
+                max_tokens=max(int(skill.model_config_json.get("max_tokens", MIN_OUTPUT_TOKENS)), MIN_OUTPUT_TOKENS),
+            )
+            final_report = parsed_report_retry
+            final_llm_result = LLMResult(
+                content=llm_result_retry.content,
+                parsed=llm_result_retry.parsed,
+                prompt_tokens=llm_result.prompt_tokens + llm_result_retry.prompt_tokens,
+                completion_tokens=llm_result.completion_tokens + llm_result_retry.completion_tokens,
+                total_tokens=llm_result.total_tokens + llm_result_retry.total_tokens,
+                cost_usd=round(llm_result.cost_usd + llm_result_retry.cost_usd, 6),
+                model=llm_result_retry.model,
+                provider=llm_result_retry.provider,
+                raw_response=llm_result_retry.raw_response,
+            )
+
+        final_invalid_ratio, _, _ = _compute_core_citation_stats(final_report, valid_ids)
+
+        if retry_count > 0 and final_invalid_ratio > settings.RUN_CITATION_INVALID_RATIO:
+            run.status = "failed"
+            err = (
+                f"Citation validation failed: {final_invalid_ratio:.1%} invalid citations in core sections "
+                f"exceeded threshold of {settings.RUN_CITATION_INVALID_RATIO:.1%} after corrective retry."
+            )
+            run.error = err
+            run.completed_at = datetime.now(UTC)
+            run.tokens_in = final_llm_result.prompt_tokens + digest_tokens_in
+            run.tokens_out = final_llm_result.completion_tokens + digest_tokens_out
+            run.cost_usd = round(final_llm_result.cost_usd + digest_cost, 6)
+            run.output_json = {
+                "_meta": {
+                    "citation_retry": {
+                        "retried": True,
+                        "retry_count": 1,
+                        "stripped_count": 0,
+                        "initial_invalid_ratio": initial_invalid_ratio,
+                        "final_invalid_ratio": final_invalid_ratio,
+                    },
+                    "retry_count": 1,
+                    "stripped_count": 0,
+                    "digest_path": use_digest,
+                    "budget": {
+                        "initial_tokens": budget_result.initial_tokens,
+                        "final_tokens": budget_result.final_tokens,
+                        "max_budget": budget_result.max_budget,
+                        "shrunk": budget_result.shrunk,
+                        "decisions": budget_result.decisions,
+                    },
+                }
+            }
+            await self.db.commit()
+            logger.error("run_failed_citation_ratio_exceeded", run_id=str(run.id), error=err)
+            return run
+
+        initial_core_count = sum(len(getattr(final_report, s, []) or []) for s in ("needs", "patterns", "stakeholders", "risks"))
+
         # 8. Citations & Insights
-        enriched_report, core_valid = validate_and_enrich_citations(parsed_report, context_response)
-        extra_stats = _sanitize_extras(parsed_report, valid_ids, text_by_id)
+        enriched_report, core_valid = validate_and_enrich_citations(final_report, context_response)
+        extra_stats = _sanitize_extras(final_report, valid_ids, text_by_id)
         all_valid = core_valid and extra_stats["dropped_uncited_items"] == 0
 
-        self._persist_core_insights(run, enriched_report)
-        self._persist_extra_insights(run, parsed_report, ref_index)
+        kept_core_count = sum(len(getattr(enriched_report, s, []) or []) for s in ("needs", "patterns", "stakeholders", "risks"))
+        stripped_count = (initial_core_count - kept_core_count) + extra_stats["dropped_uncited_items"]
 
-        normalize_headline(parsed_report)
+        self._persist_core_insights(run, enriched_report)
+        self._persist_extra_insights(run, final_report, ref_index)
+
+        normalize_headline(final_report)
         output = enriched_report.model_dump()
-        output.update(parsed_report.model_dump(include=V2_EXTRA_FIELDS, by_alias=True))
-        stats_dict = build_stats(budget_result.metrics, parsed_report)
-        stats_dict["card_count"] = budget_result.metrics.get("card_count", 0)
-        stats_dict["comment_count"] = budget_result.metrics.get("comment_count", 0)
-        stats_dict["commit_count"] = budget_result.metrics.get("commit_count", 0)
+        output.update(final_report.model_dump(include=V2_EXTRA_FIELDS, by_alias=True))
+        stats_dict = build_stats(final_metrics, final_report)
+        stats_dict["card_count"] = final_metrics.get("card_count", 0)
+        stats_dict["comment_count"] = final_metrics.get("comment_count", 0)
+        stats_dict["commit_count"] = final_metrics.get("commit_count", 0)
         output["stats"] = stats_dict
         output["quality"] = {"prompt_version": PROMPT_VERSION, **extra_stats}
         output["_meta"] = {
@@ -678,12 +984,25 @@ class RunService:
                 "max_budget": budget_result.max_budget,
                 "shrunk": budget_result.shrunk,
                 "decisions": budget_result.decisions,
-            }
+            },
+            "citation_retry": {
+                "retried": retry_count > 0,
+                "retry_count": retry_count,
+                "stripped_count": stripped_count,
+                "initial_invalid_ratio": initial_invalid_ratio,
+                "final_invalid_ratio": final_invalid_ratio,
+            },
+            "retry_count": retry_count,
+            "stripped_count": stripped_count,
+            "digest_path": use_digest,
         }
+        if use_digest:
+            output["_meta"]["digest_cache_hits"] = digest_cache_hits
+            output["_meta"]["digest_cache_misses"] = digest_cache_misses
 
-        run.tokens_in = llm_result.prompt_tokens
-        run.tokens_out = llm_result.completion_tokens
-        run.cost_usd = llm_result.cost_usd
+        run.tokens_in = final_llm_result.prompt_tokens + digest_tokens_in
+        run.tokens_out = final_llm_result.completion_tokens + digest_tokens_out
+        run.cost_usd = round(final_llm_result.cost_usd + digest_cost, 6)
         run.output_json = output
         run.citations_valid = all_valid
         run.status = "completed"
@@ -700,7 +1019,10 @@ class RunService:
             cost_usd=run.cost_usd,
             citations_valid=run.citations_valid,
             shrunk=budget_result.shrunk,
-            items_sent_count=len(budget_result.items_sent),
+            items_sent_count=len(items_for_citations),
+            digest_path=use_digest,
+            retry_count=retry_count,
+            stripped_count=stripped_count,
         )
         return run
 

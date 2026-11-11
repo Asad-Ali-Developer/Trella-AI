@@ -1,5 +1,6 @@
 """Google Gemini LLM provider implementation."""
 
+import asyncio
 import json
 import re
 from typing import Any, TypeVar, cast
@@ -7,10 +8,16 @@ from typing import Any, TypeVar, cast
 import httpx
 from fastapi import HTTPException, status
 from pydantic import BaseModel, ValidationError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.modules.context.gemini import (
+    _get_loop_client,
+    _get_loop_semaphore,
+    _parse_retry_after,
+    _wait_for_retry,
+)
 from app.modules.llm.base import LLMProvider, LLMResult
 
 logger = get_logger("app.modules.llm.gemini")
@@ -36,6 +43,67 @@ FALLBACK_MODELS: tuple[str, ...] = (
     "gemini-3.1-flash-lite",
     "gemini-flash-lite-latest",
 )
+
+
+class GeminiRateLimited(Exception):
+    """Raised when Gemini returns HTTP 429."""
+
+    def __init__(self, detail: str, retry_after: float | None = None) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.retry_after = retry_after
+
+
+class GeminiTransientError(Exception):
+    """Raised when Gemini encounters transient network or 5xx errors."""
+
+    def __init__(self, detail: str, retry_after: float | None = None) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.retry_after = retry_after
+
+
+def sanitize_gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize Pydantic JSON schema for Gemini responseSchema:
+    - Recursively inlines $ref pointers from $defs / definitions.
+    - Strips unsupported keys: $defs, definitions, title, default, examples, $schema.
+    """
+    defs: dict[str, Any] = {}
+    defs.update(schema.get("$defs", {}))
+    defs.update(schema.get("definitions", {}))
+
+    def _resolve(node: Any) -> Any:
+        if isinstance(node, list):
+            return [_resolve(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        if "$ref" in node:
+            ref_path = str(node["$ref"])
+            ref_name = ref_path.split("/")[-1]
+            if ref_name in defs:
+                resolved = _resolve(defs[ref_name])
+                merged = dict(resolved) if isinstance(resolved, dict) else {}
+                for k, v in node.items():
+                    if k != "$ref":
+                        merged[k] = _resolve(v)
+                return merged
+
+        cleaned: dict[str, Any] = {}
+        drop_keys = {"$defs", "definitions", "title", "default", "examples", "$schema"}
+        for k, v in node.items():
+            if k in drop_keys:
+                continue
+            cleaned[k] = _resolve(v)
+        return cleaned
+
+    sanitized = _resolve(schema)
+    if isinstance(sanitized, dict):
+        sanitized.pop("$defs", None)
+        sanitized.pop("definitions", None)
+        sanitized.pop("title", None)
+        return sanitized
+    return {}
 
 
 def _clean_json_markdown(text: str) -> str:
@@ -113,55 +181,91 @@ class GeminiProvider(LLMProvider):
         completion_cost = (completion_tokens / 1_000_000.0) * FLASH_OUTPUT_PRICE_PER_M
         return round(prompt_cost + completion_cost, 6)
 
-    @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=1, max=4),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
-        reraise=True,
-    )
     async def _call_single_model(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """Execute a single model request to Gemini API with bounded retries."""
+        """Execute a single model request to Gemini API with bounded retries honoring Retry-After."""
         url = f"{GEMINI_API_BASE}/{model}:generateContent"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-            response = await client.post(
-                url,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": self.api_key,
-                },
-            )
-            if response.status_code in (404, 429) or response.status_code >= 500:
-                logger.warning(
-                    "gemini_transient_or_model_error",
-                    model=model,
-                    status_code=response.status_code,
-                )
-                response.raise_for_status()
-            if response.status_code != 200:
-                logger.error(
-                    "gemini_api_error",
-                    model=model,
-                    status_code=response.status_code,
-                    body=response.text,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Gemini API returned error ({response.status_code}): {response.text}",
-                )
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Gemini returned a malformed response.",
-                ) from exc
-            if not isinstance(data, dict):
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Gemini returned a malformed response.",
-                )
-            return cast(dict[str, Any], data)
+        semaphore = _get_loop_semaphore()
+        client = _get_loop_client()
+
+        max_attempts = max(1, int(settings.GEMINI_MAX_ATTEMPTS))
+        retrying = AsyncRetrying(
+            stop=stop_after_attempt(max_attempts),
+            wait=_wait_for_retry,
+            retry=retry_if_exception_type((GeminiRateLimited, GeminiTransientError, httpx.RequestError)),
+            reraise=True,
+        )
+
+        async for attempt in retrying:
+            with attempt:
+                async with semaphore:
+                    try:
+                        response = await client.post(
+                            url,
+                            json=payload,
+                            headers={
+                                "Content-Type": "application/json",
+                                "x-goog-api-key": self.api_key,
+                            },
+                        )
+                    except httpx.RequestError as exc:
+                        raise GeminiTransientError(f"Network error on {model}: {exc}") from exc
+
+                if response.status_code == 429:
+                    retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+                    logger.warning(
+                        "gemini_rate_limited",
+                        model=model,
+                        retry_after=retry_after,
+                    )
+                    raise GeminiRateLimited(
+                        f"Gemini 429 rate limit on {model}",
+                        retry_after=retry_after,
+                    )
+                if response.status_code >= 500:
+                    retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+                    logger.warning(
+                        "gemini_server_error",
+                        model=model,
+                        status_code=response.status_code,
+                    )
+                    raise GeminiTransientError(
+                        f"Gemini server error {response.status_code} on {model}",
+                        retry_after=retry_after,
+                    )
+                if response.status_code == 404:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Gemini model {model} not found.",
+                    )
+                if response.status_code != 200:
+                    logger.error(
+                        "gemini_api_error",
+                        model=model,
+                        status_code=response.status_code,
+                        body=response.text,
+                    )
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"Gemini API returned error ({response.status_code}): {response.text}",
+                    )
+                try:
+                    data = response.json()
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Gemini returned a malformed response.",
+                    ) from exc
+                if not isinstance(data, dict):
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Gemini returned a malformed response.",
+                    )
+                return cast(dict[str, Any], data)
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Gemini request failed on {model} after retries.",
+        )
 
     async def _call_api(self, model: str, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
         """Execute request against primary Gemini model, falling back on 404/429/5xx/timeout."""
@@ -176,8 +280,15 @@ class GeminiProvider(LLMProvider):
             try:
                 data = await self._call_single_model(candidate_model, payload)
                 return data, candidate_model
-            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+            except Exception as exc:
+                if isinstance(exc, HTTPException) and exc.status_code == 400:
+                    raise
                 last_exc = exc
+                retry_after = getattr(exc, "retry_after", None)
+                if retry_after is not None and retry_after > 0:
+                    logger.info("gemini_429_waiting_retry_after_before_fallback", retry_after=retry_after)
+                    await asyncio.sleep(retry_after)
+
                 if idx + 1 < len(candidates):
                     logger.warning(
                         "gemini_falling_back_to_next_model",
@@ -192,6 +303,8 @@ class GeminiProvider(LLMProvider):
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail=f"Gemini API timed out across models {candidates}.",
             ) from last_exc
+        if isinstance(last_exc, HTTPException):
+            raise last_exc
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Gemini API is temporarily unavailable (503). Please retry in a moment.",
@@ -273,7 +386,24 @@ class GeminiProvider(LLMProvider):
         if system_instruction:
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
-        data, used_model = await self._call_api(target_model, payload)
+        using_native_schema = settings.GEMINI_NATIVE_SCHEMA
+        if using_native_schema:
+            sanitized = sanitize_gemini_schema(response_schema.model_json_schema())
+            payload["generationConfig"]["responseSchema"] = sanitized
+
+        try:
+            data, used_model = await self._call_api(target_model, payload)
+        except HTTPException as exc:
+            if using_native_schema and exc.status_code == 400:
+                logger.warning(
+                    "gemini_native_schema_rejected_400_retrying_without_schema",
+                    model=target_model,
+                    error=exc.detail,
+                )
+                payload["generationConfig"].pop("responseSchema", None)
+                data, used_model = await self._call_api(target_model, payload)
+            else:
+                raise
 
         try:
             candidates = data.get("candidates", [])
