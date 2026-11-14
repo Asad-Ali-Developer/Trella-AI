@@ -376,9 +376,11 @@ class HybridRetriever:
         keyword_candidates: int | None = None,
         vector_weight: float | None = None,
         keyword_weight: float | None = None,
+        redis: Any | None = None,
     ) -> None:
         self.session = session
         self.embedder = embedder
+        self.redis = redis
         self.embedding_model = embedding_model or settings.GEMINI_EMBEDDING_MODEL
         self.ef_search = (
             int(ef_search) if ef_search is not None else int(settings.RETRIEVAL_EF_SEARCH)
@@ -416,12 +418,33 @@ class HybridRetriever:
         self.last_db_exec_ms: float = 0.0
         self.last_db_fetch_ms: float = 0.0
         self.last_db_latency_ms: float = 0.0
+        self.last_rerank_latency_ms: float = 0.0
         self.last_total_latency_ms: float = 0.0
         self.last_degraded: bool = False
         self.last_metadata: dict[str, Any] = {}
 
     async def _embed_query(self, query: str) -> tuple[list[float] | None, bool, str | None]:
         """Embed `query` with `embed(..., query=True)`, degrading gracefully on embedding failure."""
+        from app.modules.search.cache import (
+            get_cached_query_embedding,
+            set_cached_query_embedding,
+        )
+
+        try:
+            cached_vec = await get_cached_query_embedding(
+                query,
+                self.embedding_model,
+                dim=EMBEDDING_DIMENSIONS,
+                redis=self.redis,
+            )
+            if cached_vec is not None:
+                return cached_vec, False, None
+        except Exception as exc:
+            logger.warning(
+                "retriever_query_embed_cache_read_failed",
+                error_type=type(exc).__name__,
+            )
+
         try:
             if self.embedder is not None:
                 embed_fn = self.embedder.embed
@@ -431,14 +454,36 @@ class HybridRetriever:
                     kwargs["query"] = True
                 maybe_coro = embed_fn(query, **kwargs)
                 vec = await maybe_coro if inspect.isawaitable(maybe_coro) else maybe_coro
-                return [round(float(x), 5) for x in vec], False, None
+                rounded = [round(float(x), 5) for x in vec]
+                try:
+                    await set_cached_query_embedding(
+                        query,
+                        self.embedding_model,
+                        rounded,
+                        dim=EMBEDDING_DIMENSIONS,
+                        redis=self.redis,
+                    )
+                except Exception:
+                    pass
+                return rounded, False, None
 
             from app.modules.context import service as context_service
 
             gemini_cls = getattr(context_service, "GeminiContextClient", GeminiContextClient)
             async with gemini_cls() as gemini:
                 vec = await gemini.embed(query, query=True)
-                return [round(float(x), 5) for x in vec], False, None
+                rounded = [round(float(x), 5) for x in vec]
+                try:
+                    await set_cached_query_embedding(
+                        query,
+                        self.embedding_model,
+                        rounded,
+                        dim=EMBEDDING_DIMENSIONS,
+                        redis=self.redis,
+                    )
+                except Exception:
+                    pass
+                return rounded, False, None
         except (
             EmbeddingRateLimited,
             EmbeddingUnavailable,
@@ -592,7 +637,9 @@ class HybridRetriever:
                 )
             )
 
+        t_rerank_start = time.perf_counter()
         reranked = await self.reranker.rerank(query, chunks, limit=effective_limit)
+        self.last_rerank_latency_ms = (time.perf_counter() - t_rerank_start) * 1000.0
         total_ms = (time.perf_counter() - t_start) * 1000.0
         self.last_total_latency_ms = total_ms
 

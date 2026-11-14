@@ -165,6 +165,39 @@ class Settings(BaseSettings):
         description="Weighted RRF keyword rank multiplier.",
     )
 
+    # Search Cache & Rate Limits
+    SEARCH_RESULT_CACHE_TTL: int = Field(
+        default=600,
+        ge=1,
+        description="TTL in seconds for cached search results (default 10 minutes).",
+    )
+    QUERY_EMBED_CACHE_TTL: int = Field(
+        default=86400,
+        ge=1,
+        description="TTL in seconds for cached query embeddings (default 24 hours).",
+    )
+    SEARCH_RATE_LIMIT_USER: int = Field(
+        default=60,
+        ge=1,
+        description="Max search requests per minute per user.",
+    )
+    SEARCH_RATE_LIMIT_WORKSPACE: int = Field(
+        default=120,
+        ge=1,
+        description="Max search requests per minute per workspace.",
+    )
+
+    @field_validator("SEARCH_RATE_LIMIT_USER", "SEARCH_RATE_LIMIT_WORKSPACE", mode="before")
+    @classmethod
+    def assemble_search_rate_limits(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            clean = v.strip().split("/")[0].strip()
+            try:
+                return int(clean)
+            except ValueError:
+                pass
+        return v
+
     # Trello
     TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")
     TRELLO_API_KEY: str = Field(default="")

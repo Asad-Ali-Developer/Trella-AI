@@ -1,6 +1,6 @@
 import asyncio
-import uuid
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, status
 from redis.asyncio import Redis
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/queue", tags=["queue"])
 async def _check_celery_worker() -> tuple[bool, str | None]:
     """Check whether at least one Celery worker is responsive."""
     try:
-        def _ping():
+        def _ping() -> Any:
             return celery_app.control.ping(timeout=0.6)
 
         responses = await asyncio.to_thread(_ping)
@@ -118,7 +118,7 @@ async def get_queue_status(
                 id=str(src.id),
                 name=src.name,
                 source_type="trello",
-                status=src_status,
+                status=cast(Any, src_status),
                 last_synced_at=src.last_synced_at,
                 sync_error=src.sync_error,
                 items_count=card_count,
@@ -138,7 +138,7 @@ async def get_queue_status(
                 id=str(repo.id),
                 name=repo.full_name,
                 source_type="github",
-                status=repo_status,
+                status=cast(Any, repo_status),
                 last_synced_at=repo.last_synced_at,
                 sync_error=repo.sync_error,
                 items_count=0,
