@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.security.encryption import encryption
 from app.modules.connections.models import ProviderAccount, WorkspaceConnection
 from app.modules.connections.repository import ConnectionRepository
+from app.modules.context.indexer import increment_workspace_data_version
 from app.modules.trello.client import TrelloAPIError, TrelloClient
 from app.modules.trello.models import (
     TrelloClientMapping,
@@ -281,7 +282,9 @@ class TrelloConnectionService:
                 TrelloOAuthState.user_id == self.user_id,
             )
         )
-        await self._clear_workspace_trello_data_if_unlinked()
+        await self._clear_workspace_trello_data_if_unlinked(bump=False)
+        await self.db.commit()
+        await increment_workspace_data_version(self.workspace_id)
         return TrelloConnectionStatus(connected=False)
 
     async def list_boards(self) -> list[TrelloBoardResponse]:
@@ -345,10 +348,16 @@ class TrelloConnectionService:
             )
 
         existing_sources = await self.connections.list_sources(self.workspace_id, connection.id)
+        existing_exclusions = {source.trello_board_id: source.excluded for source in existing_sources}
         exclusions = {board_id: requested.get(board_id, True) for board_id in remote_by_id}
         for source in existing_sources:
             if source.trello_board_id not in requested and source.trello_board_id in remote_by_id:
                 exclusions[source.trello_board_id] = source.excluded
+
+        has_change = any(
+            board_id not in existing_exclusions or existing_exclusions[board_id] != excluded
+            for board_id, excluded in exclusions.items()
+        )
 
         source_values: list[dict[str, str | bool]] = [
             {
@@ -364,6 +373,12 @@ class TrelloConnectionService:
             connection_id=connection.id,
             sources=source_values,
         )
+        for source in existing_sources:
+            if source.trello_board_id in exclusions:
+                source.excluded = exclusions[source.trello_board_id]
+        if has_change:
+            await self.db.commit()
+            await increment_workspace_data_version(self.workspace_id)
         return len(source_values)
 
     # ------------------------------------------------------------------
@@ -525,7 +540,7 @@ class TrelloConnectionService:
             )
         return account
 
-    async def _clear_workspace_trello_data_if_unlinked(self) -> None:
+    async def _clear_workspace_trello_data_if_unlinked(self, *, bump: bool = True) -> None:
         await self.db.execute(
             delete(TrelloClientRecord).where(
                 TrelloClientRecord.workspace_id == self.workspace_id,
@@ -549,6 +564,9 @@ class TrelloConnectionService:
             await self.db.execute(
                 delete(TrelloMember).where(TrelloMember.workspace_id == self.workspace_id)
             )
+        if bump:
+            await self.db.commit()
+            await increment_workspace_data_version(self.workspace_id)
 
     @staticmethod
     def _require_oauth_config() -> None:

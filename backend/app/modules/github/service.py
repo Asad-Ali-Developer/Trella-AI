@@ -255,6 +255,9 @@ class GithubConnectionService:
                 GithubOAuthState.user_id == self.user_id,
             )
         )
+        await self.db.commit()
+        if connection is not None:
+            await increment_workspace_data_version(self.workspace_id)
         return GithubConnectionStatus(connected=False)
 
     async def refresh_repositories(self) -> list[GithubRepositoryResponse]:
@@ -360,11 +363,15 @@ class GithubConnectionService:
         )
         updated_count = 0
         remapped_chunks = 0
+        has_change = False
         for repo in repos:
             saved_selection = requested.get(repo.github_repo_id)
             if saved_selection is None:
                 continue
             client_changed = repo.client_id != saved_selection.client_id
+            included_changed = repo.included != saved_selection.included
+            if client_changed or included_changed:
+                has_change = True
             repo.included = saved_selection.included
             repo.client_id = saved_selection.client_id
             if client_changed:
@@ -383,9 +390,12 @@ class GithubConnectionService:
                 repo.sync_error = None
             updated_count += 1
         await self.db.flush()
-        if remapped_chunks > 0:
+        if has_change:
+            await self.db.commit()
             await increment_workspace_data_version(self.workspace_id)
         return updated_count
+
+    save_repository_selections = save_repositories
 
     async def selected_repositories(self) -> list[GithubRepository]:
         connection, _ = await self._get_connection_and_account()
