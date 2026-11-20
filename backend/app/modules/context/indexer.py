@@ -62,13 +62,16 @@ async def increment_workspace_data_version(
     *,
     redis: Redis | None = None,
 ) -> int | None:
-    """Increment `ws:{workspace_id}:data_version` using the shared per-loop Redis pool."""
+    """Increment `ws:{workspace_id}:data_version` using the shared per-loop Redis pool.
+
+    Fails soft on Redis/connection errors to ensure caller transactions never raise after commit.
+    """
     key = data_version_key(workspace_id)
     try:
         client = redis if redis is not None else _get_loop_redis()
         value = await client.incr(key)
         return int(value)
-    except (RedisError, OSError, RuntimeError) as exc:
+    except (RedisError, OSError, RuntimeError, Exception) as exc:
         logger.warning(
             "workspace_data_version_increment_failed",
             workspace_id=str(workspace_id),
@@ -1067,6 +1070,8 @@ class IndexingService:
         workspace_id: UUID,
         repository_id: UUID,
         new_client_id: UUID | None,
+        *,
+        bump: bool = True,
     ) -> int:
         """Update a repository's client_id and its chunks.client_id in the same transaction."""
         repo = await self.db.scalar(
@@ -1089,7 +1094,8 @@ class IndexingService:
         )
         await self.db.flush()
         updated_rows = int(getattr(upd, "rowcount", 0) or 0)
-        if updated_rows > 0:
+        if updated_rows > 0 and bump:
+            await self.db.commit()
             await self.increment_data_version(workspace_id)
         return updated_rows
 

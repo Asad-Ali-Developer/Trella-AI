@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.deps import get_current_user, get_current_workspace
 from app.db.session import get_db
 from app.modules.auth.models import User
+from app.modules.context.indexer import increment_workspace_data_version
 from app.modules.trello.models import TrelloSource, TrelloWebhookEvent
 from app.modules.trello.schemas import (
     TrelloAuthorizationResponse,
@@ -176,6 +177,8 @@ async def save_client_mappings(
     payload: TrelloClientMappingRequest,
     workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
+    *,
+    bump: bool = True,
 ) -> TrelloClientMappingSaveResponse:
     workspace, _ = workspace_context
     service = _service(db, workspace_context)
@@ -186,6 +189,7 @@ async def save_client_mappings(
             workspace.id,
             connection.id,
             [item.model_dump() for item in payload.mappings],
+            bump=False,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -194,6 +198,9 @@ async def save_client_mappings(
         ) from exc
     sources = await sources_for_sync(db, workspace.id, connection.id)
     await db.commit()
+    remapped_chunks = int(db.info.pop("trello_remapped_chunks", 0))
+    if remapped_chunks > 0 and bump:
+        await increment_workspace_data_version(workspace.id)
     for source in sources:
         await enqueue_source_sync(source.id)
     return TrelloClientMappingSaveResponse(saved=saved)

@@ -370,6 +370,8 @@ async def replace_client_mappings(
     workspace_id: uuid.UUID,
     connection_id: uuid.UUID,
     mappings: list[dict[str, str]],
+    *,
+    bump: bool = True,
 ) -> int:
     sources = list(
         (
@@ -483,10 +485,16 @@ async def replace_client_mappings(
             .values(client_id=TrelloCard.client_id)
         )
         await db.flush()
-        if int(getattr(chunk_upd, "rowcount", 0) or 0) > 0:
+        remapped_chunks = int(getattr(chunk_upd, "rowcount", 0) or 0)
+        db.info["trello_remapped_chunks"] = remapped_chunks
+        if remapped_chunks > 0 and bump:
+            await db.commit()
             await increment_workspace_data_version(workspace_id)
 
     return len(normalized_items)
+
+
+save_client_mappings = replace_client_mappings
 
 
 async def sources_for_sync(
