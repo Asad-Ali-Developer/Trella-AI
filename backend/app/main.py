@@ -21,6 +21,7 @@ from app.modules.jira.router import router as jira_router
 from app.modules.queue.router import router as queue_router
 from app.modules.runs.router import router as runs_router
 from app.modules.scheduler.router import router as scheduler_router
+from app.modules.search.router import ask_router
 from app.modules.search.router import router as search_router
 from app.modules.skills.router import router as skills_router
 from app.modules.skills.service import SkillService
@@ -137,6 +138,7 @@ def create_application() -> FastAPI:
     application.include_router(queue_router, prefix=settings.API_V1_PREFIX)
     application.include_router(runs_router, prefix=settings.API_V1_PREFIX)
     application.include_router(scheduler_router, prefix=settings.API_V1_PREFIX)
+    application.include_router(ask_router, prefix=settings.API_V1_PREFIX)
     application.include_router(search_router, prefix=settings.API_V1_PREFIX)
     application.include_router(skills_router, prefix=settings.API_V1_PREFIX)
     application.include_router(trello_router, prefix=settings.API_V1_PREFIX)

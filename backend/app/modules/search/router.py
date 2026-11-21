@@ -6,6 +6,7 @@ import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,14 +14,15 @@ from app.core.deps import get_current_workspace
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.modules.context.retriever import HybridRetriever, resolve_active_sources
+from app.modules.search.ask import stream_ask_response
 from app.modules.search.cache import (
     get_cached_search_results,
     get_workspace_data_version,
     search_result_cache_key,
     set_cached_search_results,
 )
-from app.modules.search.rate_limiter import check_search_rate_limits
-from app.modules.search.schemas import SearchRequest, SearchResponse, SearchResultItem
+from app.modules.search.rate_limiter import check_ask_rate_limits, check_search_rate_limits
+from app.modules.search.schemas import AskRequest, SearchRequest, SearchResponse, SearchResultItem
 from app.modules.trello.rate_limiter import _get_loop_redis
 from app.modules.workspaces.models import Membership, Workspace
 
@@ -192,3 +194,42 @@ async def search(
         cached=False,
         timings_ms=timings_ms,
     )
+
+
+ask_router = APIRouter(prefix="/ask", tags=["ask"])
+
+
+@ask_router.post("", response_class=StreamingResponse)
+async def ask(
+    request: AskRequest,
+    workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis | None = Depends(get_redis),
+) -> StreamingResponse:
+    """Execute streaming grounded Q&A over workspace context chunks via Server-Sent Events (SSE)."""
+    workspace, membership = workspace_context
+    user_id: UUID = membership.user_id
+    workspace_id: UUID = workspace.id
+
+    # 1. Enforce per-user and per-workspace rate limits
+    await check_ask_rate_limits(user_id=user_id, workspace_id=workspace_id, redis=redis)
+
+    # 2. Stream SSE events
+    generator = stream_ask_response(
+        request_data=request,
+        workspace_id=workspace_id,
+        user_id=user_id,
+        db=db,
+        redis=redis,
+    )
+
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+

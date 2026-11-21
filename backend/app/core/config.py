@@ -187,7 +187,13 @@ class Settings(BaseSettings):
         description="Max search requests per minute per workspace.",
     )
 
-    @field_validator("SEARCH_RATE_LIMIT_USER", "SEARCH_RATE_LIMIT_WORKSPACE", mode="before")
+    @field_validator(
+        "SEARCH_RATE_LIMIT_USER",
+        "SEARCH_RATE_LIMIT_WORKSPACE",
+        "ASK_RATE_LIMIT_USER",
+        "ASK_RATE_LIMIT_WORKSPACE",
+        mode="before",
+    )
     @classmethod
     def assemble_search_rate_limits(cls, v: Any) -> Any:
         if isinstance(v, str):
@@ -197,6 +203,53 @@ class Settings(BaseSettings):
             except ValueError:
                 pass
         return v
+
+    # Ask Endpoint Settings
+    ASK_RETRIEVE_LIMIT: int = Field(
+        default=8,
+        ge=1,
+        description="Top chunks to retrieve for ask context.",
+    )
+    ASK_MAX_CONTEXT_TOKENS: int = Field(
+        default=6000,
+        ge=100,
+        description="Max total context tokens for ask prompt.",
+    )
+    ASK_MAX_OUTPUT_TOKENS: int = Field(
+        default=1024,
+        ge=1,
+        description="Max output tokens for ask response.",
+    )
+    ASK_TEMPERATURE: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        description="Generation temperature for ask endpoint.",
+    )
+    ASK_PROMPT_VERSION: str = Field(
+        default="1.0",
+        description="Ask prompt version.",
+    )
+    ASK_TIMEOUT_SECONDS: float = Field(
+        default=30.0,
+        gt=0,
+        description="Overall timeout in seconds for ask stream.",
+    )
+    ASK_RATE_LIMIT_USER: int = Field(
+        default=10,
+        ge=1,
+        description="Max ask requests per minute per user.",
+    )
+    ASK_RATE_LIMIT_WORKSPACE: int = Field(
+        default=30,
+        ge=1,
+        description="Max ask requests per minute per workspace.",
+    )
+    ASK_MAX_CONCURRENCY: int = Field(
+        default=4,
+        ge=1,
+        description="Max concurrent ask stream requests.",
+    )
 
     # Trello
     TRELLO_API_BASE_URL: str = Field(default="https://api.trello.com/1")
