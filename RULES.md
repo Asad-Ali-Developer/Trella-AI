@@ -1,5 +1,7 @@
 # Development Rules & Guidelines
 
+ADDITIVE ONLY. Do not open .env files. Do not add aliases. Do not touch skill runs,
+delivery, /search or /ask behavior except where the prompt says so. Existing tests unchanged.
 - **Python & Typing**: Python 3.12, async everywhere, full type hints, strict mypy compliance, Ruff clean.
 - **Module Architecture**: Follow the standard layout per module:
   - `router.py` → `service.py` → `repository.py`

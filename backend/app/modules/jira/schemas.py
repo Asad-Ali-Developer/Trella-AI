@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JiraAuthorizationResponse(BaseModel):
@@ -19,6 +19,30 @@ class JiraCallbackRequest(BaseModel):
     state: str
     workspace_id: UUID | None = None
 
+
+class JiraApiTokenConnectRequest(BaseModel):
+    """Payload to save or test a Jira Cloud API token connection."""
+
+    site_url: str = Field(min_length=1, max_length=1000)
+    email: str = Field(min_length=1, max_length=255)
+    api_token: str = Field(min_length=1, max_length=2048)
+
+
+class JiraConnectionTestRequest(BaseModel):
+    """Optional credentials payload to test a Jira connection (uses stored connection if omitted)."""
+
+    site_url: str | None = Field(default=None, max_length=1000)
+    email: str | None = Field(default=None, max_length=255)
+    api_token: str | None = Field(default=None, max_length=2048)
+
+
+class JiraConnectionTestResponse(BaseModel):
+    """Result of testing a Jira Cloud connection."""
+
+    ok: bool
+    username: str | None = None
+    account_id: str | None = None
+    site_url: str | None = None
 
 
 class JiraConnectionStatus(BaseModel):
@@ -83,4 +107,11 @@ class JiraClientOption(BaseModel):
 
     id: UUID
     name: str
+
+
+class JiraSyncResponse(BaseModel):
+    """Response returned when scheduling Jira project synchronization."""
+
+    scheduled: int
+
 

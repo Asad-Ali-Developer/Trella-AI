@@ -10,15 +10,20 @@ from app.modules.auth.models import User
 from app.modules.jira.models import JiraOAuthState
 from app.modules.jira.schemas import (
     JiraAccountLinkRequest,
+    JiraApiTokenConnectRequest,
     JiraAuthorizationResponse,
     JiraCallbackRequest,
     JiraClientOption,
     JiraConnectionStatus,
+    JiraConnectionTestRequest,
+    JiraConnectionTestResponse,
     JiraProjectResponse,
     JiraProjectSelectionRequest,
     JiraProviderAccountResponse,
+    JiraSyncResponse,
 )
 from app.modules.jira.service import JiraConnectionService
+from app.modules.jira.sync import enqueue_jira_project_sync, projects_for_sync
 from app.modules.workspaces.models import Membership, Workspace
 
 router = APIRouter(prefix="/connections/jira", tags=["jira"])
@@ -75,6 +80,25 @@ async def complete_authorization(
     )
 
 
+@router.post("", response_model=JiraConnectionStatus)
+async def connect_api_token(
+    payload: JiraApiTokenConnectRequest,
+    workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+) -> JiraConnectionStatus:
+    """Save and verify a Jira Cloud API token connection for the active workspace."""
+    return await _service(db, workspace_context).connect_api_token(payload)
+
+
+@router.post("/test", response_model=JiraConnectionTestResponse)
+async def test_connection(
+    payload: JiraConnectionTestRequest | None = None,
+    workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+) -> JiraConnectionTestResponse:
+    """Test provided Jira Cloud credentials or the currently saved workspace connection."""
+    return await _service(db, workspace_context).test_connection(payload)
+
 
 @router.get("", response_model=JiraConnectionStatus)
 async def connection_status(
@@ -104,7 +128,6 @@ async def list_workspace_clients(
 
 
 @router.post("/accounts/link", response_model=JiraConnectionStatus)
-
 async def link_account(
     payload: JiraAccountLinkRequest,
     workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
@@ -138,5 +161,42 @@ async def save_project_selections(
     workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> list[JiraProjectResponse]:
-    """Save inclusion selections and client mapping for Jira projects."""
-    return await _service(db, workspace_context).save_projects(payload)
+    """Save inclusion selections and client mapping for Jira projects, then enqueue sync for included projects."""
+    service = _service(db, workspace_context)
+    responses = await service.save_projects(payload)
+    workspace, _ = workspace_context
+    connection = await service.connections.get_provider_connection(
+        workspace.id, service.provider, service.user_id
+    )
+    if connection is not None:
+        projects = await projects_for_sync(db, workspace.id, connection.id)
+        for project in projects:
+            await enqueue_jira_project_sync(project.id)
+    return responses
+
+
+@router.post("/sync", response_model=JiraSyncResponse, status_code=status.HTTP_202_ACCEPTED)
+async def sync_projects(
+    workspace_context: tuple[Workspace, Membership] = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+) -> JiraSyncResponse:
+    """Manually trigger synchronization for all included Jira projects in the workspace."""
+    service = _service(db, workspace_context)
+    workspace, _ = workspace_context
+    connection = await service.connections.get_provider_connection(
+        workspace.id, service.provider, service.user_id
+    )
+    if connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Connect a Jira account first.",
+        )
+    projects = await projects_for_sync(db, workspace.id, connection.id)
+    for project in projects:
+        project.sync_status = "running"
+        project.sync_error = None
+    await db.commit()
+    for project in projects:
+        await enqueue_jira_project_sync(project.id)
+    return JiraSyncResponse(scheduled=len(projects))
+

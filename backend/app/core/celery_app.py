@@ -29,6 +29,7 @@ TASK_ROUTES: dict[str, dict[str, str]] = {
     "app.workers.tasks.deliver_report_task": {"queue": "delivery"},
     "app.workers.tasks.sync_trello_source": {"queue": "sync"},
     "app.workers.tasks.sync_github_repository": {"queue": "sync"},
+    "app.workers.tasks.sync_jira_project": {"queue": "sync"},
     "app.workers.tasks.check_due_schedules_task": {"queue": "sync"},
     "app.workers.tasks.execute_skill_run": {"queue": "ai"},
     "app.workers.tasks.execute_scheduled_run_task": {"queue": "ai"},

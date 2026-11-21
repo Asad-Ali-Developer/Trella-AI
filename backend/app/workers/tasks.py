@@ -19,6 +19,9 @@ from app.modules.connections.models import WorkspaceConnection
 from app.modules.github.client import GithubAPIError
 from app.modules.github.models import GithubRepository
 from app.modules.github.sync import sync_github_repository as sync_github_repository_data
+from app.modules.jira.client import JiraAPIError, JiraRateLimitError
+from app.modules.jira.models import JiraProject
+from app.modules.jira.sync import sync_jira_project as sync_jira_project_data
 from app.modules.trello.client import TrelloAPIError, TrelloRateLimitError, TrelloServerError
 from app.modules.trello.models import TrelloSource
 from app.modules.trello.sync import sync_source_data
@@ -275,6 +278,39 @@ async def _sync_github_repository(repository_id: UUID) -> None:
 )
 def sync_github_repository_task(repository_id: str) -> None:
     asyncio.run(_sync_github_repository(UUID(repository_id)))
+
+
+async def _sync_jira_project(project_id: UUID) -> None:
+    async with worker_session_maker() as db:
+        project = await db.get(JiraProject, project_id)
+        if project is None or not project.included:
+            return
+        project.sync_status = "running"
+        project.sync_error = None
+        await db.commit()
+        try:
+            await sync_jira_project_data(db, project)
+            await db.commit()
+        except Exception as exc:
+            message = str(exc) if isinstance(exc, JiraAPIError) else "Synchronization failed."
+            await db.rollback()
+            project = await db.get(JiraProject, project_id)
+            if project is not None:
+                project.sync_status = "failed"
+                project.sync_error = message
+            await db.commit()
+            logger.exception("jira_project_sync_failed", project_id=str(project_id))
+            raise
+
+
+@celery_app.task(
+    name="app.workers.tasks.sync_jira_project",
+    autoretry_for=(OSError, JiraRateLimitError),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def sync_jira_project_task(project_id: str) -> None:
+    asyncio.run(_sync_jira_project(UUID(project_id)))
 
 
 async def _execute_skill_run(run_id: UUID) -> None:
