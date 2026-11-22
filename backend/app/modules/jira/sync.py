@@ -1,7 +1,9 @@
 """Synchronization and reconciliation logic for Jira projects, issues, comments, and changelogs."""
 
+import asyncio
 import hashlib
 import json
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -30,7 +32,20 @@ else
 end
 """
 
+_EXTEND_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("expire", KEYS[1], tonumber(ARGV[2]))
+else
+    return 0
+end
+"""
+
 JIRA_SYNC_LOOKBACK_MINUTES = 10
+JIRA_LOCK_HEARTBEAT_INTERVAL_SECONDS = 30.0
+
+
+class JiraLockLostError(RuntimeError):
+    """Raised when a running Jira project sync detects that its Redis lock token is no longer owned."""
 
 
 def compute_jira_issue_content_hash(
@@ -143,6 +158,48 @@ async def acquire_jira_project_lock(
         return True
 
 
+async def extend_jira_project_lock(
+    project_id: UUID,
+    token: str,
+    *,
+    ttl_seconds: int | None = None,
+    redis: Any = None,
+) -> bool:
+    """Atomically extend the per-project distributed Redis lock TTL via Lua compare-and-expire.
+
+    Returns True when the lock TTL was extended or when Redis is unreachable in local tests,
+    and False when the stored lock token in Redis no longer matches `token`.
+    """
+    lock_key = f"lock:sync:jira_project:{project_id}"
+    effective_ttl = ttl_seconds if ttl_seconds is not None else settings.INDEX_LOCK_TTL_SECONDS
+    if redis is not None:
+        from app.workers.tasks import _extend_index_lock
+
+        return await _extend_index_lock(
+            lock_key,
+            token,
+            ttl_seconds=effective_ttl,
+            redis=redis,
+        )
+    try:
+        client: Any = _get_loop_redis()
+        extended = await client.eval(
+            _EXTEND_LOCK_LUA,
+            1,
+            lock_key,
+            token,
+            str(effective_ttl),
+        )
+        return bool(int(extended or 0) > 0)
+    except (RedisError, OSError) as exc:
+        logger.warning(
+            "jira_sync_lock_extend_redis_unavailable",
+            project_id=str(project_id),
+            error_type=type(exc).__name__,
+        )
+        return True
+
+
 async def release_jira_project_lock(
     project_id: UUID,
     token: str,
@@ -184,6 +241,18 @@ def _build_issue_url(site_url: str | None, issue_key: str, self_url: Any) -> str
     return ""
 
 
+def _format_partial_sync_error(
+    *,
+    failed_comments: int,
+    failed_changelogs: int,
+) -> str:
+    """Format a safe counts-only sync_error string for incomplete per-issue follow-up fetches."""
+    return (
+        f"Partial sync incomplete: {failed_comments} comment fetch(es) failed, "
+        f"{failed_changelogs} changelog fetch(es) failed."
+    )
+
+
 async def sync_jira_project(
     db: AsyncSession,
     project: JiraProject,
@@ -192,21 +261,78 @@ async def sync_jira_project(
     site_url: str | None = None,
     reconcile: bool = True,
     redis: Any = None,
+    ttl_seconds: int | None = None,
+    heartbeat_interval_seconds: float | None = None,
 ) -> int:
     """Synchronize a single selected Jira project: issues, comments, changelog items, and reconciliation.
 
-    - Uses a per-project Redis lock to prevent concurrent duplicate syncs.
-    - Records sync_started_at before querying and sets project.last_synced_at = sync_started_at on completion.
+    - Uses a per-project Redis lock with compare-and-extend heartbeat to prevent concurrent duplicate syncs.
+    - Records sync_started_at before querying and sets project.last_synced_at = sync_started_at ONLY when
+      every issue's comments and changelog sync completely without follow-up fetch errors.
     - Uses a 10-minute lookback buffer on project.last_synced_at and formats JQL datetime in the user's timezone (/myself).
     - Requests expand=changelog and comment field in search; makes per-issue comment/changelog calls only when truncated.
     - Deletes local comments for an issue only after that issue's comment fetch completely succeeds.
     - Reconciles deleted/moved issues only after a fully successful enumeration, and aborts + logs a warning
       (without content) if reconciliation would delete more than 50% of the project's local issues.
     """
+    project_id = project.id
+    workspace_id = project.workspace_id
     lock_token = uuid4().hex
-    if not await acquire_jira_project_lock(project.id, lock_token, redis=redis):
-        logger.info("jira_project_sync_skipped_locked", project_id=str(project.id))
+    if not await acquire_jira_project_lock(
+        project_id,
+        lock_token,
+        ttl_seconds=ttl_seconds,
+        redis=redis,
+    ):
+        logger.info("jira_project_sync_skipped_locked", project_id=str(project_id))
         return 0
+
+    lock_lost = False
+    interval = (
+        heartbeat_interval_seconds
+        if heartbeat_interval_seconds is not None
+        else JIRA_LOCK_HEARTBEAT_INTERVAL_SECONDS
+    )
+
+    async def _check_and_extend_lock() -> None:
+        nonlocal lock_lost
+        if lock_lost:
+            raise JiraLockLostError("Jira project sync lock ownership lost.")
+        still_owned = await extend_jira_project_lock(
+            project_id,
+            lock_token,
+            ttl_seconds=ttl_seconds,
+            redis=redis,
+        )
+        if not still_owned:
+            lock_lost = True
+            logger.warning(
+                "jira_project_sync_lock_lost",
+                project_id=str(project_id),
+                workspace_id=str(workspace_id),
+            )
+            raise JiraLockLostError("Jira project sync lock ownership lost.")
+
+    async def _heartbeat_loop() -> None:
+        nonlocal lock_lost
+        while True:
+            await asyncio.sleep(interval)
+            still_owned = await extend_jira_project_lock(
+                project_id,
+                lock_token,
+                ttl_seconds=ttl_seconds,
+                redis=redis,
+            )
+            if not still_owned:
+                lock_lost = True
+                logger.warning(
+                    "jira_project_sync_lock_lost",
+                    project_id=str(project_id),
+                    workspace_id=str(workspace_id),
+                )
+                return
+
+    heartbeat_task: asyncio.Task[None] | None = asyncio.create_task(_heartbeat_loop())
 
     try:
         sync_started_at = datetime.now(UTC)
@@ -221,11 +347,11 @@ async def sync_jira_project(
 
             from app.modules.jira.service import JiraConnectionService
 
-            service = JiraConnectionService(db, project.workspace_id, connection.user_id)
+            service = JiraConnectionService(db, workspace_id, connection.user_id)
             opened_client, cloud_id, resolved_site_url = await service.open_client(account)
             effective_site_url = site_url or resolved_site_url
             async with opened_client as active_client:
-                count = await _sync_project_with_client(
+                count, failed_comments, failed_changelogs = await _sync_project_with_client(
                     db=db,
                     project=project,
                     client=active_client,
@@ -233,9 +359,10 @@ async def sync_jira_project(
                     site_url=effective_site_url,
                     sync_started_at=sync_started_at,
                     reconcile=reconcile,
+                    check_lock=_check_and_extend_lock,
                 )
         else:
-            count = await _sync_project_with_client(
+            count, failed_comments, failed_changelogs = await _sync_project_with_client(
                 db=db,
                 project=project,
                 client=client,
@@ -243,15 +370,42 @@ async def sync_jira_project(
                 site_url=site_url or client.site_url,
                 sync_started_at=sync_started_at,
                 reconcile=reconcile,
+                check_lock=_check_and_extend_lock,
             )
 
-        project.last_synced_at = sync_started_at
-        project.sync_status = "completed"
-        project.sync_error = None
+        await _check_and_extend_lock()
+
+        if failed_comments > 0 or failed_changelogs > 0:
+            # Keep previous project.last_synced_at unchanged so the next sync re-fetches incomplete issues
+            project.sync_status = "failed"
+            project.sync_error = _format_partial_sync_error(
+                failed_comments=failed_comments,
+                failed_changelogs=failed_changelogs,
+            )
+            logger.warning(
+                "jira_project_sync_incomplete",
+                project_id=str(project_id),
+                workspace_id=str(workspace_id),
+                upserted_issues=count,
+                failed_comments=failed_comments,
+                failed_changelogs=failed_changelogs,
+            )
+        else:
+            project.last_synced_at = sync_started_at
+            project.sync_status = "completed"
+            project.sync_error = None
+
         await db.flush()
         return count
+    except JiraLockLostError:
+        await db.rollback()
+        return 0
     finally:
-        await release_jira_project_lock(project.id, lock_token, redis=redis)
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
+        await release_jira_project_lock(project_id, lock_token, redis=redis)
 
 
 async def _sync_project_with_client(
@@ -263,7 +417,9 @@ async def _sync_project_with_client(
     site_url: str | None,
     sync_started_at: datetime,
     reconcile: bool,
-) -> int:
+    check_lock: Any = None,
+) -> tuple[int, int, int]:
+    del sync_started_at
     myself = await client.get_myself(cloud_id)
     user_tz = myself.get("timeZone") if isinstance(myself, dict) else None
 
@@ -282,7 +438,13 @@ async def _sync_project_with_client(
     )
 
     upserted_count = 0
+    failed_comments = 0
+    failed_changelogs = 0
+
     for raw_issue in raw_issues:
+        if check_lock is not None:
+            await check_lock()
+
         issue_ext_id = str(raw_issue.get("id") or "").strip()
         issue_key = str(raw_issue.get("key") or "").strip()
         fields = raw_issue.get("fields")
@@ -387,7 +549,7 @@ async def _sync_project_with_client(
         issue_pk = (await db.execute(issue_stmt)).scalar_one()
         upserted_count += 1
 
-        await _sync_issue_comments(
+        comments_ok = await _sync_issue_comments(
             db=db,
             project=project,
             client=client,
@@ -396,7 +558,10 @@ async def _sync_project_with_client(
             issue_key=issue_key,
             comment_field=fields.get("comment"),
         )
-        await _sync_issue_changelog(
+        if not comments_ok:
+            failed_comments += 1
+
+        changelog_ok = await _sync_issue_changelog(
             db=db,
             project=project,
             client=client,
@@ -405,8 +570,12 @@ async def _sync_project_with_client(
             issue_key=issue_key,
             changelog_field=raw_issue.get("changelog"),
         )
+        if not changelog_ok:
+            failed_changelogs += 1
 
     if reconcile:
+        if check_lock is not None:
+            await check_lock()
         await _reconcile_project_issues(
             db=db,
             project=project,
@@ -414,7 +583,7 @@ async def _sync_project_with_client(
             cloud_id=cloud_id,
         )
 
-    return upserted_count
+    return upserted_count, failed_comments, failed_changelogs
 
 
 async def _sync_issue_comments(
@@ -426,10 +595,15 @@ async def _sync_issue_comments(
     issue_pk: UUID,
     issue_key: str,
     comment_field: Any,
-) -> None:
-    """Sync comments for one issue; delete stale local comments ONLY on a fully successful fetch."""
+) -> bool:
+    """Sync comments for one issue; delete stale local comments ONLY on a fully successful fetch.
+
+    Returns True when all comments for the issue were fetched without upstream API errors,
+    and False if a follow-up comment fetch failed with JiraAPIError.
+    """
     comments_list: list[dict[str, Any]] = []
     comment_fetch_complete = False
+    followup_fetch_succeeded = True
 
     if isinstance(comment_field, dict):
         inline_comments = comment_field.get("comments")
@@ -458,6 +632,7 @@ async def _sync_issue_comments(
                     )
                     comments_list = [c for c in inline_comments if isinstance(c, dict)]
                     comment_fetch_complete = False
+                    followup_fetch_succeeded = False
     else:
         try:
             comments_list = await client.get_issue_comments(
@@ -472,6 +647,7 @@ async def _sync_issue_comments(
                 issue_id=str(issue_pk),
             )
             comment_fetch_complete = False
+            followup_fetch_succeeded = False
 
     fetched_comment_ids: set[str] = set()
     comment_values: list[dict[str, Any]] = []
@@ -533,6 +709,8 @@ async def _sync_issue_comments(
             )
         await db.execute(stale_stmt)
 
+    return followup_fetch_succeeded
+
 
 async def _sync_issue_changelog(
     *,
@@ -543,9 +721,14 @@ async def _sync_issue_changelog(
     issue_pk: UUID,
     issue_key: str,
     changelog_field: Any,
-) -> None:
-    """Sync changelog history items for an issue; fetch full changelog only when truncated."""
+) -> bool:
+    """Sync changelog history items for an issue; fetch full changelog only when truncated.
+
+    Returns True when the changelog for the issue was fetched without upstream API errors,
+    and False if a follow-up changelog fetch failed with JiraAPIError.
+    """
     histories: list[dict[str, Any]] = []
+    followup_fetch_succeeded = True
     if isinstance(changelog_field, dict):
         inline_histories = changelog_field.get("histories")
         total = changelog_field.get("total")
@@ -570,6 +753,7 @@ async def _sync_issue_changelog(
                         issue_id=str(issue_pk),
                     )
                     histories = [h for h in inline_histories if isinstance(h, dict)]
+                    followup_fetch_succeeded = False
 
     changelog_values: list[dict[str, Any]] = []
     for history in histories:
@@ -622,6 +806,8 @@ async def _sync_issue_changelog(
                 },
             )
         )
+
+    return followup_fetch_succeeded
 
 
 async def _reconcile_project_issues(

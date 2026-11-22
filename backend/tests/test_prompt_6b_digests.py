@@ -1,17 +1,19 @@
 """Tests for Phase 6b prompt hardening, citation retry, map-reduce digests, and native schema."""
 
 import asyncio
+import os
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import pytest
 import respx
 from alembic.config import Config
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import pool, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from alembic import command
 from app.core.config import settings
@@ -508,14 +510,156 @@ async def test_429_honors_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 7. Migration upgrade and downgrade
+# 7. Migration upgrade and downgrade (isolated throwaway database)
 # ---------------------------------------------------------------------------
+_MIGRATION_TEST_DB_NAME = "client_insights_migration_test"
+
+
+def _db_identity(url: str) -> tuple[str, int, str]:
+    parsed = urlparse(url.strip())
+    host = (parsed.hostname or "localhost").lower()
+    port = parsed.port or 5432
+    dbname = parsed.path.lstrip("/")
+    return (host, port, dbname)
+
+
+def _assert_migration_target_safe(
+    target_url: str,
+    primary_url: str | None = None,
+) -> str:
+    resolved_target = target_url.strip()
+    resolved_primary = (primary_url if primary_url is not None else settings.DATABASE_URL).strip()
+    if not resolved_target:
+        raise RuntimeError("Refusing to run migration test: target database URL is empty.")
+    if (
+        resolved_target == resolved_primary
+        or _db_identity(resolved_target) == _db_identity(resolved_primary)
+    ):
+        raise RuntimeError(
+            "Refusing to run migration test: target database must not equal DATABASE_URL."
+        )
+    return resolved_target
+
+
+def _build_migration_test_url(base_url: str | None = None) -> str:
+    parsed = urlparse((base_url if base_url is not None else settings.TEST_DATABASE_URL).strip())
+    return urlunparse(parsed._replace(path=f"/{_MIGRATION_TEST_DB_NAME}"))
+
+
+async def _create_throwaway_database(target_url: str) -> None:
+    parsed = urlparse(target_url)
+    target_db = parsed.path.lstrip("/")
+    admin_url = urlunparse(parsed._replace(path="/postgres"))
+    admin_engine = create_async_engine(
+        admin_url,
+        poolclass=pool.NullPool,
+        isolation_level="AUTOCOMMIT",
+    )
+    try:
+        async with admin_engine.connect() as conn:
+            await conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :db_name AND pid <> pg_backend_pid()"
+                ),
+                {"db_name": target_db},
+            )
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{target_db}"'))
+            await conn.execute(text(f'CREATE DATABASE "{target_db}"'))
+    finally:
+        await admin_engine.dispose()
+
+
+async def _drop_throwaway_database(target_url: str) -> None:
+    parsed = urlparse(target_url)
+    target_db = parsed.path.lstrip("/")
+    admin_url = urlunparse(parsed._replace(path="/postgres"))
+    admin_engine = create_async_engine(
+        admin_url,
+        poolclass=pool.NullPool,
+        isolation_level="AUTOCOMMIT",
+    )
+    try:
+        async with admin_engine.connect() as conn:
+            await conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :db_name AND pid <> pg_backend_pid()"
+                ),
+                {"db_name": target_db},
+            )
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{target_db}"'))
+    finally:
+        await admin_engine.dispose()
+
+
+def _run_migration_cycle_on_throwaway_db(
+    target_url: str,
+    primary_url: str | None = None,
+) -> None:
+    safe_url = _assert_migration_target_safe(target_url, primary_url=primary_url)
+    asyncio.run(_create_throwaway_database(safe_url))
+    prev_env = os.environ.get("ALEMBIC_DATABASE_URL")
+    os.environ["ALEMBIC_DATABASE_URL"] = safe_url
+    try:
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", safe_url)
+        command.upgrade(alembic_cfg, "head")
+        command.downgrade(alembic_cfg, "c3d4e5f6a7b8")
+        command.upgrade(alembic_cfg, "head")
+    finally:
+        if prev_env is None:
+            os.environ.pop("ALEMBIC_DATABASE_URL", None)
+        else:
+            os.environ["ALEMBIC_DATABASE_URL"] = prev_env
+        asyncio.run(_drop_throwaway_database(safe_url))
+
+
 def test_migration_upgrade_and_downgrade() -> None:
-    alembic_cfg = Config("alembic.ini")
-    # Downgrade to prior revision
-    command.downgrade(alembic_cfg, "c3d4e5f6a7b8")
-    # Upgrade back to head
-    command.upgrade(alembic_cfg, "head")
+    target_url = _build_migration_test_url()
+    _run_migration_cycle_on_throwaway_db(target_url)
+
+
+def test_migration_guard_never_touches_real_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 1. Guard refuses to run when target equals DATABASE_URL (neither DB creation nor alembic runs)
+    with pytest.raises(RuntimeError, match="target database must not equal DATABASE_URL"):
+        _run_migration_cycle_on_throwaway_db(settings.DATABASE_URL)
+
+    # 2. Prove that running the migration cycle on the throwaway DB never connects to DATABASE_URL
+    real_identity = _db_identity(settings.DATABASE_URL)
+    target_url = _build_migration_test_url()
+    target_identity = _db_identity(target_url)
+    assert target_identity != real_identity
+
+    import sqlalchemy.ext.asyncio as sa_asyncio
+
+    real_async_engine_from_config = sa_asyncio.async_engine_from_config
+    observed_identities: list[tuple[str, int, str]] = []
+
+    def _spy_async_engine_from_config(
+        configuration: dict[str, Any],
+        prefix: str = "sqlalchemy.",
+        **kwargs: Any,
+    ) -> Any:
+        url = str(configuration.get(f"{prefix}url", ""))
+        identity = _db_identity(url)
+        observed_identities.append(identity)
+        assert identity != real_identity, "Alembic attempted to connect to the real DATABASE_URL!"
+        return real_async_engine_from_config(configuration, prefix=prefix, **kwargs)
+
+    monkeypatch.setattr(
+        sa_asyncio,
+        "async_engine_from_config",
+        _spy_async_engine_from_config,
+    )
+
+    _run_migration_cycle_on_throwaway_db(target_url)
+
+    assert len(observed_identities) == 3
+    assert all(identity == target_identity for identity in observed_identities)
+    assert real_identity not in observed_identities
 
 
 # ---------------------------------------------------------------------------

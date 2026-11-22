@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -35,7 +36,27 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+
+def resolve_alembic_database_url() -> str:
+    """Resolve the database URL for Alembic migrations, honoring overrides before settings.DATABASE_URL."""
+    x_args = context.get_x_argument(as_dictionary=True)
+    x_url = (x_args.get("db_url") or x_args.get("sqlalchemy.url") or "").strip()
+    if x_url:
+        return x_url
+
+    env_url = os.environ.get("ALEMBIC_DATABASE_URL", "").strip()
+    if env_url:
+        return env_url
+
+    cfg_url = (config.get_main_option("sqlalchemy.url") or "").strip()
+    if cfg_url and cfg_url != "driver://user:pass@localhost/dbname":
+        return cfg_url
+
+    return settings.DATABASE_URL
+
+
+config.set_main_option("sqlalchemy.url", resolve_alembic_database_url())
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
