@@ -56,12 +56,19 @@ async def search(
     await check_search_rate_limits(user_id=user_id, workspace_id=workspace_id, redis=redis)
 
     # 2. Resolve active source IDs server-side (never taken from the client)
-    active_sources, active_repos = await resolve_active_sources(
+    active = await resolve_active_sources(
         db,
         workspace_id=workspace_id,
         client_id=request.client_id,
     )
-    all_active_ids = sorted([str(s) for s in active_sources] + [str(r) for r in active_repos])
+    active_sources = active[0]
+    active_repos = active[1]
+    active_projects = getattr(active, "project_ids", [])
+    all_active_ids = sorted(
+        [str(s) for s in active_sources]
+        + [str(r) for r in active_repos]
+        + [str(p) for p in active_projects]
+    )
 
     # 3. Check workspace result cache
     data_version = await get_workspace_data_version(workspace_id, redis=redis)
@@ -112,6 +119,7 @@ async def search(
         client_id=request.client_id,
         source_ids=active_sources,
         repository_ids=active_repos,
+        project_ids=active_projects,
         date_from=request.date_from,
         date_to=request.date_to,
         limit=request.limit,
@@ -122,12 +130,15 @@ async def search(
         if ch.card_id is not None:
             parent_type = "card"
             parent_id = ch.card_id
+        elif ch.issue_id is not None:
+            parent_type = "issue"
+            parent_id = ch.issue_id
         elif ch.repository_id is not None:
             parent_type = "repository"
             parent_id = ch.repository_id
         else:
             parent_type = ch.source_type
-            parent_id = ch.source_id or ch.chunk_id
+            parent_id = ch.source_id or ch.project_id or ch.chunk_id
 
         v_rank = ch.scores.get("vector_rank")
         k_rank = ch.scores.get("keyword_rank")

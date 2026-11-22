@@ -291,6 +291,7 @@ async def _sync_jira_project(project_id: UUID) -> None:
         try:
             await sync_jira_project_data(db, project)
             await db.commit()
+            dispatch_task(index_jira_project_task, str(project_id))
         except Exception as exc:
             message = str(exc) if isinstance(exc, JiraAPIError) else "Synchronization failed."
             await db.rollback()
@@ -603,3 +604,60 @@ async def _index_repository(
 def index_repository_task(repo_id: str, force: bool = False) -> bool:
     """Index a GitHub repository's commits into daily commit_group chunks on the ai queue."""
     return asyncio.run(_index_repository(UUID(str(repo_id)), force=force))
+
+
+async def _index_jira_project(
+    project_id: UUID,
+    *,
+    force: bool = False,
+    redis: Any = None,
+) -> bool:
+    from uuid import uuid4
+
+    from app.modules.context.indexer import IndexingService
+
+    lock_key = f"lock:index:jira_project:{project_id}"
+    token = uuid4().hex
+    acquired = await _acquire_index_lock(lock_key, token, redis=redis)
+    if not acquired:
+        logger.info("index_jira_project_skipped_locked", project_id=str(project_id))
+        return False
+
+    has_more = False
+
+    async def _heartbeat() -> None:
+        await _extend_index_lock(lock_key, token, redis=redis)
+
+    try:
+        async with worker_session_maker() as db:
+            try:
+                service = IndexingService(
+                    db,
+                    redis=redis,
+                    on_batch_complete=_heartbeat,
+                )
+            except TypeError:
+                service = IndexingService(db, redis=redis)
+            run_result = await service.index_jira_project(project_id, force=force)
+            has_more = bool(getattr(run_result, "has_more", False))
+        return True
+    finally:
+        await _release_index_lock(lock_key, token, redis=redis)
+        if has_more:
+            logger.info(
+                "index_jira_project_reenqueued_remaining_work",
+                project_id=str(project_id),
+            )
+            dispatch_task(index_jira_project_task, str(project_id))
+
+
+@celery_app.task(
+    name="app.workers.tasks.index_jira_project_task",
+    queue="ai",
+    autoretry_for=(OSError,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def index_jira_project_task(project_id: str, force: bool = False) -> bool:
+    """Index a Jira project's issues, comments, and status transitions into chunks on the ai queue."""
+    return asyncio.run(_index_jira_project(UUID(str(project_id)), force=force))

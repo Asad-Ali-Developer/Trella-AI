@@ -16,7 +16,28 @@ DEFAULT_TARGET_TOKENS: int = 400
 DEFAULT_OVERLAP_TOKENS: int = 50
 DEFAULT_COMMENTS_PER_GROUP: int = 10
 
-ChunkKind = Literal["card_body", "comment_group", "commit_group"]
+ChunkKind = Literal[
+    "card_body",
+    "comment_group",
+    "commit_group",
+    "issue_body",
+    "issue_comment_group",
+    "issue_transition_group",
+]
+
+CHUNKER_VERSION_BY_KIND: dict[str, int] = {
+    "card_body": 1,
+    "comment_group": 1,
+    "commit_group": 1,
+    "issue_body": 2,
+    "issue_comment_group": 2,
+    "issue_transition_group": 2,
+}
+
+
+def chunker_version_for_kind(kind: str) -> int:
+    """Return the active chunker version for `kind` without invalidating older kinds."""
+    return CHUNKER_VERSION_BY_KIND.get(kind, CHUNKER_VERSION)
 
 
 class TokenCounter(Protocol):
@@ -97,6 +118,48 @@ class CommitInput:
     message: str
 
 
+@dataclass(frozen=True)
+class IssueBodyInput:
+    """Input data for chunking a Jira issue body."""
+
+    client_name: str | None
+    project_name: str
+    issue_key: str
+    summary: str
+    description: str = ""
+    status: str = ""
+    issue_type: str = ""
+    priority: str | None = None
+    assignee: str | None = None
+    reporter: str | None = None
+    labels: Sequence[str] = ()
+    occurred_at: datetime | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class IssueCommentInput:
+    """Input data for a single Jira issue comment."""
+
+    comment_id: str
+    author_name: str
+    created_at: datetime
+    body: str
+
+
+@dataclass(frozen=True)
+class IssueTransitionInput:
+    """Input data for a single Jira changelog field transition."""
+
+    history_id: str
+    item_index: int
+    field: str
+    from_value: str | None
+    to_value: str | None
+    author_name: str
+    created_at: datetime
+
+
 def _card_header(
     client_name: str | None,
     board_name: str,
@@ -118,6 +181,19 @@ def _commit_header(
     client_label = (client_name or "").strip() or "Unassigned"
     repo_label = repo_name.strip() or "Unknown Repo"
     return f"Client: {client_label} | Repo: {repo_label} | Date: {date_str}"
+
+
+def _issue_header(
+    client_name: str | None,
+    project_name: str,
+    issue_key: str,
+    summary: str,
+) -> str:
+    client_label = (client_name or "").strip() or "Unassigned"
+    project_label = project_name.strip() or "Untitled Project"
+    key_label = issue_key.strip() or "UNKNOWN"
+    summary_label = summary.strip() or "Untitled Issue"
+    return f"Client: {client_label} | Project: {project_label} | Issue {key_label}: {summary_label}"
 
 
 def _format_checklists(checklists: Sequence[dict[str, Any]]) -> list[str]:
@@ -495,3 +571,238 @@ def chunk_commits(
         _flush_current()
 
     return output
+
+
+def chunk_issue_body(
+    issue: IssueBodyInput,
+    *,
+    counter: TokenCounter = default_token_counter,
+    target_tokens: int = DEFAULT_TARGET_TOKENS,
+    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+    chunker_version: int | None = None,
+) -> list[Chunk]:
+    """Build issue_body chunks starting with 'Client: X | Project: Y | Issue KEY: summary'.
+
+    Includes description, status, issue type, priority, assignee, and labels.
+    Never truncates long text; splits with overlap when > target_tokens (~400).
+    """
+    ver = chunker_version if chunker_version is not None else chunker_version_for_kind("issue_body")
+    header = _issue_header(
+        issue.client_name,
+        issue.project_name,
+        issue.issue_key,
+        issue.summary,
+    )
+    sections: list[str] = [f"Issue: {issue.issue_key.strip()} - {issue.summary.strip()}"]
+    if issue.status.strip():
+        sections.append(f"Status: {issue.status.strip()}")
+    if issue.issue_type.strip():
+        sections.append(f"Type: {issue.issue_type.strip()}")
+    if issue.priority and issue.priority.strip():
+        sections.append(f"Priority: {issue.priority.strip()}")
+    if issue.assignee and issue.assignee.strip():
+        sections.append(f"Assignee: {issue.assignee.strip()}")
+    if issue.reporter and issue.reporter.strip():
+        sections.append(f"Reporter: {issue.reporter.strip()}")
+    if issue.labels:
+        clean_labels = [lbl.strip() for lbl in issue.labels if lbl and lbl.strip()]
+        if clean_labels:
+            sections.append("Labels: " + ", ".join(clean_labels))
+    if issue.description:
+        sections.append(f"Description: {issue.description}")
+
+    body = "\n".join(sections)
+    chunk_texts = _split_body_with_overlap(
+        body,
+        header=header,
+        counter=counter,
+        target_tokens=target_tokens,
+        overlap_tokens=overlap_tokens,
+    )
+
+    total_parts = len(chunk_texts)
+    result: list[Chunk] = []
+    for ordinal, text in enumerate(chunk_texts):
+        meta = dict(issue.metadata)
+        meta["part_count"] = total_parts
+        result.append(
+            Chunk(
+                kind="issue_body",
+                ordinal=ordinal,
+                text=text,
+                token_estimate=counter(text),
+                occurred_at=issue.occurred_at,
+                metadata=meta,
+                content_hash=compute_content_hash(text, chunker_version=ver),
+                group_key=None,
+            )
+        )
+    return result
+
+
+def chunk_issue_comments(
+    comments: Sequence[IssueCommentInput],
+    *,
+    client_name: str | None,
+    project_name: str,
+    issue_key: str,
+    issue_summary: str,
+    comments_per_group: int = DEFAULT_COMMENTS_PER_GROUP,
+    counter: TokenCounter = default_token_counter,
+    target_tokens: int = DEFAULT_TARGET_TOKENS,
+    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+    chunker_version: int | None = None,
+) -> list[Chunk]:
+    """Group Jira issue comments deterministically into ~400-token chunks with author + timestamp per comment."""
+    if not comments:
+        return []
+
+    ver = (
+        chunker_version
+        if chunker_version is not None
+        else chunker_version_for_kind("issue_comment_group")
+    )
+
+    def _utc_dt(dt: datetime) -> datetime:
+        return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+    bucket_size = max(1, comments_per_group)
+    header = _issue_header(client_name, project_name, issue_key, issue_summary)
+    sorted_comments = sorted(
+        comments,
+        key=lambda c: (_utc_dt(c.created_at), str(c.comment_id)),
+    )
+
+    chunks: list[Chunk] = []
+    for group_idx, start_idx in enumerate(range(0, len(sorted_comments), bucket_size)):
+        group = sorted_comments[start_idx : start_idx + bucket_size]
+        comment_ids = [str(c.comment_id) for c in group]
+        latest_at = max(_utc_dt(c.created_at) for c in group)
+        lines = [
+            f"[{_utc_dt(c.created_at).isoformat()}] {c.author_name.strip() or 'Unknown'}: {c.body}"
+            for c in group
+        ]
+        group_body = "\n".join(lines)
+        full_group_text = f"{header}\n{group_body}"
+
+        if counter(full_group_text) <= target_tokens:
+            chunks.append(
+                Chunk(
+                    kind="issue_comment_group",
+                    ordinal=group_idx * 100,
+                    text=full_group_text,
+                    token_estimate=counter(full_group_text),
+                    occurred_at=latest_at,
+                    metadata={
+                        "group_index": group_idx,
+                        "comment_ids": comment_ids,
+                    },
+                    content_hash=compute_content_hash(full_group_text, chunker_version=ver),
+                    group_key=None,
+                )
+            )
+        else:
+            sub_chunks = _split_body_with_overlap(
+                group_body,
+                header=header,
+                counter=counter,
+                target_tokens=target_tokens,
+                overlap_tokens=overlap_tokens,
+            )
+            if len(sub_chunks) >= 100:
+                raise ValueError(
+                    f"Issue comment group {group_idx} requires {len(sub_chunks)} sub-chunks; "
+                    "maximum supported is 99 sub-chunks per group."
+                )
+            for sub_idx, sub_text in enumerate(sub_chunks):
+                chunks.append(
+                    Chunk(
+                        kind="issue_comment_group",
+                        ordinal=group_idx * 100 + sub_idx,
+                        text=sub_text,
+                        token_estimate=counter(sub_text),
+                        occurred_at=latest_at,
+                        metadata={
+                            "group_index": group_idx,
+                            "sub_index": sub_idx,
+                            "comment_ids": comment_ids,
+                        },
+                        content_hash=compute_content_hash(sub_text, chunker_version=ver),
+                        group_key=None,
+                    )
+                )
+
+    return chunks
+
+
+def chunk_issue_transitions(
+    transitions: Sequence[IssueTransitionInput],
+    *,
+    client_name: str | None,
+    project_name: str,
+    issue_key: str,
+    issue_summary: str,
+    counter: TokenCounter = default_token_counter,
+    target_tokens: int = DEFAULT_TARGET_TOKENS,
+    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+    chunker_version: int | None = None,
+) -> list[Chunk]:
+    """Build issue_transition_group chunks from status transitions in the issue changelog with author and date."""
+    status_transitions = [
+        t for t in transitions if t.field.strip().lower() == "status"
+    ]
+    if not status_transitions:
+        return []
+
+    ver = (
+        chunker_version
+        if chunker_version is not None
+        else chunker_version_for_kind("issue_transition_group")
+    )
+
+    def _utc_dt(dt: datetime) -> datetime:
+        return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+    header = _issue_header(client_name, project_name, issue_key, issue_summary)
+    sorted_transitions = sorted(
+        status_transitions,
+        key=lambda t: (_utc_dt(t.created_at), str(t.history_id), int(t.item_index)),
+    )
+
+    latest_at = max(_utc_dt(t.created_at) for t in sorted_transitions)
+    history_ids = [f"{t.history_id}:{t.item_index}" for t in sorted_transitions]
+    lines: list[str] = []
+    for t in sorted_transitions:
+        dt_iso = _utc_dt(t.created_at).isoformat()
+        author = t.author_name.strip() or "Unknown"
+        from_val = (t.from_value or "None").strip()
+        to_val = (t.to_value or "None").strip()
+        lines.append(f"[{dt_iso}] {author}: Status changed from '{from_val}' to '{to_val}'")
+
+    body = "\n".join(lines)
+    chunk_texts = _split_body_with_overlap(
+        body,
+        header=header,
+        counter=counter,
+        target_tokens=target_tokens,
+        overlap_tokens=overlap_tokens,
+    )
+
+    chunks: list[Chunk] = []
+    for ordinal, text in enumerate(chunk_texts):
+        chunks.append(
+            Chunk(
+                kind="issue_transition_group",
+                ordinal=ordinal,
+                text=text,
+                token_estimate=counter(text),
+                occurred_at=latest_at,
+                metadata={
+                    "issue_key": issue_key,
+                    "transition_refs": history_ids,
+                },
+                content_hash=compute_content_hash(text, chunker_version=ver),
+                group_key=None,
+            )
+        )
+    return chunks

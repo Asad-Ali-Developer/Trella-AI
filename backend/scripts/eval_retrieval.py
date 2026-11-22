@@ -19,8 +19,9 @@ from sqlalchemy import Select, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.context.models import EMBEDDING_DIMENSIONS, ContextChunkRecord
-from app.modules.context.retriever import HybridRetriever
+from app.modules.context.retriever import HybridRetriever, resolve_active_sources
 from app.modules.github.models import GithubRepository
+from app.modules.jira.models import JiraProject
 from app.modules.trello.models import TrelloSource
 from scripts.bench_db import (
     assert_bench_database_isolated,
@@ -47,6 +48,8 @@ class RetrievedChunk:
     ordinal: int
     score: float
     text: str
+    project_id: UUID | None = None
+    issue_id: UUID | None = None
 
 
 @runtime_checkable
@@ -91,12 +94,19 @@ def _apply_common_chunk_filters[*Ts](
             (GithubRepository.id == ContextChunkRecord.repository_id)
             & (GithubRepository.workspace_id == workspace_id),
         )
+        .outerjoin(
+            JiraProject,
+            (JiraProject.id == ContextChunkRecord.project_id)
+            & (JiraProject.workspace_id == workspace_id),
+        )
         .where(
             ContextChunkRecord.workspace_id == workspace_id,
             or_(
                 (ContextChunkRecord.source_id.is_not(None)) & (TrelloSource.excluded.is_(False)),
                 (ContextChunkRecord.repository_id.is_not(None))
                 & (GithubRepository.included.is_(True)),
+                (ContextChunkRecord.project_id.is_not(None))
+                & (JiraProject.included.is_(True)),
             ),
         )
     )
@@ -162,6 +172,8 @@ class VectorOnlyRetriever:
             ContextChunkRecord.card_id,
             ContextChunkRecord.repository_id,
             ContextChunkRecord.source_id,
+            ContextChunkRecord.project_id,
+            ContextChunkRecord.issue_id,
             ContextChunkRecord.client_id,
             ContextChunkRecord.chunk_kind,
             ContextChunkRecord.ordinal,
@@ -206,6 +218,8 @@ class VectorOnlyRetriever:
                 card_id=row.card_id,
                 repository_id=row.repository_id,
                 source_id=row.source_id,
+                project_id=row.project_id,
+                issue_id=row.issue_id,
                 client_id=row.client_id,
                 chunk_kind=row.chunk_kind,
                 ordinal=row.ordinal,
@@ -243,6 +257,8 @@ class KeywordOnlyRetriever:
             ContextChunkRecord.card_id,
             ContextChunkRecord.repository_id,
             ContextChunkRecord.source_id,
+            ContextChunkRecord.project_id,
+            ContextChunkRecord.issue_id,
             ContextChunkRecord.client_id,
             ContextChunkRecord.chunk_kind,
             ContextChunkRecord.ordinal,
@@ -277,6 +293,8 @@ class KeywordOnlyRetriever:
                 card_id=row.card_id,
                 repository_id=row.repository_id,
                 source_id=row.source_id,
+                project_id=row.project_id,
+                issue_id=row.issue_id,
                 client_id=row.client_id,
                 chunk_kind=row.chunk_kind,
                 ordinal=row.ordinal,
@@ -288,13 +306,14 @@ class KeywordOnlyRetriever:
 
 
 def deduplicate_ranked_card_ids(chunks: Sequence[Any]) -> list[str]:
-    """Extract unique card_ids from retrieved chunks while preserving rank order."""
+    """Extract unique parent entity IDs (card_id or issue_id) from retrieved chunks while preserving rank order."""
     seen: set[str] = set()
     ranked: list[str] = []
     for ch in chunks:
-        if ch.card_id is None:
+        parent_id = ch.card_id if ch.card_id is not None else getattr(ch, "issue_id", None)
+        if parent_id is None:
             continue
-        cid = str(ch.card_id)
+        cid = str(parent_id)
         if cid not in seen:
             seen.add(cid)
             ranked.append(cid)
@@ -414,23 +433,47 @@ async def evaluate_retriever(
     per_query: list[dict[str, Any]] = []
     by_group: dict[str, list[dict[str, Any]]] = {}
 
+    active_cache: dict[tuple[UUID, UUID | None], Any] = {}
+
     for entry in golden_entries:
         ws_id = UUID(entry.workspace_id)
         client_id = UUID(entry.client_id) if entry.client_id else None
         date_from = datetime.fromisoformat(entry.date_from) if entry.date_from else None
         date_to = datetime.fromisoformat(entry.date_to) if entry.date_to else None
 
-        t0 = time.perf_counter()
-        chunks = await retriever.search(
-            workspace_id=ws_id,
-            query=entry.query,
-            client_id=client_id,
-            source_ids=None,
-            repository_ids=None,
-            date_from=date_from,
-            date_to=date_to,
-            limit=limit,
-        )
+        if isinstance(retriever, HybridRetriever):
+            cache_key = (ws_id, client_id)
+            if cache_key not in active_cache:
+                active_cache[cache_key] = await resolve_active_sources(
+                    retriever.session,
+                    ws_id,
+                    client_id=client_id,
+                )
+            active = active_cache[cache_key]
+            t0 = time.perf_counter()
+            chunks = await retriever.search(
+                workspace_id=ws_id,
+                query=entry.query,
+                client_id=client_id,
+                source_ids=active.source_ids,
+                repository_ids=active.repository_ids,
+                project_ids=active.project_ids,
+                date_from=date_from,
+                date_to=date_to,
+                limit=limit,
+            )
+        else:
+            t0 = time.perf_counter()
+            chunks = await retriever.search(
+                workspace_id=ws_id,
+                query=entry.query,
+                client_id=client_id,
+                source_ids=None,
+                repository_ids=None,
+                date_from=date_from,
+                date_to=date_to,
+                limit=limit,
+            )
         wall_ms = (time.perf_counter() - t0) * 1000.0
         db_ms = float(getattr(retriever, "last_db_latency_ms", wall_ms) or wall_ms)
         db_exec_ms = float(getattr(retriever, "last_db_exec_ms", db_ms) or db_ms)

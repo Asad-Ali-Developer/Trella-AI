@@ -35,6 +35,7 @@ TASK_ROUTES: dict[str, dict[str, str]] = {
     "app.workers.tasks.execute_scheduled_run_task": {"queue": "ai"},
     "app.workers.tasks.index_source_task": {"queue": "ai"},
     "app.workers.tasks.index_repository_task": {"queue": "ai"},
+    "app.workers.tasks.index_jira_project_task": {"queue": "ai"},
 }
 
 celery_app = Celery(

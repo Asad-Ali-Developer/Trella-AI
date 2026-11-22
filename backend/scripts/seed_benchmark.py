@@ -21,18 +21,25 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.modules.auth.models import User
 from app.modules.connections.models import ProviderAccount, WorkspaceConnection
 from app.modules.context.chunker import (
-    CHUNKER_VERSION,
     CardBodyInput,
     Chunk,
     CommentInput,
     CommitInput,
+    IssueBodyInput,
+    IssueCommentInput,
+    IssueTransitionInput,
     chunk_card_body,
     chunk_comments,
     chunk_commits,
+    chunk_issue_body,
+    chunk_issue_comments,
+    chunk_issue_transitions,
+    chunker_version_for_kind,
     compute_content_hash,
 )
 from app.modules.context.models import EMBEDDING_DIMENSIONS, ContextChunkRecord
 from app.modules.github.models import GithubCommit, GithubRepository
+from app.modules.jira.models import JiraChangelogItem, JiraComment, JiraIssue, JiraProject
 from app.modules.trello.models import (
     TrelloCard,
     TrelloClientRecord,
@@ -417,6 +424,7 @@ def build_synthetic_dataset(
     num_workspaces: int = 3,
     clients_per_workspace: int = 10,
     seed: int = 42,
+    jira_issues_per_workspace: int = 0,
 ) -> dict[str, list[dict[str, Any]]]:
     """Generate deterministic rows for users, workspaces, clients, sources, cards, comments, repos, commits, and chunks.
 
@@ -934,6 +942,261 @@ def build_synthetic_dataset(
 
             card_idx += 1
 
+    jira_projects_rows: list[dict[str, Any]] = []
+    jira_issues_rows: list[dict[str, Any]] = []
+    jira_comments_rows: list[dict[str, Any]] = []
+    jira_changelog_rows: list[dict[str, Any]] = []
+
+    if jira_issues_per_workspace > 0:
+        jira_rng = random.Random(f"bench-jira-slice:{seed}")
+        for ws_idx, ws_row in enumerate(workspaces_rows):
+            ws_id = ws_row["id"]
+            user_id = ws_row["owner_id"]
+            now_ts = base_time + timedelta(hours=ws_idx)
+            ws_client_rows = [c for c in clients_rows if c["workspace_id"] == ws_id]
+
+            jira_acct_id = _deterministic_uuid(jira_rng)
+            jira_conn_id = _deterministic_uuid(jira_rng)
+            provider_accounts_rows.append(
+                {
+                    "id": jira_acct_id,
+                    "user_id": user_id,
+                    "provider": "jira",
+                    "encrypted_token": "bench-encrypted-jira-token",
+                    "status": "active",
+                    "external_account_id": f"bench-jira-acct-{ws_idx + 1}",
+                    "external_username": f"bench_jira_{ws_idx + 1}@bench.local",
+                    "created_at": now_ts,
+                    "updated_at": now_ts,
+                }
+            )
+            connections_rows.append(
+                {
+                    "id": jira_conn_id,
+                    "workspace_id": ws_id,
+                    "user_id": user_id,
+                    "provider": "jira",
+                    "status": "active",
+                    "provider_account_id": jira_acct_id,
+                    "created_at": now_ts,
+                    "updated_at": now_ts,
+                }
+            )
+
+            proj_id = _deterministic_uuid(jira_rng)
+            proj_client_id = ws_client_rows[0]["id"]
+            proj_client_name = ws_client_rows[0]["name"]
+            proj_key = f"JIRA{ws_idx + 1:02d}"
+            proj_name = f"BENCH Jira Project {ws_idx + 1:02d}"
+            cloud_id = f"bench-{ws_idx + 1}.atlassian.net"
+
+            jira_projects_rows.append(
+                {
+                    "id": proj_id,
+                    "workspace_id": ws_id,
+                    "connection_id": jira_conn_id,
+                    "cloud_id": cloud_id,
+                    "jira_project_id": f"bench-jproj-{seed}-{ws_idx + 1}",
+                    "key": proj_key,
+                    "name": proj_name,
+                    "project_type_key": "software",
+                    "avatar_url": None,
+                    "included": True,
+                    "client_id": proj_client_id,
+                    "sync_status": "completed",
+                    "last_synced_at": now_ts,
+                    "sync_error": None,
+                    "created_at": now_ts,
+                    "updated_at": now_ts,
+                }
+            )
+
+            for iss_idx in range(jira_issues_per_workspace):
+                issue_id = _deterministic_uuid(jira_rng)
+                topic = TOPICS[iss_idx % len(TOPICS)]
+                sentences = TOPIC_SENTENCES[topic]
+                keywords = TOPIC_KEYWORDS[topic]
+                issue_key = f"{proj_key}-{100 + iss_idx + 1}"
+                occurred_at = base_time + timedelta(days=(iss_idx * 4) % 90, hours=iss_idx % 12)
+
+                summary = f"[{issue_key}] {topic.replace('_', ' ').title()}: {sentences[0][:60]}"
+                description = f"{sentences[0]} {sentences[1]} Key focus: {', '.join(keywords[:3])}."
+                issue_url = f"https://{cloud_id}/browse/{issue_key}"
+
+                jira_issues_rows.append(
+                    {
+                        "id": issue_id,
+                        "workspace_id": ws_id,
+                        "project_id": proj_id,
+                        "client_id": proj_client_id,
+                        "cloud_id": cloud_id,
+                        "jira_issue_id": f"bench-jissue-{seed}-{ws_idx + 1}-{iss_idx + 1}",
+                        "key": issue_key,
+                        "summary": summary,
+                        "description": description,
+                        "status": "In Progress",
+                        "issue_type": "Story",
+                        "priority": "High",
+                        "assignee": "Alice Morgan",
+                        "reporter": "Bob Chen",
+                        "labels": [topic],
+                        "created_at_jira": occurred_at - timedelta(days=1),
+                        "updated_at_jira": occurred_at,
+                        "content_hash": compute_content_hash(f"{issue_key}:{summary}:{description}"),
+                        "url": issue_url,
+                        "created_at": now_ts,
+                        "updated_at": now_ts,
+                    }
+                )
+
+                body_chunks = chunk_issue_body(
+                    IssueBodyInput(
+                        client_name=proj_client_name,
+                        project_name=proj_name,
+                        issue_key=issue_key,
+                        summary=summary,
+                        description=description,
+                        status="In Progress",
+                        issue_type="Story",
+                        priority="High",
+                        assignee="Alice Morgan",
+                        reporter="Bob Chen",
+                        labels=(topic,),
+                        occurred_at=occurred_at,
+                        metadata={
+                            "issue_id": str(issue_id),
+                            "issue_key": issue_key,
+                            "topic": topic,
+                            "url": issue_url,
+                        },
+                    )
+                )
+                for ch in body_chunks:
+                    chunks_rows.append(
+                        _chunk_to_row(
+                            rng=jira_rng,
+                            embedder=embedder,
+                            workspace_id=ws_id,
+                            client_id=proj_client_id,
+                            source_id=None,
+                            repository_id=None,
+                            project_id=proj_id,
+                            issue_id=issue_id,
+                            source_type="jira",
+                            card_id=None,
+                            chunk=ch,
+                            created_at=now_ts,
+                            topic_override=topic,
+                        )
+                    )
+
+                cm_id = _deterministic_uuid(jira_rng)
+                cm_dt = occurred_at + timedelta(minutes=20)
+                cm_body = f"Follow-up on {issue_key}: {sentences[2]}"
+                jira_comments_rows.append(
+                    {
+                        "id": cm_id,
+                        "workspace_id": ws_id,
+                        "issue_id": issue_id,
+                        "cloud_id": cloud_id,
+                        "jira_comment_id": f"bench-jcm-{seed}-{ws_idx + 1}-{iss_idx + 1}",
+                        "author": "Alice Morgan",
+                        "body": cm_body,
+                        "created_at_jira": cm_dt,
+                        "updated_at_jira": cm_dt,
+                        "content_hash": compute_content_hash(cm_body),
+                        "created_at": now_ts,
+                        "updated_at": now_ts,
+                    }
+                )
+                cm_chunks = chunk_issue_comments(
+                    [
+                        IssueCommentInput(
+                            comment_id=str(cm_id),
+                            author_name="Alice Morgan",
+                            created_at=cm_dt,
+                            body=cm_body,
+                        )
+                    ],
+                    client_name=proj_client_name,
+                    project_name=proj_name,
+                    issue_key=issue_key,
+                    issue_summary=summary,
+                )
+                for ch in cm_chunks:
+                    chunks_rows.append(
+                        _chunk_to_row(
+                            rng=jira_rng,
+                            embedder=embedder,
+                            workspace_id=ws_id,
+                            client_id=proj_client_id,
+                            source_id=None,
+                            repository_id=None,
+                            project_id=proj_id,
+                            issue_id=issue_id,
+                            source_type="jira",
+                            card_id=None,
+                            chunk=ch,
+                            created_at=now_ts,
+                            topic_override=topic,
+                        )
+                    )
+
+                cl_id = _deterministic_uuid(jira_rng)
+                cl_dt = occurred_at + timedelta(minutes=10)
+                hist_id = f"bench-jhist-{seed}-{ws_idx + 1}-{iss_idx + 1}"
+                jira_changelog_rows.append(
+                    {
+                        "id": cl_id,
+                        "workspace_id": ws_id,
+                        "issue_id": issue_id,
+                        "jira_history_id": hist_id,
+                        "item_index": 0,
+                        "field": "status",
+                        "from_value": "To Do",
+                        "to_value": "In Progress",
+                        "author": "Alice Morgan",
+                        "created_at_jira": cl_dt,
+                        "created_at": now_ts,
+                        "updated_at": now_ts,
+                    }
+                )
+                tr_chunks = chunk_issue_transitions(
+                    [
+                        IssueTransitionInput(
+                            history_id=hist_id,
+                            item_index=0,
+                            field="status",
+                            from_value="To Do",
+                            to_value="In Progress",
+                            author_name="Alice Morgan",
+                            created_at=cl_dt,
+                        )
+                    ],
+                    client_name=proj_client_name,
+                    project_name=proj_name,
+                    issue_key=issue_key,
+                    issue_summary=summary,
+                )
+                for ch in tr_chunks:
+                    chunks_rows.append(
+                        _chunk_to_row(
+                            rng=jira_rng,
+                            embedder=embedder,
+                            workspace_id=ws_id,
+                            client_id=proj_client_id,
+                            source_id=None,
+                            repository_id=None,
+                            project_id=proj_id,
+                            issue_id=issue_id,
+                            source_type="jira",
+                            card_id=None,
+                            chunk=ch,
+                            created_at=now_ts,
+                            topic_override=topic,
+                        )
+                    )
+
     return {
         "users": users_rows,
         "workspaces": workspaces_rows,
@@ -943,10 +1206,14 @@ def build_synthetic_dataset(
         "clients": clients_rows,
         "sources": sources_rows,
         "github_repositories": repos_rows,
+        "jira_projects": jira_projects_rows,
         "members": members_rows,
         "cards": cards_rows,
         "comments": comments_rows,
         "github_commits": commits_rows,
+        "jira_issues": jira_issues_rows,
+        "jira_comments": jira_comments_rows,
+        "jira_changelog_items": jira_changelog_rows,
         "chunks": chunks_rows,
     }
 
@@ -964,6 +1231,8 @@ def _chunk_to_row(
     chunk: Chunk,
     created_at: datetime,
     topic_override: str | None = None,
+    project_id: uuid.UUID | None = None,
+    issue_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     vector = embedder.embed(chunk.text, topic_override=topic_override)
     return {
@@ -972,8 +1241,10 @@ def _chunk_to_row(
         "client_id": client_id,
         "source_id": source_id,
         "repository_id": repository_id,
+        "project_id": project_id,
         "source_type": source_type,
         "card_id": card_id,
+        "issue_id": issue_id,
         "group_key": chunk.group_key,
         "chunk_kind": chunk.kind,
         "ordinal": chunk.ordinal,
@@ -981,7 +1252,7 @@ def _chunk_to_row(
         "token_estimate": chunk.token_estimate,
         "embedding": vector,
         "embedding_model": FAKE_EMBEDDING_MODEL,
-        "chunker_version": CHUNKER_VERSION,
+        "chunker_version": chunker_version_for_kind(chunk.kind),
         "content_hash": chunk.content_hash,
         "occurred_at": chunk.occurred_at,
         "chunk_metadata": chunk.metadata,
@@ -1006,10 +1277,14 @@ async def insert_synthetic_dataset(
         (TrelloClientRecord, "clients"),
         (TrelloSource, "sources"),
         (GithubRepository, "github_repositories"),
+        (JiraProject, "jira_projects"),
         (TrelloMember, "members"),
         (TrelloCard, "cards"),
         (TrelloComment, "comments"),
         (GithubCommit, "github_commits"),
+        (JiraIssue, "jira_issues"),
+        (JiraComment, "jira_comments"),
+        (JiraChangelogItem, "jira_changelog_items"),
         (ContextChunkRecord, "chunks"),
     ]
 
@@ -1028,6 +1303,7 @@ async def run_seed_benchmark(
     num_workspaces: int = 3,
     clients_per_workspace: int = 10,
     seed: int = 42,
+    jira_issues_per_workspace: int = 0,
     reset: bool = False,
     bench_url: str | None = None,
     engine: AsyncEngine | None = None,
@@ -1056,6 +1332,7 @@ async def run_seed_benchmark(
                 num_workspaces=num_workspaces,
                 clients_per_workspace=clients_per_workspace,
                 seed=seed,
+                jira_issues_per_workspace=jira_issues_per_workspace,
             )
             await insert_synthetic_dataset(session, dataset)
     finally:
@@ -1078,12 +1355,18 @@ async def run_seed_benchmark(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Seed synthetic workspaces, clients, Trello cards/comments, GitHub commits, and chunks into client_insights_bench."
+        description="Seed synthetic workspaces, clients, Trello cards/comments, GitHub commits, Jira issues, and chunks into client_insights_bench."
     )
-    parser.add_argument("--chunks", type=int, default=20000, help="Total chunks to generate (default: 20000)")
+    parser.add_argument("--chunks", type=int, default=20000, help="Total Trello/GitHub chunks to generate (default: 20000)")
     parser.add_argument("--workspaces", type=int, default=3, help="Number of workspaces (default: 3)")
     parser.add_argument("--clients", type=int, default=10, help="Clients per workspace (default: 10)")
     parser.add_argument("--seed", type=int, default=42, help="Deterministic RNG seed (default: 42)")
+    parser.add_argument(
+        "--jira-issues-per-workspace",
+        type=int,
+        default=20,
+        help="Jira issues per workspace for the Jira eval slice (default: 20, use 0 to omit Jira slice)",
+    )
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -1111,6 +1394,7 @@ def main() -> None:
             num_workspaces=args.workspaces,
             clients_per_workspace=args.clients,
             seed=args.seed,
+            jira_issues_per_workspace=args.jira_issues_per_workspace,
             reset=args.reset,
             bench_url=isolated_url,
             prepare_db=False,
@@ -1118,7 +1402,7 @@ def main() -> None:
         print(
             f"Seeded {summary.chunks} chunks across {summary.workspaces} workspaces "
             f"({summary.clients} clients, {summary.cards} cards, {summary.comments} comments, "
-            f"{summary.commits} commits) in {summary.elapsed_seconds:.2f}s "
+            f"{summary.commits} commits, jira_issues_per_ws={args.jira_issues_per_workspace}) in {summary.elapsed_seconds:.2f}s "
             f"[model={FAKE_EMBEDDING_MODEL}]."
         )
 

@@ -682,12 +682,15 @@ class WorkspaceContextService:
     ) -> ContextSearchResponse:
         if client_id is not None:
             await self._validate_client(client_id)
-        source_ids, repository_ids = await resolve_active_sources(
+        active = await resolve_active_sources(
             self.db,
             self.workspace.id,
             client_id=client_id,
         )
-        if not source_ids and not repository_ids:
+        source_ids = active.source_ids
+        repository_ids = active.repository_ids
+        project_ids = active.project_ids
+        if not source_ids and not repository_ids and not project_ids:
             return ContextSearchResponse(
                 query=query,
                 workspace_id=self.workspace.id,
@@ -701,6 +704,8 @@ class WorkspaceContextService:
             active_chunk_clauses.append(ContextChunkRecord.source_id.in_(source_ids))
         if repository_ids:
             active_chunk_clauses.append(ContextChunkRecord.repository_id.in_(repository_ids))
+        if project_ids:
+            active_chunk_clauses.append(ContextChunkRecord.project_id.in_(project_ids))
 
         has_indexed_chunks = await self.db.scalar(
             select(ContextChunkRecord.id)
@@ -723,6 +728,7 @@ class WorkspaceContextService:
             client_id=client_id,
             source_ids=source_ids,
             repository_ids=repository_ids,
+            project_ids=project_ids,
             date_from=date_from,
             date_to=date_to,
             limit=limit,
@@ -734,9 +740,15 @@ class WorkspaceContextService:
                 sim = max(-1.0, min(1.0, 1.0 - float(ch.vector_distance)))
             else:
                 sim = max(-1.0, min(1.0, float(ch.scores.get("rrf", 0.0))))
-            effective_card_id = ch.card_id or ch.repository_id or ch.chunk_id
-            effective_ext_id = ch.trello_card_id or (
-                str(ch.repository_id) if ch.repository_id is not None else str(ch.chunk_id)
+            effective_card_id = ch.card_id or ch.issue_id or ch.repository_id or ch.chunk_id
+            effective_ext_id = (
+                ch.trello_card_id
+                or ch.jira_issue_key
+                or (
+                    str(ch.repository_id)
+                    if ch.repository_id is not None
+                    else str(ch.chunk_id)
+                )
             )
             effective_description = (
                 ch.card_description if ch.card_description is not None else ch.text
@@ -754,6 +766,8 @@ class WorkspaceContextService:
                     chunk_id=ch.chunk_id,
                     chunk_ids=list(ch.chunk_ids) if ch.chunk_ids else [ch.chunk_id],
                     repository_id=ch.repository_id,
+                    project_id=ch.project_id,
+                    issue_id=ch.issue_id,
                     source_type=ch.source_type,
                     chunk_kind=ch.chunk_kind,
                     text=ch.text,

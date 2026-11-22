@@ -16,14 +16,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.modules.context.chunker import (
-    CHUNKER_VERSION,
     CardBodyInput,
     Chunk,
     CommentInput,
     CommitInput,
+    IssueBodyInput,
+    IssueCommentInput,
+    IssueTransitionInput,
     chunk_card_body,
     chunk_comments,
     chunk_commits,
+    chunk_issue_body,
+    chunk_issue_comments,
+    chunk_issue_transitions,
+    chunker_version_for_kind,
 )
 from app.modules.context.gemini import (
     MAX_EMBED_BATCH_SIZE,
@@ -33,6 +39,7 @@ from app.modules.context.gemini import (
 from app.modules.context.models import ContextChunkRecord, TrelloCardSummary
 from app.modules.context.service import SUMMARY_PROMPT_VERSION
 from app.modules.github.models import GithubCommit, GithubRepository
+from app.modules.jira.models import JiraChangelogItem, JiraComment, JiraIssue, JiraProject
 from app.modules.trello.models import (
     TrelloCard,
     TrelloClientMapping,
@@ -491,6 +498,7 @@ class IndexingService:
         target_model = settings.GEMINI_EMBEDDING_MODEL
 
         for key, ch in desired_by_key.items():
+            kind_ver = chunker_version_for_kind(ch.kind)
             existing_row = existing_by_key.get(key)
             if existing_row is None:
                 self.db.add(
@@ -499,8 +507,10 @@ class IndexingService:
                         client_id=card.client_id,
                         source_id=source.id,
                         repository_id=None,
+                        project_id=None,
                         source_type="trello",
                         card_id=card.id,
+                        issue_id=None,
                         group_key=None,
                         chunk_kind=ch.kind,
                         ordinal=ch.ordinal,
@@ -508,7 +518,7 @@ class IndexingService:
                         token_estimate=ch.token_estimate,
                         embedding=None,
                         embedding_model=None,
-                        chunker_version=CHUNKER_VERSION,
+                        chunker_version=kind_ver,
                         content_hash=ch.content_hash,
                         occurred_at=ch.occurred_at,
                         chunk_metadata=ch.metadata,
@@ -517,11 +527,11 @@ class IndexingService:
                 result.inserted += 1
             elif (
                 existing_row.content_hash != ch.content_hash
-                or existing_row.chunker_version != CHUNKER_VERSION
+                or existing_row.chunker_version != kind_ver
             ):
                 existing_row.text = ch.text
                 existing_row.token_estimate = ch.token_estimate
-                existing_row.chunker_version = CHUNKER_VERSION
+                existing_row.chunker_version = kind_ver
                 existing_row.content_hash = ch.content_hash
                 existing_row.occurred_at = ch.occurred_at
                 existing_row.chunk_metadata = ch.metadata
@@ -794,6 +804,7 @@ class IndexingService:
                 target_model = settings.GEMINI_EMBEDDING_MODEL
 
                 for key, ch in desired_by_key.items():
+                    kind_ver = chunker_version_for_kind(ch.kind)
                     existing_row = existing_by_key.get(key)
                     if existing_row is None:
                         self.db.add(
@@ -802,8 +813,10 @@ class IndexingService:
                                 client_id=repo.client_id,
                                 source_id=None,
                                 repository_id=repo.id,
+                                project_id=None,
                                 source_type="github",
                                 card_id=None,
+                                issue_id=None,
                                 group_key=ch.group_key,
                                 chunk_kind=ch.kind,
                                 ordinal=ch.ordinal,
@@ -811,7 +824,7 @@ class IndexingService:
                                 token_estimate=ch.token_estimate,
                                 embedding=None,
                                 embedding_model=None,
-                                chunker_version=CHUNKER_VERSION,
+                                chunker_version=kind_ver,
                                 content_hash=ch.content_hash,
                                 occurred_at=ch.occurred_at,
                                 chunk_metadata=ch.metadata,
@@ -820,11 +833,11 @@ class IndexingService:
                         result.inserted += 1
                     elif (
                         existing_row.content_hash != ch.content_hash
-                        or existing_row.chunker_version != CHUNKER_VERSION
+                        or existing_row.chunker_version != kind_ver
                     ):
                         existing_row.text = ch.text
                         existing_row.token_estimate = ch.token_estimate
-                        existing_row.chunker_version = CHUNKER_VERSION
+                        existing_row.chunker_version = kind_ver
                         existing_row.content_hash = ch.content_hash
                         existing_row.occurred_at = ch.occurred_at
                         existing_row.chunk_metadata = ch.metadata
@@ -887,12 +900,385 @@ class IndexingService:
 
         return result
 
+    async def index_jira_project(
+        self,
+        project_id: UUID,
+        *,
+        force: bool = False,
+    ) -> IndexingResult:
+        """Index a Jira project: bulk-load issues, comments, changelog, and existing chunk metadata in memory;
+        open a DB transaction only for issues whose desired chunks differ; embed only unembedded chunks.
+        """
+        result = IndexingResult()
+        project = await self.db.scalar(
+            select(JiraProject).where(JiraProject.id == project_id)
+        )
+        if project is None:
+            if self.db.in_transaction():
+                await self.db.commit()
+            return result
+
+        workspace_id = project.workspace_id
+        project_client_id = project.client_id
+        project_name = project.name
+
+        client_name: str | None = None
+        if project_client_id is not None:
+            client_record = await self.db.scalar(
+                select(TrelloClientRecord).where(
+                    TrelloClientRecord.workspace_id == workspace_id,
+                    TrelloClientRecord.id == project_client_id,
+                )
+            )
+            if client_record is not None:
+                client_name = client_record.name
+
+        # 1. Bulk-load all issues, comments, changelog items, and existing chunk metadata for this project
+        issues = list(
+            (
+                await self.db.scalars(
+                    select(JiraIssue)
+                    .where(
+                        JiraIssue.workspace_id == workspace_id,
+                        JiraIssue.project_id == project.id,
+                    )
+                    .order_by(JiraIssue.id)
+                )
+            ).all()
+        )
+        issue_ids = [issue.id for issue in issues]
+
+        comments_by_issue: dict[UUID, list[JiraComment]] = {}
+        changelog_by_issue: dict[UUID, list[JiraChangelogItem]] = {}
+        existing_meta_by_issue: dict[UUID, dict[tuple[str, int], tuple[UUID, str, int, UUID | None, UUID | None, str | None, bool]]] = {}
+
+        if issue_ids:
+            all_comments = list(
+                (
+                    await self.db.scalars(
+                        select(JiraComment)
+                        .where(
+                            JiraComment.workspace_id == workspace_id,
+                            JiraComment.issue_id.in_(issue_ids),
+                        )
+                        .order_by(
+                            JiraComment.created_at_jira,
+                            JiraComment.jira_comment_id,
+                            JiraComment.id,
+                        )
+                    )
+                ).all()
+            )
+            for comment in all_comments:
+                comments_by_issue.setdefault(comment.issue_id, []).append(comment)
+
+            all_changelogs = list(
+                (
+                    await self.db.scalars(
+                        select(JiraChangelogItem)
+                        .where(
+                            JiraChangelogItem.workspace_id == workspace_id,
+                            JiraChangelogItem.issue_id.in_(issue_ids),
+                        )
+                        .order_by(
+                            JiraChangelogItem.created_at_jira,
+                            JiraChangelogItem.jira_history_id,
+                            JiraChangelogItem.item_index,
+                            JiraChangelogItem.id,
+                        )
+                    )
+                ).all()
+            )
+            for item in all_changelogs:
+                changelog_by_issue.setdefault(item.issue_id, []).append(item)
+
+            existing_chunk_rows = (
+                await self.db.execute(
+                    select(
+                        ContextChunkRecord.id,
+                        ContextChunkRecord.issue_id,
+                        ContextChunkRecord.chunk_kind,
+                        ContextChunkRecord.ordinal,
+                        ContextChunkRecord.content_hash,
+                        ContextChunkRecord.chunker_version,
+                        ContextChunkRecord.client_id,
+                        ContextChunkRecord.project_id,
+                        ContextChunkRecord.embedding_model,
+                        ContextChunkRecord.embedding.is_not(None).label("has_embedding"),
+                    ).where(
+                        ContextChunkRecord.workspace_id == workspace_id,
+                        ContextChunkRecord.project_id == project.id,
+                        ContextChunkRecord.issue_id.is_not(None),
+                    )
+                )
+            ).all()
+            for row in existing_chunk_rows:
+                if row.issue_id is not None:
+                    existing_meta_by_issue.setdefault(row.issue_id, {})[
+                        (str(row.chunk_kind), int(row.ordinal))
+                    ] = (
+                        row.id,
+                        str(row.content_hash),
+                        int(row.chunker_version),
+                        row.client_id,
+                        row.project_id,
+                        row.embedding_model,
+                        bool(row.has_embedding),
+                    )
+
+        # Close read transaction before per-issue diff transactions
+        if self.db.in_transaction():
+            await self.db.commit()
+
+        target_model = settings.GEMINI_EMBEDDING_MODEL
+
+        # 2. Chunk in memory for every issue (never gated on issue.content_hash);
+        #    open a DB transaction only for issues whose desired chunks differ.
+        for issue in issues:
+            try:
+                effective_client_id = (
+                    issue.client_id if issue.client_id is not None else project_client_id
+                )
+                body_input = IssueBodyInput(
+                    client_name=client_name,
+                    project_name=project_name,
+                    issue_key=issue.key,
+                    summary=issue.summary,
+                    description=issue.description or "",
+                    status=issue.status or "",
+                    issue_type=issue.issue_type or "",
+                    priority=issue.priority,
+                    assignee=issue.assignee,
+                    reporter=issue.reporter,
+                    labels=tuple(issue.labels or []),
+                    occurred_at=issue.updated_at_jira or issue.created_at_jira,
+                    metadata={
+                        "issue_id": str(issue.id),
+                        "jira_issue_id": issue.jira_issue_id,
+                        "issue_key": issue.key,
+                        "status": issue.status,
+                        "issue_type": issue.issue_type,
+                        "priority": issue.priority,
+                        "assignee": issue.assignee,
+                        "reporter": issue.reporter,
+                        "labels": list(issue.labels or []),
+                        "url": issue.url,
+                    },
+                )
+                body_chunks = chunk_issue_body(body_input)
+
+                issue_comments = comments_by_issue.get(issue.id, [])
+                comment_inputs = [
+                    IssueCommentInput(
+                        comment_id=str(c.id),
+                        author_name=c.author or "Unknown",
+                        created_at=c.created_at_jira,
+                        body=c.body,
+                    )
+                    for c in issue_comments
+                ]
+                comment_chunks = chunk_issue_comments(
+                    comment_inputs,
+                    client_name=client_name,
+                    project_name=project_name,
+                    issue_key=issue.key,
+                    issue_summary=issue.summary,
+                )
+
+                issue_transitions = changelog_by_issue.get(issue.id, [])
+                transition_inputs = [
+                    IssueTransitionInput(
+                        history_id=t.jira_history_id,
+                        item_index=t.item_index,
+                        field=t.field,
+                        from_value=t.from_value,
+                        to_value=t.to_value,
+                        author_name=t.author or "Unknown",
+                        created_at=t.created_at_jira,
+                    )
+                    for t in issue_transitions
+                ]
+                transition_chunks = chunk_issue_transitions(
+                    transition_inputs,
+                    client_name=client_name,
+                    project_name=project_name,
+                    issue_key=issue.key,
+                    issue_summary=issue.summary,
+                )
+
+                desired_by_key: dict[tuple[str, int], Chunk] = {
+                    (ch.kind, ch.ordinal): ch
+                    for ch in (*body_chunks, *comment_chunks, *transition_chunks)
+                }
+                existing_by_key = existing_meta_by_issue.get(issue.id, {})
+
+                to_delete_ids = [
+                    meta[0]
+                    for key, meta in existing_by_key.items()
+                    if key not in desired_by_key
+                ]
+                to_insert: list[Chunk] = []
+                to_update_full: list[tuple[UUID, Chunk, int]] = []
+                to_update_meta: list[tuple[UUID, bool]] = []
+                unchanged_count = 0
+
+                for key, ch in desired_by_key.items():
+                    kind_ver = chunker_version_for_kind(ch.kind)
+                    existing_meta = existing_by_key.get(key)
+                    if existing_meta is None:
+                        to_insert.append(ch)
+                    else:
+                        (
+                            chunk_pk,
+                            ex_hash,
+                            ex_ver,
+                            ex_client_id,
+                            ex_project_id,
+                            ex_embed_model,
+                            ex_has_embed,
+                        ) = existing_meta
+                        if ex_hash != ch.content_hash or ex_ver != kind_ver:
+                            to_update_full.append((chunk_pk, ch, kind_ver))
+                        else:
+                            clear_embed = bool(
+                                force or (ex_has_embed and ex_embed_model != target_model)
+                            )
+                            meta_changed = (
+                                ex_client_id != effective_client_id
+                                or ex_project_id != project.id
+                                or clear_embed
+                            )
+                            if meta_changed:
+                                to_update_meta.append((chunk_pk, clear_embed))
+                            else:
+                                unchanged_count += 1
+
+                if not to_delete_ids and not to_insert and not to_update_full and not to_update_meta:
+                    result.unchanged += unchanged_count
+                    continue
+
+                # Open one transaction for this issue's diff
+                if to_delete_ids:
+                    await self.db.execute(
+                        delete(ContextChunkRecord).where(
+                            ContextChunkRecord.workspace_id == workspace_id,
+                            ContextChunkRecord.id.in_(to_delete_ids),
+                        )
+                    )
+
+                for ch in to_insert:
+                    kind_ver = chunker_version_for_kind(ch.kind)
+                    self.db.add(
+                        ContextChunkRecord(
+                            workspace_id=workspace_id,
+                            client_id=effective_client_id,
+                            source_id=None,
+                            repository_id=None,
+                            project_id=project.id,
+                            source_type="jira",
+                            card_id=None,
+                            issue_id=issue.id,
+                            group_key=None,
+                            chunk_kind=ch.kind,
+                            ordinal=ch.ordinal,
+                            text=ch.text,
+                            token_estimate=ch.token_estimate,
+                            embedding=None,
+                            embedding_model=None,
+                            chunker_version=kind_ver,
+                            content_hash=ch.content_hash,
+                            occurred_at=ch.occurred_at,
+                            chunk_metadata=ch.metadata,
+                        )
+                    )
+
+                for chunk_pk, ch, kind_ver in to_update_full:
+                    await self.db.execute(
+                        update(ContextChunkRecord)
+                        .where(
+                            ContextChunkRecord.workspace_id == workspace_id,
+                            ContextChunkRecord.id == chunk_pk,
+                        )
+                        .values(
+                            text=ch.text,
+                            token_estimate=ch.token_estimate,
+                            chunker_version=kind_ver,
+                            content_hash=ch.content_hash,
+                            occurred_at=ch.occurred_at,
+                            chunk_metadata=ch.metadata,
+                            client_id=effective_client_id,
+                            project_id=project.id,
+                            embedding=None,
+                            embedding_model=None,
+                        )
+                    )
+
+                for chunk_pk, clear_embed in to_update_meta:
+                    vals: dict[str, object] = {
+                        "client_id": effective_client_id,
+                        "project_id": project.id,
+                    }
+                    if clear_embed:
+                        vals["embedding"] = None
+                        vals["embedding_model"] = None
+                    await self.db.execute(
+                        update(ContextChunkRecord)
+                        .where(
+                            ContextChunkRecord.workspace_id == workspace_id,
+                            ContextChunkRecord.id == chunk_pk,
+                        )
+                        .values(**vals)
+                    )
+
+                await self.db.commit()
+                result.deleted += len(to_delete_ids)
+                result.inserted += len(to_insert)
+                result.updated += len(to_update_full) + len(to_update_meta)
+                result.unchanged += unchanged_count
+            except Exception as exc:
+                if self.db.in_transaction():
+                    await self.db.rollback()
+                result.failed_documents += 1
+                logger.warning(
+                    "index_jira_issue_failed",
+                    workspace_id=str(workspace_id),
+                    project_id=str(project.id),
+                    issue_id=str(issue.id),
+                    error_type=type(exc).__name__,
+                )
+
+        # 3. Embed pending unembedded chunks in batches
+        pending_chunks = await self._load_pending_chunks(
+            workspace_id=workspace_id,
+            source_id=None,
+            repository_id=None,
+            project_id=project.id,
+            result=result,
+        )
+        if self.db.in_transaction():
+            await self.db.commit()
+
+        await self._embed_pending_chunks(
+            workspace_id=workspace_id,
+            source_id=None,
+            repository_id=None,
+            project_id=project.id,
+            result=result,
+            preloaded_pending=pending_chunks,
+        )
+
+        if result.inserted > 0 or result.updated > 0 or result.deleted > 0 or result.embedded > 0:
+            await self.increment_data_version(workspace_id)
+
+        return result
+
     async def _clear_stale_model_embeddings(
         self,
         *,
         workspace_id: UUID,
         source_id: UUID | None,
         repository_id: UUID | None,
+        project_id: UUID | None = None,
         result: IndexingResult,
     ) -> None:
         target_model = settings.GEMINI_EMBEDDING_MODEL
@@ -911,6 +1297,10 @@ class IndexingService:
             stale_model_stmt = stale_model_stmt.where(
                 ContextChunkRecord.repository_id == repository_id
             )
+        if project_id is not None:
+            stale_model_stmt = stale_model_stmt.where(
+                ContextChunkRecord.project_id == project_id
+            )
         stale_res = await self.db.execute(stale_model_stmt)
         stale_cleared = int(getattr(stale_res, "rowcount", 0) or 0)
         if stale_cleared > 0:
@@ -923,6 +1313,7 @@ class IndexingService:
         workspace_id: UUID,
         source_id: UUID | None,
         repository_id: UUID | None,
+        project_id: UUID | None = None,
         result: IndexingResult,
     ) -> list[ContextChunkRecord]:
         max_embed = max(1, int(settings.INDEX_MAX_EMBED_PER_RUN))
@@ -936,8 +1327,13 @@ class IndexingService:
             unembedded_stmt = unembedded_stmt.where(
                 ContextChunkRecord.repository_id == repository_id
             )
+        if project_id is not None:
+            unembedded_stmt = unembedded_stmt.where(
+                ContextChunkRecord.project_id == project_id
+            )
         unembedded_stmt = unembedded_stmt.order_by(
             ContextChunkRecord.card_id.nulls_last(),
+            ContextChunkRecord.issue_id.nulls_last(),
             ContextChunkRecord.group_key.nulls_first(),
             ContextChunkRecord.chunk_kind,
             ContextChunkRecord.ordinal,
@@ -956,6 +1352,7 @@ class IndexingService:
         workspace_id: UUID,
         source_id: UUID | None,
         repository_id: UUID | None,
+        project_id: UUID | None = None,
         result: IndexingResult,
         preloaded_pending: list[ContextChunkRecord] | None = None,
     ) -> None:
@@ -966,12 +1363,14 @@ class IndexingService:
                 workspace_id=workspace_id,
                 source_id=source_id,
                 repository_id=repository_id,
+                project_id=project_id,
                 result=result,
             )
             pending = await self._load_pending_chunks(
                 workspace_id=workspace_id,
                 source_id=source_id,
                 repository_id=repository_id,
+                project_id=project_id,
                 result=result,
             )
             if self.db.in_transaction():
@@ -992,6 +1391,7 @@ class IndexingService:
                 workspace_id=str(workspace_id),
                 source_id=str(source_id) if source_id else None,
                 repository_id=str(repository_id) if repository_id else None,
+                project_id=str(project_id) if project_id else None,
                 pending_count=len(pending),
                 error_type=type(exc).__name__,
             )
@@ -1030,6 +1430,7 @@ class IndexingService:
                     workspace_id=str(workspace_id),
                     source_id=str(source_id) if source_id else None,
                     repository_id=str(repository_id) if repository_id else None,
+                    project_id=str(project_id) if project_id else None,
                     batch_size=len(batch),
                     error_type=type(exc).__name__,
                 )
@@ -1099,15 +1500,59 @@ class IndexingService:
             await self.increment_data_version(workspace_id)
         return updated_rows
 
+    async def remap_jira_project_client(
+        self,
+        workspace_id: UUID,
+        project_id: UUID,
+        new_client_id: UUID | None,
+        *,
+        bump: bool = True,
+    ) -> int:
+        """Update a Jira project's client_id, its issues.client_id, and its chunks.client_id in the same transaction."""
+        project = await self.db.scalar(
+            select(JiraProject).where(
+                JiraProject.workspace_id == workspace_id,
+                JiraProject.id == project_id,
+            )
+        )
+        if project is None:
+            return 0
+        project.client_id = new_client_id
+        await self.db.execute(
+            update(JiraIssue)
+            .where(
+                JiraIssue.workspace_id == workspace_id,
+                JiraIssue.project_id == project_id,
+                JiraIssue.client_id.is_distinct_from(new_client_id),
+            )
+            .values(client_id=new_client_id)
+        )
+        upd = await self.db.execute(
+            update(ContextChunkRecord)
+            .where(
+                ContextChunkRecord.workspace_id == workspace_id,
+                ContextChunkRecord.project_id == project_id,
+                ContextChunkRecord.client_id.is_distinct_from(new_client_id),
+            )
+            .values(client_id=new_client_id)
+        )
+        await self.db.flush()
+        updated_rows = int(getattr(upd, "rowcount", 0) or 0)
+        if updated_rows > 0 and bump:
+            await self.db.commit()
+            await self.increment_data_version(workspace_id)
+        return updated_rows
+
     async def rename_client(
         self,
         workspace_id: UUID,
         client_id: UUID,
         new_name: str,
     ) -> dict[str, list[UUID]]:
-        """Rename a client and enqueue index tasks for affected sources and repositories."""
+        """Rename a client and enqueue index tasks for affected sources, repositories, and Jira projects."""
         from app.workers.tasks import (
             dispatch_task,
+            index_jira_project_task,
             index_repository_task,
             index_source_task,
         )
@@ -1120,10 +1565,10 @@ class IndexingService:
             )
         )
         if client is None or not clean_name:
-            return {"sources": [], "repositories": []}
+            return {"sources": [], "repositories": [], "projects": []}
 
         if client.name == clean_name:
-            return {"sources": [], "repositories": []}
+            return {"sources": [], "repositories": [], "projects": []}
 
         client.name = clean_name
         await self.db.flush()
@@ -1198,12 +1643,46 @@ class IndexingService:
             key=str,
         )
 
+        proj_ids = set(
+            (
+                await self.db.scalars(
+                    select(JiraProject.id).where(
+                        JiraProject.workspace_id == workspace_id,
+                        JiraProject.client_id == client_id,
+                    )
+                )
+            ).all()
+        )
+        chunk_proj_ids = set(
+            (
+                await self.db.scalars(
+                    select(ContextChunkRecord.project_id)
+                    .where(
+                        ContextChunkRecord.workspace_id == workspace_id,
+                        ContextChunkRecord.client_id == client_id,
+                        ContextChunkRecord.project_id.is_not(None),
+                    )
+                    .distinct()
+                )
+            ).all()
+        )
+        affected_projects = sorted(
+            proj_ids | {p for p in chunk_proj_ids if p is not None},
+            key=str,
+        )
+
         for sid in affected_sources:
             dispatch_task(index_source_task, str(sid))
         for rid in affected_repos:
             dispatch_task(index_repository_task, str(rid))
+        for pid in affected_projects:
+            dispatch_task(index_jira_project_task, str(pid))
 
-        return {"sources": affected_sources, "repositories": affected_repos}
+        return {
+            "sources": affected_sources,
+            "repositories": affected_repos,
+            "projects": affected_projects,
+        }
 
     async def rename_board(
         self,

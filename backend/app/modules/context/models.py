@@ -104,7 +104,7 @@ class ContextChunkRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "chunks"
     __table_args__ = (
         CheckConstraint(
-            "(card_id IS NOT NULL)::int + (repository_id IS NOT NULL)::int = 1",
+            "(card_id IS NOT NULL)::int + (repository_id IS NOT NULL)::int + (issue_id IS NOT NULL)::int = 1",
             name="ck_chunks_exactly_one_parent",
         ),
         CheckConstraint(
@@ -112,15 +112,13 @@ class ContextChunkRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             name="ck_chunks_source_type",
         ),
         CheckConstraint(
-            "chunk_kind IN ('card_body', 'comment_group', 'commit_group')",
+            "chunk_kind IN ('card_body', 'comment_group', 'commit_group', 'issue_body', 'issue_comment_group', 'issue_transition_group')",
             name="ck_chunks_chunk_kind",
         ),
-        # NOTE: 'jira' source_type is reserved in ck_chunks_source_type above;
-        # ck_chunks_parent_source_consistency and ck_chunks_exactly_one_parent
-        # will be replaced in the Jira prompt when issue_id is added.
         CheckConstraint(
-            "(card_id IS NULL OR (source_type = 'trello' AND source_id IS NOT NULL)) "
-            "AND (repository_id IS NULL OR (source_type = 'github' AND source_id IS NULL AND group_key IS NOT NULL))",
+            "(card_id IS NULL OR (source_type = 'trello' AND source_id IS NOT NULL AND repository_id IS NULL AND project_id IS NULL)) "
+            "AND (repository_id IS NULL OR (source_type = 'github' AND source_id IS NULL AND project_id IS NULL AND group_key IS NOT NULL)) "
+            "AND (issue_id IS NULL OR (source_type = 'jira' AND project_id IS NOT NULL AND source_id IS NULL AND repository_id IS NULL))",
             name="ck_chunks_parent_source_consistency",
         ),
         CheckConstraint(
@@ -149,6 +147,12 @@ class ContextChunkRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             postgresql_where=sa_text("repository_id IS NOT NULL"),
         ),
         Index(
+            "ix_chunks_workspace_project",
+            "workspace_id",
+            "project_id",
+            postgresql_where=sa_text("project_id IS NOT NULL"),
+        ),
+        Index(
             "uq_chunks_card_kind_ordinal",
             "card_id",
             "chunk_kind",
@@ -164,6 +168,14 @@ class ContextChunkRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             "ordinal",
             unique=True,
             postgresql_where=sa_text("repository_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_chunks_issue_kind_ordinal",
+            "issue_id",
+            "chunk_kind",
+            "ordinal",
+            unique=True,
+            postgresql_where=sa_text("issue_id IS NOT NULL"),
         ),
         Index(
             "ix_chunks_workspace_unembedded",
@@ -192,10 +204,20 @@ class ContextChunkRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("github_repositories.id", ondelete="CASCADE"),
         nullable=True,
     )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jira_projects.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     card_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("cards.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jira_issues.id", ondelete="CASCADE"),
         nullable=True,
     )
     group_key: Mapped[str | None] = mapped_column(Text, nullable=True)

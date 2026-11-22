@@ -44,6 +44,7 @@ from app.modules.context.gemini import (
 )
 from app.modules.context.models import EMBEDDING_DIMENSIONS, ContextChunkRecord
 from app.modules.github.models import GithubRepository
+from app.modules.jira.models import JiraIssue, JiraProject
 from app.modules.trello.models import TrelloCard, TrelloClientRecord, TrelloSource
 
 logger = get_logger("app.modules.context.retriever")
@@ -94,6 +95,9 @@ class RetrievedChunk:
     )
     chunk_ids: tuple[UUID, ...] = field(default_factory=tuple)
     source_id: UUID | None = None
+    project_id: UUID | None = None
+    issue_id: UUID | None = None
+    jira_issue_key: str | None = None
     client_id: UUID | None = None
     client_name: str | None = None
     ordinal: int = 0
@@ -129,6 +133,7 @@ class Retriever(Protocol):
         client_id: UUID | None = None,
         source_ids: Sequence[UUID] | None = None,
         repository_ids: Sequence[UUID] | None = None,
+        project_ids: Sequence[UUID] | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
         limit: int = 8,
@@ -198,17 +203,46 @@ def reset_pgvector_version_cache() -> None:
     _PGVECTOR_VERSION_CACHE = None
 
 
+class _SourceIdList(list[UUID]):
+    """List of active Trello source IDs that also carries resolved active Jira project IDs."""
+
+    _project_ids: list[UUID]
+
+
+class ActiveSourcesTuple(tuple[list[UUID], ...]):
+    """Active (source_ids, repository_ids, project_ids) tuple from `resolve_active_sources`."""
+
+    source_ids: list[UUID]
+    repository_ids: list[UUID]
+    project_ids: list[UUID]
+
+    def __new__(
+        cls,
+        source_ids: list[UUID],
+        repository_ids: list[UUID],
+        project_ids: list[UUID] | None = None,
+    ) -> ActiveSourcesTuple:
+        pids = list(project_ids) if project_ids is not None else []
+        tagged_sources = _SourceIdList(source_ids)
+        tagged_sources._project_ids = pids
+        instance = super().__new__(cls, (tagged_sources, repository_ids))
+        instance.source_ids = tagged_sources
+        instance.repository_ids = repository_ids
+        instance.project_ids = pids
+        return instance
+
+
 async def resolve_active_sources(
     db: AsyncSession,
     workspace_id: UUID,
     *,
     client_id: UUID | None = None,
-) -> tuple[list[UUID], list[UUID]]:
-    """Resolve active Trello source IDs and active GitHub repository IDs for `workspace_id` in ONE query.
+) -> ActiveSourcesTuple:
+    """Resolve active Trello source IDs, GitHub repository IDs, and Jira project IDs in ONE query.
 
     Filters out excluded Trello boards (`excluded = true`), excluded GitHub repositories
-    (`included = false`), inactive workspace connections (`status != 'active'`), and
-    inactive provider accounts (`status != 'active'`).
+    (`included = false`), excluded Jira projects (`included = false`), inactive workspace
+    connections (`status != 'active'`), and inactive provider accounts (`status != 'active'`).
     """
     trello_branch = (
         select(
@@ -260,7 +294,33 @@ async def resolve_active_sources(
     if client_id is not None:
         github_branch = github_branch.where(GithubRepository.client_id == client_id)
 
-    combined = union_all(trello_branch, github_branch).subquery("active_sources")
+    jira_branch = (
+        select(
+            literal("jira").label("kind"),
+            JiraProject.id.label("entity_id"),
+            JiraProject.name.label("sort_name"),
+        )
+        .join(
+            WorkspaceConnection,
+            WorkspaceConnection.id == JiraProject.connection_id,
+        )
+        .join(
+            ProviderAccount,
+            ProviderAccount.id == WorkspaceConnection.provider_account_id,
+        )
+        .where(
+            JiraProject.workspace_id == workspace_id,
+            JiraProject.included.is_(True),
+            WorkspaceConnection.workspace_id == workspace_id,
+            WorkspaceConnection.provider == "jira",
+            WorkspaceConnection.status == "active",
+            ProviderAccount.status == "active",
+        )
+    )
+    if client_id is not None:
+        jira_branch = jira_branch.where(JiraProject.client_id == client_id)
+
+    combined = union_all(trello_branch, github_branch, jira_branch).subquery("active_sources")
     stmt = select(combined.c.kind, combined.c.entity_id).order_by(
         combined.c.kind,
         combined.c.sort_name,
@@ -270,12 +330,15 @@ async def resolve_active_sources(
 
     source_ids: list[UUID] = []
     repository_ids: list[UUID] = []
+    project_ids: list[UUID] = []
     for kind, entity_id in rows:
         if kind == "trello":
             source_ids.append(entity_id)
         elif kind == "github":
             repository_ids.append(entity_id)
-    return source_ids, repository_ids
+        elif kind == "jira":
+            project_ids.append(entity_id)
+    return ActiveSourcesTuple(source_ids, repository_ids, project_ids)
 
 
 _STATEMENT_CACHE: dict[tuple[Any, ...], Select[Any]] = {}
@@ -287,57 +350,47 @@ def _apply_scope_filters_parameterized[*Ts](
     has_client: bool,
     has_sources: bool,
     has_repos: bool,
-    auto_filter_sources: bool,
+    has_projects: bool,
     has_date_from: bool,
     has_date_to: bool,
 ) -> Select[*Ts]:
-    """Apply workspace, active source/repository, client, and date filters with parameterized binds."""
+    """Apply workspace, active source/repository/project, client, and date filters with parameterized binds.
+
+    Retrieval filters Jira chunks by `project_id = ANY(:project_ids)` as a plain predicate
+    without joining `jira_issues` or `jira_projects` inside the vector or keyword CTEs.
+    """
     ws_param = bindparam("workspace_id", type_=PG_UUID(as_uuid=True))
     stmt = stmt.where(ContextChunkRecord.workspace_id == ws_param)
 
-    if auto_filter_sources:
-        stmt = (
-            stmt.outerjoin(
-                TrelloSource,
-                (TrelloSource.id == ContextChunkRecord.source_id)
-                & (TrelloSource.workspace_id == ws_param),
-            )
-            .outerjoin(
-                GithubRepository,
-                (GithubRepository.id == ContextChunkRecord.repository_id)
-                & (GithubRepository.workspace_id == ws_param),
-            )
-            .where(
-                or_(
-                    (ContextChunkRecord.source_id.is_not(None))
-                    & (TrelloSource.excluded.is_(False)),
-                    (ContextChunkRecord.repository_id.is_not(None))
-                    & (GithubRepository.included.is_(True)),
-                )
+    branch_clauses = []
+    if has_sources:
+        branch_clauses.append(
+            (ContextChunkRecord.source_id.is_not(None))
+            & (
+                ContextChunkRecord.source_id
+                == func.any(bindparam("source_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
             )
         )
+    if has_repos:
+        branch_clauses.append(
+            (ContextChunkRecord.repository_id.is_not(None))
+            & (
+                ContextChunkRecord.repository_id
+                == func.any(bindparam("repository_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+            )
+        )
+    if has_projects:
+        branch_clauses.append(
+            (ContextChunkRecord.project_id.is_not(None))
+            & (
+                ContextChunkRecord.project_id
+                == func.any(bindparam("project_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+            )
+        )
+    if branch_clauses:
+        stmt = stmt.where(or_(*branch_clauses))
     else:
-        branch_clauses = []
-        if has_sources:
-            branch_clauses.append(
-                (ContextChunkRecord.source_id.is_not(None))
-                & (
-                    ContextChunkRecord.source_id
-                    == func.any(bindparam("source_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
-                )
-            )
-        if has_repos:
-            branch_clauses.append(
-                (ContextChunkRecord.repository_id.is_not(None))
-                & (
-                    ContextChunkRecord.repository_id
-                    == func.any(bindparam("repository_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
-                )
-            )
-        if branch_clauses:
-            stmt = stmt.where(or_(*branch_clauses))
-        else:
-            stmt = stmt.where(literal(False))
+        stmt = stmt.where(literal(False))
 
     if has_client:
         stmt = stmt.where(
@@ -500,32 +553,51 @@ class HybridRetriever:
         client_id: UUID | None = None,
         source_ids: Sequence[UUID] | None = None,
         repository_ids: Sequence[UUID] | None = None,
+        project_ids: Sequence[UUID] | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
         limit: int = 8,
     ) -> list[RetrievedChunk]:
-        """Execute hybrid vector + full-text search with RRF (k=60) and per-card collapse."""
+        """Execute hybrid vector + full-text search with RRF (k=60) and per-card/issue collapse."""
         t_start = time.perf_counter()
         effective_limit = max(1, int(limit))
 
-        if source_ids is not None and repository_ids is not None:
-            if not source_ids and not repository_ids:
-                self.last_embed_latency_ms = 0.0
-                self.last_db_exec_ms = 0.0
-                self.last_db_fetch_ms = 0.0
-                self.last_db_latency_ms = 0.0
-                self.last_total_latency_ms = (time.perf_counter() - t_start) * 1000.0
-                self.last_degraded = False
-                self.last_metadata = {
-                    "mode": "hybrid",
-                    "degraded": False,
-                    "embed_ms": 0.0,
-                    "db_exec_ms": 0.0,
-                    "db_fetch_ms": 0.0,
-                    "db_ms": 0.0,
-                    "total_ms": round(self.last_total_latency_ms, 3),
-                }
-                return []
+        if project_ids is None and source_ids is not None:
+            tagged_projects = getattr(source_ids, "_project_ids", None)
+            if tagged_projects is not None:
+                project_ids = tagged_projects
+
+        if source_ids is None and repository_ids is None and project_ids is None:
+            active = await resolve_active_sources(
+                self.session,
+                workspace_id,
+                client_id=client_id,
+            )
+            source_ids = active.source_ids
+            repository_ids = active.repository_ids
+            project_ids = active.project_ids
+
+        if (
+            not (source_ids and len(source_ids) > 0)
+            and not (repository_ids and len(repository_ids) > 0)
+            and not (project_ids and len(project_ids) > 0)
+        ):
+            self.last_embed_latency_ms = 0.0
+            self.last_db_exec_ms = 0.0
+            self.last_db_fetch_ms = 0.0
+            self.last_db_latency_ms = 0.0
+            self.last_total_latency_ms = (time.perf_counter() - t_start) * 1000.0
+            self.last_degraded = False
+            self.last_metadata = {
+                "mode": "hybrid",
+                "degraded": False,
+                "embed_ms": 0.0,
+                "db_exec_ms": 0.0,
+                "db_fetch_ms": 0.0,
+                "db_ms": 0.0,
+                "total_ms": round(self.last_total_latency_ms, 3),
+            }
+            return []
 
         pgv_version = await get_pgvector_version(self.session)
         supports_iterative_scan = pgv_version >= (0, 8)
@@ -540,7 +612,7 @@ class HybridRetriever:
         has_client = client_id is not None
         has_sources = source_ids is not None and len(source_ids) > 0
         has_repos = repository_ids is not None and len(repository_ids) > 0
-        auto_filter_sources = source_ids is None and repository_ids is None
+        has_projects = project_ids is not None and len(project_ids) > 0
         has_date_from = date_from is not None
         has_date_to = date_to is not None
 
@@ -549,7 +621,7 @@ class HybridRetriever:
             has_client=has_client,
             has_sources=has_sources,
             has_repos=has_repos,
-            auto_filter_sources=auto_filter_sources,
+            has_projects=has_projects,
             has_date_from=has_date_from,
             has_date_to=has_date_to,
             supports_iterative_scan=supports_iterative_scan,
@@ -579,6 +651,8 @@ class HybridRetriever:
             params["source_ids"] = list(source_ids)  # type: ignore[arg-type]
         if has_repos:
             params["repository_ids"] = list(repository_ids)  # type: ignore[arg-type]
+        if has_projects:
+            params["project_ids"] = list(project_ids)  # type: ignore[arg-type]
         if has_date_from:
             params["date_from"] = date_from
         if has_date_to:
@@ -624,6 +698,9 @@ class HybridRetriever:
                     },
                     chunk_ids=chunk_ids_tuple,
                     source_id=row.source_id,
+                    project_id=row.project_id,
+                    issue_id=row.issue_id,
+                    jira_issue_key=row.jira_issue_key,
                     client_id=row.client_id,
                     client_name=row.client_name,
                     ordinal=int(row.ordinal),
@@ -682,7 +759,7 @@ class HybridRetriever:
         has_client: bool,
         has_sources: bool,
         has_repos: bool,
-        auto_filter_sources: bool,
+        has_projects: bool,
         has_date_from: bool,
         has_date_to: bool,
         supports_iterative_scan: bool,
@@ -693,7 +770,7 @@ class HybridRetriever:
             has_client,
             has_sources,
             has_repos,
-            auto_filter_sources,
+            has_projects,
             has_date_from,
             has_date_to,
             supports_iterative_scan,
@@ -712,7 +789,7 @@ class HybridRetriever:
             has_client=has_client,
             has_sources=has_sources,
             has_repos=has_repos,
-            auto_filter_sources=auto_filter_sources,
+            has_projects=has_projects,
             has_date_from=has_date_from,
             has_date_to=has_date_to,
             supports_iterative_scan=supports_iterative_scan,
@@ -727,12 +804,12 @@ class HybridRetriever:
         has_client: bool,
         has_sources: bool,
         has_repos: bool,
-        auto_filter_sources: bool,
+        has_projects: bool,
         has_date_from: bool,
         has_date_to: bool,
         supports_iterative_scan: bool,
     ) -> Select[Any]:
-        """Build the single-statement parameterized hybrid query with two CTEs, HNSW set_config, RRF, and per-card collapse."""
+        """Build the single-statement parameterized hybrid query with two CTEs, HNSW set_config, RRF, and per-card/issue collapse."""
         config_cols: list[Any] = [
             func.set_config(
                 "hnsw.ef_search",
@@ -771,7 +848,7 @@ class HybridRetriever:
                 has_client=has_client,
                 has_sources=has_sources,
                 has_repos=has_repos,
-                auto_filter_sources=auto_filter_sources,
+                has_projects=has_projects,
                 has_date_from=has_date_from,
                 has_date_to=has_date_to,
             )
@@ -820,7 +897,7 @@ class HybridRetriever:
             has_client=has_client,
             has_sources=has_sources,
             has_repos=has_repos,
-            auto_filter_sources=auto_filter_sources,
+            has_projects=has_projects,
             has_date_from=has_date_from,
             has_date_to=has_date_to,
         )
@@ -926,8 +1003,12 @@ class HybridRetriever:
             )
         fused_subq = fused_stmt.subquery("fused_chunks")
 
-        # 4. Per-card collapse: group by card_id when card_id IS NOT NULL, or by chunk_id for non-card chunks.
-        collapse_key = func.coalesce(ContextChunkRecord.card_id, ContextChunkRecord.id)
+        # 4. Per-card / per-issue collapse: group by card_id or issue_id when present, or chunk_id for commits.
+        collapse_key = func.coalesce(
+            ContextChunkRecord.card_id,
+            ContextChunkRecord.issue_id,
+            ContextChunkRecord.id,
+        )
         best_rank_order = (
             fused_subq.c.rrf_score.desc(),
             func.coalesce(fused_subq.c.keyword_rank, literal(999999)).asc(),
@@ -957,6 +1038,8 @@ class HybridRetriever:
                 ContextChunkRecord.card_id,
                 ContextChunkRecord.repository_id,
                 ContextChunkRecord.source_id,
+                ContextChunkRecord.project_id,
+                ContextChunkRecord.issue_id,
                 ContextChunkRecord.client_id,
                 ContextChunkRecord.source_type,
                 ContextChunkRecord.chunk_kind,
@@ -975,18 +1058,28 @@ class HybridRetriever:
             .subquery("collapsed_chunks")
         )
 
-        # 5. Join parent card / repository / client metadata and take top `limit`
+        # 5. Join parent card / issue / repository / client metadata on the collapsed top rows
         parent_title_expr = case(
             (collapsed_subq.c.card_id.is_not(None), func.coalesce(TrelloCard.name, literal(""))),
+            (
+                collapsed_subq.c.issue_id.is_not(None),
+                func.concat(
+                    func.coalesce(JiraIssue.key, literal("")),
+                    literal(": "),
+                    func.coalesce(JiraIssue.summary, literal("")),
+                ),
+            ),
             else_=func.coalesce(GithubRepository.full_name, literal("")),
         ).label("parent_title")
         parent_url_expr = case(
             (collapsed_subq.c.card_id.is_not(None), func.coalesce(TrelloCard.url, literal(""))),
+            (collapsed_subq.c.issue_id.is_not(None), func.coalesce(JiraIssue.url, literal(""))),
             else_=func.coalesce(GithubRepository.url, literal("")),
         ).label("parent_url")
         occurred_at_expr = func.coalesce(
             collapsed_subq.c.occurred_at,
             TrelloCard.last_activity_at,
+            JiraIssue.updated_at_jira,
         ).label("occurred_at")
 
         final_stmt = (
@@ -995,6 +1088,8 @@ class HybridRetriever:
                 collapsed_subq.c.card_id,
                 collapsed_subq.c.repository_id,
                 collapsed_subq.c.source_id,
+                collapsed_subq.c.project_id,
+                collapsed_subq.c.issue_id,
                 collapsed_subq.c.client_id,
                 collapsed_subq.c.source_type,
                 collapsed_subq.c.chunk_kind,
@@ -1010,6 +1105,7 @@ class HybridRetriever:
                 parent_url_expr,
                 TrelloCard.trello_card_id.label("trello_card_id"),
                 TrelloCard.description.label("card_description"),
+                JiraIssue.key.label("jira_issue_key"),
                 cast(TrelloClientRecord.name, String).label("client_name"),
                 cast(literal(True), Boolean).label("_ok"),
             )
@@ -1017,6 +1113,11 @@ class HybridRetriever:
                 TrelloCard,
                 (TrelloCard.id == collapsed_subq.c.card_id)
                 & (TrelloCard.workspace_id == ws_param),
+            )
+            .outerjoin(
+                JiraIssue,
+                (JiraIssue.id == collapsed_subq.c.issue_id)
+                & (JiraIssue.workspace_id == ws_param),
             )
             .outerjoin(
                 GithubRepository,

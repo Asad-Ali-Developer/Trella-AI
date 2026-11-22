@@ -61,9 +61,11 @@ def resolve_parent_meta(ch: RetrievedChunk) -> tuple[str, UUID | str]:
     """Resolve parent type and parent identifier from a RetrievedChunk."""
     if ch.card_id is not None:
         return "card", ch.card_id
+    if ch.issue_id is not None:
+        return "issue", ch.issue_id
     if ch.repository_id is not None:
         return "repository", ch.repository_id
-    return ch.source_type, (ch.source_id or ch.chunk_id)
+    return ch.source_type, (ch.source_id or ch.project_id or ch.chunk_id)
 
 
 def build_system_instruction() -> str:
@@ -192,11 +194,14 @@ async def stream_ask_response(
     deadline = time.monotonic() + settings.ASK_TIMEOUT_SECONDS
 
     # 1. Resolve active source IDs server-side only
-    active_sources, active_repos = await resolve_active_sources(
+    active = await resolve_active_sources(
         db,
         workspace_id=workspace_id,
         client_id=request_data.client_id,
     )
+    active_sources = active[0]
+    active_repos = active[1]
+    active_projects = getattr(active, "project_ids", [])
 
     # 2. Hybrid retrieval (top ASK_RETRIEVE_LIMIT)
     t_retrieval_start = time.perf_counter()
@@ -207,6 +212,7 @@ async def stream_ask_response(
         client_id=request_data.client_id,
         source_ids=active_sources,
         repository_ids=active_repos,
+        project_ids=active_projects,
         date_from=request_data.date_from,
         date_to=request_data.date_to,
         limit=settings.ASK_RETRIEVE_LIMIT,

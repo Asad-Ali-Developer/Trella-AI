@@ -129,6 +129,8 @@ class SimilarCardResponse(BaseModel):
     chunk_id: UUID | None = None
     chunk_ids: list[UUID] | None = None
     repository_id: UUID | None = None
+    project_id: UUID | None = None
+    issue_id: UUID | None = None
     source_type: str | None = None
     chunk_kind: str | None = None
     text: str | None = None

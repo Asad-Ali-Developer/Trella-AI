@@ -19,6 +19,7 @@ from app.core.security.encryption import encryption
 from app.modules.connections.models import ProviderAccount, WorkspaceConnection
 from app.modules.connections.repository import ConnectionRepository
 from app.modules.context.indexer import increment_workspace_data_version
+from app.modules.context.models import ContextChunkRecord
 from app.modules.jira.client import (
     JiraAPIError,
     JiraClient,
@@ -566,7 +567,7 @@ class JiraConnectionService:
     async def save_projects(
         self, payload: JiraProjectSelectionRequest
     ) -> list[JiraProjectResponse]:
-        """Update inclusion toggles and optional client mapping for Jira projects."""
+        """Update inclusion toggles and optional client mapping for Jira projects, updating chunks.client_id and bumping data_version once after commit."""
         connection, _ = await self._get_connection_and_account()
 
         seen_ids: set[UUID] = set()
@@ -621,6 +622,15 @@ class JiraConnectionService:
                     .where(
                         JiraIssue.workspace_id == self.workspace_id,
                         JiraIssue.project_id == project.id,
+                    )
+                    .values(client_id=item.client_id)
+                )
+                await self.db.execute(
+                    update(ContextChunkRecord)
+                    .where(
+                        ContextChunkRecord.workspace_id == self.workspace_id,
+                        ContextChunkRecord.project_id == project.id,
+                        ContextChunkRecord.client_id.is_distinct_from(item.client_id),
                     )
                     .values(client_id=item.client_id)
                 )
